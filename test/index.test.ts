@@ -17,16 +17,20 @@ const mockedStreamCursor = vi.mocked(streamCursor);
 
 function createMockPi() {
 	const registered: Array<{ name: string; config: Record<string, unknown> }> = [];
+	const handlers = new Map<string, Array<(event: unknown, ctx: any) => Promise<void> | void>>();
 	return {
 		registerProvider: vi.fn((name: string, config: Record<string, unknown>) => {
 			registered.push({ name, config });
 		}),
 		registerFlag: vi.fn(),
 		registerCommand: vi.fn(),
-		on: vi.fn(),
+		on: vi.fn((event: string, handler: (event: unknown, ctx: any) => Promise<void> | void) => {
+			handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+		}),
 		getFlag: vi.fn().mockReturnValue(false),
 		appendEntry: vi.fn(),
 		_registered: registered,
+		_handlers: handlers,
 	};
 }
 
@@ -54,6 +58,10 @@ describe("extension factory", () => {
 
 		expect(pi.registerFlag).toHaveBeenCalledWith(
 			"cursor-fast",
+			expect.objectContaining({ type: "boolean", default: false }),
+		);
+		expect(pi.registerFlag).toHaveBeenCalledWith(
+			"cursor-no-fast",
 			expect.objectContaining({ type: "boolean", default: false }),
 		);
 		expect(pi.registerCommand).toHaveBeenCalledWith(
@@ -102,5 +110,59 @@ describe("extension factory", () => {
 		expect(pi.registerProvider).toHaveBeenCalledOnce();
 		const [call] = pi._registered;
 		expect(call.config.models).toHaveLength(2);
+	});
+
+	it("notifies interactive users when fallback models are registered", async () => {
+		mockedDiscover.mockImplementationOnce(async (options: any) => {
+			options.onFallback({
+				reason: "missing-api-key",
+				message: "CURSOR_API_KEY or --api-key is required; using fallback Cursor model list.",
+			});
+			return [
+				{
+					id: "composer-2",
+					name: "Cursor Composer 2",
+					reasoning: false,
+					input: ["text", "image"],
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 128000,
+					maxTokens: 16384,
+				},
+			];
+		});
+
+		const pi = createMockPi();
+		await extensionFactory(pi as any);
+
+		const notify = vi.fn();
+		const ctx = {
+			hasUI: true,
+			ui: { notify, setStatus: vi.fn() },
+			sessionManager: { getBranch: vi.fn(() => []) },
+		};
+		const sessionHandlers = pi._handlers.get("session_start") ?? [];
+		await sessionHandlers.at(-1)!({}, ctx);
+
+		expect(notify).toHaveBeenCalledWith(
+			"CURSOR_API_KEY or --api-key is required; using fallback Cursor model list.",
+			"warning",
+		);
+	});
+
+	it("does not notify fallback discovery issues without UI", async () => {
+		mockedDiscover.mockImplementationOnce(async (options: any) => {
+			options.onFallback({ reason: "empty-model-list", message: "Cursor model discovery returned no models; using fallback Cursor model list." });
+			return [];
+		});
+
+		const pi = createMockPi();
+		await extensionFactory(pi as any);
+
+		const notify = vi.fn();
+		const ctx = { hasUI: false, ui: { notify, setStatus: vi.fn() }, sessionManager: { getBranch: vi.fn(() => []) } };
+		const sessionHandlers = pi._handlers.get("session_start") ?? [];
+		await sessionHandlers.at(-1)!({}, ctx);
+
+		expect(notify).not.toHaveBeenCalled();
 	});
 });

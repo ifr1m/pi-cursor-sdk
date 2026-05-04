@@ -20,6 +20,7 @@ interface CursorGlobalConfig {
 const sessionFastPreferences = new Map<string, boolean>();
 let globalFastPreferences = new Map<string, boolean>();
 let cliForceFast = false;
+let cliForceNoFast = false;
 
 function isCursorFastEntryData(value: unknown): value is CursorFastEntryData {
 	if (!value || typeof value !== "object") return false;
@@ -68,6 +69,7 @@ function restoreSessionFastPreferences(ctx: ExtensionContext): void {
 function getEffectiveFast(baseModelId: string, modelId: string): boolean | undefined {
 	const metadata = getCursorModelMetadata(modelId);
 	if (!metadata?.supportsFast) return undefined;
+	if (cliForceNoFast) return false;
 	if (cliForceFast) return true;
 	return sessionFastPreferences.get(baseModelId) ?? globalFastPreferences.get(baseModelId) ?? metadata.defaultFast;
 }
@@ -128,6 +130,12 @@ export function registerCursorFastControls(pi: ExtensionAPI): void {
 		default: false,
 	});
 
+	pi.registerFlag("cursor-no-fast", {
+		description: "Force Cursor fast mode off for this run when the selected Cursor model supports it",
+		type: "boolean",
+		default: false,
+	});
+
 	pi.registerCommand("cursor-fast", {
 		description: "Toggle Cursor fast mode for the selected Cursor model",
 		handler: async (_args, ctx) => {
@@ -135,6 +143,10 @@ export function registerCursorFastControls(pi: ExtensionAPI): void {
 			if (!metadata?.supportsFast || !ctx.model) {
 				const modelName = ctx.model?.id ?? "current model";
 				ctx.ui.notify(`Fast mode not supported by ${modelName}`, "info");
+				return;
+			}
+			if (cliForceNoFast) {
+				ctx.ui.notify("Cursor fast is forced off by --cursor-no-fast", "info");
 				return;
 			}
 			if (cliForceFast) {
@@ -159,6 +171,7 @@ export function registerCursorFastControls(pi: ExtensionAPI): void {
 	pi.on("session_start", async (_event, ctx) => {
 		globalFastPreferences = loadGlobalFastPreferences();
 		cliForceFast = pi.getFlag("cursor-fast") === true;
+		cliForceNoFast = pi.getFlag("cursor-no-fast") === true;
 		restoreSessionFastPreferences(ctx);
 		updateCursorStatus(ctx);
 	});

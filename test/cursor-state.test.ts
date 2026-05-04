@@ -46,14 +46,18 @@ const modelItems: ModelListItem[] = [
 	},
 ];
 
-function createHarness(options: { modelId?: string; provider?: string; branch?: unknown[]; cursorFastFlag?: boolean } = {}) {
+function createHarness(options: { modelId?: string; provider?: string; branch?: unknown[]; cursorFastFlag?: boolean; cursorNoFastFlag?: boolean } = {}) {
 	const commands = new Map<string, any>();
 	const handlers = new Map<string, any>();
 	const pi = {
 		registerFlag: vi.fn(),
 		registerCommand: vi.fn((name: string, command: any) => commands.set(name, command)),
 		on: vi.fn((event: string, handler: any) => handlers.set(event, handler)),
-		getFlag: vi.fn(() => options.cursorFastFlag ?? false),
+		getFlag: vi.fn((name: string) => {
+			if (name === "cursor-fast") return options.cursorFastFlag ?? false;
+			if (name === "cursor-no-fast") return options.cursorNoFastFlag ?? false;
+			return false;
+		}),
 		appendEntry: vi.fn(),
 	};
 	const ctx = {
@@ -166,6 +170,56 @@ describe("Cursor fast state", () => {
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor fast");
 		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(true);
 		expect(pi.appendEntry).not.toHaveBeenCalled();
+	});
+
+	it("forces fast off with --cursor-no-fast without writing session state", async () => {
+		const { pi, ctx, handlers } = createHarness({ modelId: "composer-2", cursorNoFastFlag: true });
+
+		await handlers.get("session_start")({}, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
+		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+	});
+
+	it("lets --cursor-no-fast win when both one-run force flags are set", async () => {
+		const { pi, ctx, handlers } = createHarness({ modelId: "composer-2", cursorFastFlag: true, cursorNoFastFlag: true });
+
+		await handlers.get("session_start")({}, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
+		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+	});
+
+	it("does not apply --cursor-no-fast to unsupported Cursor models", async () => {
+		const { pi, ctx, handlers } = createHarness({ modelId: "gemini-3.1-pro", cursorNoFastFlag: true });
+
+		await handlers.get("session_start")({}, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
+		expect(getEffectiveFastForModelId("gemini-3.1-pro")).toBeUndefined();
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+	});
+
+	it("does not let /cursor-fast persist while --cursor-no-fast is active", async () => {
+		const { pi, ctx, commands, handlers } = createHarness({ modelId: "composer-2", cursorNoFastFlag: true });
+		await handlers.get("session_start")({}, ctx);
+
+		await commands.get("cursor-fast").handler("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Cursor fast is forced off by --cursor-no-fast", "info");
+		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+	});
+
+	it("mentions --cursor-no-fast when both force flags block /cursor-fast", async () => {
+		const { ctx, commands, handlers } = createHarness({ modelId: "composer-2", cursorFastFlag: true, cursorNoFastFlag: true });
+		await handlers.get("session_start")({}, ctx);
+
+		await commands.get("cursor-fast").handler("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith("Cursor fast is forced off by --cursor-no-fast", "info");
 	});
 
 	it("does not let /cursor-fast persist an opposite value when --cursor-fast is active", async () => {

@@ -377,13 +377,41 @@ describe("streamCursor", () => {
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
 
-	it("emits error when no API key", async () => {
+	it("emits actionable error when no API key", async () => {
 		const stream = streamCursor(makeModel(), makeContext(), { apiKey: undefined });
 		const events = await collectEvents(stream);
 
 		const error = events.find((e: any) => e.type === "error");
 		expect(error).toBeDefined();
 		expect((error as any).error.errorMessage).toContain("CURSOR_API_KEY");
+		expect((error as any).error.errorMessage).toContain("--api-key");
+	});
+
+	it("turns generic Cursor SDK failures into actionable setup errors", async () => {
+		mockedCreate.mockRejectedValueOnce(new Error("Error"));
+
+		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
+		const events = await collectEvents(stream);
+
+		const error = events.find((e: any) => e.type === "error");
+		expect(error).toBeDefined();
+		expect((error as any).error.errorMessage).toContain("Cursor SDK request failed");
+		expect((error as any).error.errorMessage).toContain("CURSOR_API_KEY");
+		expect((error as any).error.errorMessage).toContain("--api-key");
+		expect((error as any).error.errorMessage).not.toBe("Error");
+	});
+
+	it("labels likely auth failures without leaking the supplied API key", async () => {
+		mockedCreate.mockRejectedValueOnce(new Error("Unauthorized Bearer super-secret-key-12345"));
+
+		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "super-secret-key-12345" });
+		const events = await collectEvents(stream);
+
+		const error = events.find((e: any) => e.type === "error");
+		const message = (error as any).error.errorMessage;
+		expect(message).toContain("invalid or unauthorized");
+		expect(message).toContain("CURSOR_API_KEY");
+		expect(message).not.toContain("super-secret-key-12345");
 	});
 
 	it("disposes agent on success", async () => {

@@ -42,7 +42,8 @@ describe("discoverModels", () => {
 
 	it("returns context-qualified fallback models when no API key", async () => {
 		delete process.env.CURSOR_API_KEY;
-		const models = await discoverModels();
+		const issues: unknown[] = [];
+		const models = await discoverModels({ onFallback: (issue) => issues.push(issue) });
 		expect(models.map((model) => model.id)).toEqual([
 			"claude-opus-4-7@1m",
 			"claude-opus-4-7@300k",
@@ -52,13 +53,22 @@ describe("discoverModels", () => {
 			"gpt-5.5@1m",
 			"gpt-5.5@272k",
 		]);
+		expect(issues).toEqual([
+			expect.objectContaining({
+				reason: "missing-api-key",
+				message: expect.stringContaining("CURSOR_API_KEY"),
+			}),
+		]);
+		expect(JSON.stringify(issues)).toContain("--api-key");
 		expect(mockedList).not.toHaveBeenCalled();
 	});
 
-	it("returns fallback models when API key is whitespace", async () => {
+	it("returns fallback models and reports missing key when API key is whitespace", async () => {
 		process.env.CURSOR_API_KEY = "   ";
-		const models = await discoverModels();
+		const issues: unknown[] = [];
+		const models = await discoverModels({ onFallback: (issue) => issues.push(issue) });
 		expect(models.some((model) => model.id === "gpt-5.5@1m")).toBe(true);
+		expect(issues).toEqual([expect.objectContaining({ reason: "missing-api-key" })]);
 		expect(mockedList).not.toHaveBeenCalled();
 	});
 
@@ -477,18 +487,33 @@ describe("discoverModels", () => {
 		]);
 	});
 
-	it("falls back when Cursor.models.list throws", async () => {
+	it("falls back and reports discovery failure when Cursor.models.list throws", async () => {
 		process.env.CURSOR_API_KEY = "test-key-123";
+		const issues: unknown[] = [];
 		mockedList.mockRejectedValueOnce(new Error("network error"));
-		const models = await discoverModels();
+		const models = await discoverModels({ onFallback: (issue) => issues.push(issue) });
 		expect(models.some((model) => model.id === "composer-2")).toBe(true);
+		expect(issues).toEqual([
+			expect.objectContaining({
+				reason: "discovery-failed",
+				message: expect.stringContaining("Cursor model discovery failed"),
+			}),
+		]);
+		expect(JSON.stringify(issues)).not.toContain("test-key-123");
 	});
 
-	it("falls back when Cursor.models.list returns empty", async () => {
+	it("falls back and reports empty model list when Cursor.models.list returns empty", async () => {
 		process.env.CURSOR_API_KEY = "test-key-123";
+		const issues: unknown[] = [];
 		mockedList.mockResolvedValueOnce([]);
-		const models = await discoverModels();
+		const models = await discoverModels({ onFallback: (issue) => issues.push(issue) });
 		expect(models.some((model) => model.id === "claude-opus-4-7@1m")).toBe(true);
+		expect(issues).toEqual([
+			expect.objectContaining({
+				reason: "empty-model-list",
+				message: expect.stringContaining("Cursor model discovery returned no models"),
+			}),
+		]);
 	});
 
 	it("uses id as name when displayName is missing", async () => {

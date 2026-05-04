@@ -155,6 +155,17 @@ const FALLBACK_MODEL_ITEMS: ModelListItem[] = [
 	},
 ];
 
+export type CursorModelFallbackReason = "missing-api-key" | "discovery-failed" | "empty-model-list";
+
+export interface CursorModelFallbackIssue {
+	reason: CursorModelFallbackReason;
+	message: string;
+}
+
+export interface DiscoverModelsOptions {
+	onFallback?: (issue: CursorModelFallbackIssue) => void;
+}
+
 export interface CursorModelMetadata {
 	piModelId: string;
 	baseModelId: string;
@@ -445,18 +456,35 @@ export function buildCursorModelSelection(
 	return params.length > 0 ? { id: metadata.baseModelId, params } : { id: metadata.baseModelId };
 }
 
-export async function discoverModels(): Promise<ProviderModelConfig[]> {
+function useFallbackModels(options: DiscoverModelsOptions, issue: CursorModelFallbackIssue): ProviderModelConfig[] {
+	options.onFallback?.(issue);
+	return registerModelItems(FALLBACK_MODEL_ITEMS);
+}
+
+export async function discoverModels(options: DiscoverModelsOptions = {}): Promise<ProviderModelConfig[]> {
 	const apiKey = process.env.CURSOR_API_KEY?.trim();
-	if (!apiKey) return registerModelItems(FALLBACK_MODEL_ITEMS);
+	if (!apiKey) {
+		return useFallbackModels(options, {
+			reason: "missing-api-key",
+			message:
+				"CURSOR_API_KEY is required for Cursor model discovery; using fallback Cursor model list. Cursor runs can still use CURSOR_API_KEY or --api-key.",
+		});
+	}
 
 	try {
 		const models = await Cursor.models.list({ apiKey });
 		if (models.length > 0) {
 			return registerModelItems(models);
 		}
-		return registerModelItems(FALLBACK_MODEL_ITEMS);
+		return useFallbackModels(options, {
+			reason: "empty-model-list",
+			message: "Cursor model discovery returned no models; using fallback Cursor model list.",
+		});
 	} catch {
-		return registerModelItems(FALLBACK_MODEL_ITEMS);
+		return useFallbackModels(options, {
+			reason: "discovery-failed",
+			message: "Cursor model discovery failed. Verify CURSOR_API_KEY or pass --api-key for runs; using fallback Cursor model list.",
+		});
 	}
 }
 

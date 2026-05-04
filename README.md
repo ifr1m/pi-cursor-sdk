@@ -12,7 +12,7 @@ Current behavior:
 - registers Cursor models under the `cursor` provider
 - registers one pi model per Cursor `context` value, using IDs like `gpt-5.5@1m`
 - maps Cursor `reasoning`, `effort`, and boolean `thinking` to pi native thinking levels
-- keeps Cursor `fast` as extension state, toggled with `/cursor-fast` or forced with `--cursor-fast`
+- keeps Cursor `fast` as extension state, toggled with `/cursor-fast` or forced for one run with `--cursor-fast` / `--cursor-no-fast`
 - shows Cursor fast mode through `ctx.ui.setStatus()` and leaves pi's default footer intact
 - creates a fresh local Cursor agent for each pi provider call
 
@@ -26,8 +26,31 @@ No global `@cursor/sdk` install is required. This package depends on `@cursor/sd
 
 ## Install
 
+### Local development from a checkout
+
 ```bash
 npm install
+pi -e .
+```
+
+Pick a model with `/model`, or pass one directly:
+
+```bash
+pi -e . --model cursor/gpt-5.5@1m -p "Say ok only."
+```
+
+### Pi package install from a package source
+
+Install a local package path:
+
+```bash
+pi install /absolute/path/to/pi-cursor-sdk
+```
+
+Use the npm source form when installing from npm:
+
+```bash
+pi install npm:pi-cursor-sdk
 ```
 
 ## API key
@@ -44,19 +67,9 @@ Or pass it for one command:
 CURSOR_API_KEY="your-key" pi -e . --model cursor/gpt-5.5@1m -p "Say ok only."
 ```
 
+Actual Cursor runs require `CURSOR_API_KEY` or pi's `--api-key` option. If model discovery cannot authenticate or reach Cursor, pi may still list fallback Cursor models. A runtime setup/auth error means the key was missing, invalid, unauthorized, or not exported into the pi process.
+
 Do not store the API key in `~/.pi/agent/cursor-sdk.json`; that file is only for non-secret extension state such as Cursor fast defaults. `PATH` is only for executable lookup and should not contain the API key.
-
-## Run locally with pi
-
-```bash
-pi -e .
-```
-
-Pick a model with `/model`, or pass one directly:
-
-```bash
-pi -e . --model cursor/gpt-5.5@1m -p "Say ok only."
-```
 
 ## Model IDs
 
@@ -104,18 +117,21 @@ Some Cursor models can still reason internally, and Cursor may still emit thinki
 
 ## Fast mode
 
-Use `/cursor-fast` to toggle fast mode for the selected Cursor model when supported.
+Use `/cursor-fast` to persistently toggle fast mode for the selected Cursor model when supported.
 
 Fast preferences are stored:
 
 - in the current session with `pi.appendEntry()`
 - globally per Cursor base model in `~/.pi/agent/cursor-sdk.json`
 
-For one print-mode run:
+For one run, force fast on or off without changing stored preferences:
 
 ```bash
 pi --model cursor/gpt-5.5@1m --cursor-fast -p "Say ok only"
+pi --model cursor/composer-2 --cursor-no-fast -p "Say ok only"
 ```
+
+`composer-2` can default to fast. Use `--cursor-no-fast` for a one-shot no-fast `composer-2` run.
 
 When fast is enabled, the default pi footer gets an extension status line:
 
@@ -129,12 +145,14 @@ Images from the latest user message are forwarded to Cursor. Historical images a
 
 ## Fallback models
 
-If `CURSOR_API_KEY` is missing or model discovery fails, the extension registers conservative fallback Cursor models with the same native shape:
+If `CURSOR_API_KEY` is missing or model discovery fails, the extension registers conservative fallback Cursor models with the same native shape and notifies interactive users when possible:
 
 - `composer-2`
 - `gpt-5.5@1m`, `gpt-5.5@272k`
 - `claude-sonnet-4-6@1m`, `claude-sonnet-4-6@300k`
 - `claude-opus-4-7@1m`, `claude-opus-4-7@300k`
+
+Fallback models are only a startup model list. Actual Cursor runs still need `CURSOR_API_KEY` or `--api-key`. If a run fails with a Cursor SDK setup/auth message, verify the key is correct and exported to the same shell or process that starts pi.
 
 ## Limits
 

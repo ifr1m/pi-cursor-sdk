@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "pi provider extension backed by @cursor/sdk local agents",
   "license": "MIT",
-  "keywords": ["pi", "cursor", "cursor-sdk", "ai", "extension"],
+  "keywords": ["pi-package", "pi", "cursor", "cursor-sdk", "ai", "extension"],
   "files": ["src", "README.md", "docs"],
   "type": "module",
   "scripts": {
@@ -13,6 +13,10 @@
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.12"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.72.1",

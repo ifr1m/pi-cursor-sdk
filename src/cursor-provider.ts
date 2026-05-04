@@ -41,10 +41,46 @@ class CursorAbortError extends Error {
 	}
 }
 
-function sanitizeError(error: unknown): string {
-	if (error instanceof Error) return error.message;
-	if (typeof error === "string") return error;
-	return "Unknown error";
+const MISSING_API_KEY_MESSAGE = "CURSOR_API_KEY or --api-key is required for Cursor SDK runs.";
+const GENERIC_CURSOR_SDK_ERROR_MESSAGE =
+	"Cursor SDK request failed. Verify CURSOR_API_KEY or pass --api-key, then retry.";
+const AUTH_CURSOR_SDK_ERROR_MESSAGE =
+	"Cursor SDK request failed because the API key may be invalid or unauthorized. Verify CURSOR_API_KEY or pass --api-key, then retry.";
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function scrubSensitiveText(text: string, apiKey?: string): string {
+	let scrubbed = text;
+	const trimmedKey = apiKey?.trim();
+	if (trimmedKey) {
+		scrubbed = scrubbed.replace(new RegExp(escapeRegExp(trimmedKey), "g"), "[redacted]");
+	}
+	return scrubbed
+		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+		.replace(/(authorization\s*[:=]\s*)[^\s,;}]+/gi, "$1[redacted]")
+		.replace(/(api[_-]?key\s*[:=]\s*)[^\s,;}]+/gi, "$1[redacted]")
+		.replace(/(token\s*[:=]\s*)[^\s,;}]+/gi, "$1[redacted]")
+		.replace(/(cookie\s*[:=]\s*)[^\n]+/gi, "$1[redacted]")
+		.replace(/(session\s*[:=]\s*)[^\s,;}]+/gi, "$1[redacted]");
+}
+
+function isGenericErrorMessage(message: string): boolean {
+	const normalized = message.trim().toLowerCase();
+	return normalized === "" || normalized === "error" || normalized === "unknown error";
+}
+
+function isLikelyAuthError(message: string): boolean {
+	return /\b(unauthorized|unauthorised|forbidden|invalid api key|invalid key|authentication|auth|401|403)\b/i.test(message);
+}
+
+function sanitizeError(error: unknown, apiKey?: string): string {
+	const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+	const scrubbed = scrubSensitiveText(message, apiKey).trim();
+	if (isGenericErrorMessage(scrubbed)) return GENERIC_CURSOR_SDK_ERROR_MESSAGE;
+	if (isLikelyAuthError(scrubbed)) return AUTH_CURSOR_SDK_ERROR_MESSAGE;
+	return scrubbed || GENERIC_CURSOR_SDK_ERROR_MESSAGE;
 }
 
 function getObjectField(value: unknown, field: string): unknown {
@@ -108,7 +144,7 @@ export function streamCursor(
 			throwIfAborted();
 
 			const apiKey = options?.apiKey;
-			if (!apiKey) throw new Error("CURSOR_API_KEY is required");
+			if (!apiKey) throw new Error(MISSING_API_KEY_MESSAGE);
 
 			const cwd = process.cwd();
 			const fastEnabled = getEffectiveFastForModelId(model.id);
@@ -270,7 +306,7 @@ export function streamCursor(
 				stream.push({ type: "error", reason: "aborted", error: partial });
 			} else {
 				partial.stopReason = "error";
-				partial.errorMessage = sanitizeError(error);
+				partial.errorMessage = sanitizeError(error, options?.apiKey);
 				stream.push({ type: "error", reason: "error", error: partial });
 			}
 		} finally {
