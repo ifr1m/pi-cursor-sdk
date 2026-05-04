@@ -30,13 +30,16 @@ function register(items: ModelListItem[]) {
 
 describe("discoverModels", () => {
 	const originalEnv = process.env;
+	const originalArgv = process.argv;
 
 	beforeEach(() => {
 		process.env = { ...originalEnv };
+		process.argv = [...originalArgv];
 	});
 
 	afterEach(() => {
 		process.env = originalEnv;
+		process.argv = originalArgv;
 		vi.clearAllMocks();
 	});
 
@@ -70,6 +73,28 @@ describe("discoverModels", () => {
 		expect(models.some((model) => model.id === "gpt-5.5@1m")).toBe(true);
 		expect(issues).toEqual([expect.objectContaining({ reason: "missing-api-key" })]);
 		expect(mockedList).not.toHaveBeenCalled();
+	});
+
+	it("uses pi --api-key for model discovery when CURSOR_API_KEY is unset", async () => {
+		delete process.env.CURSOR_API_KEY;
+		process.argv = ["node", "pi", "--api-key", "cli-key-123"];
+		mockedList.mockResolvedValueOnce([
+			{
+				id: "composer-2",
+				displayName: "Composer 2",
+				variants: [{ params: [], displayName: "Composer 2", isDefault: true }],
+			},
+		]);
+
+		const models = await discoverModels();
+
+		expect(mockedList).toHaveBeenCalledWith({ apiKey: "cli-key-123" });
+		expect(models.map((model) => model.id)).toEqual(["composer-2"]);
+	});
+
+	it("parses pi --api-key=value for model discovery", () => {
+		expect(__testUtils.getCliApiKeyFromArgv(["node", "pi", "--api-key=cli-key-123"])).toBe("cli-key-123");
+		expect(__testUtils.getCliApiKeyFromArgv(["node", "pi", "--api-key", "--list-models"])).toBeUndefined();
 	});
 
 	it("calls Cursor.models.list with API key and sorts by base id", async () => {

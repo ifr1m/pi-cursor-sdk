@@ -41,9 +41,10 @@ class CursorAbortError extends Error {
 	}
 }
 
+const CURSOR_API_KEY_ENV_VAR = "CURSOR_API_KEY";
 const MISSING_API_KEY_MESSAGE = "CURSOR_API_KEY or --api-key is required for Cursor SDK runs.";
 const GENERIC_CURSOR_SDK_ERROR_MESSAGE =
-	"Cursor SDK request failed. Verify CURSOR_API_KEY or pass --api-key, then retry.";
+	"Cursor SDK request failed. The API key may be missing, invalid, or unauthorized. Verify CURSOR_API_KEY or pass --api-key, then retry.";
 const AUTH_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed because the API key may be invalid or unauthorized. Verify CURSOR_API_KEY or pass --api-key, then retry.";
 
@@ -75,8 +76,17 @@ function isLikelyAuthError(message: string): boolean {
 	return /\b(unauthorized|unauthorised|forbidden|invalid api key|invalid key|authentication|auth|401|403)\b/i.test(message);
 }
 
+function hasEnvCursorApiKey(): boolean {
+	return Boolean(process.env.CURSOR_API_KEY?.trim());
+}
+
+function isMissingCursorApiKey(apiKey?: string): boolean {
+	return !apiKey || (apiKey === CURSOR_API_KEY_ENV_VAR && !hasEnvCursorApiKey());
+}
+
 function sanitizeError(error: unknown, apiKey?: string): string {
 	const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+	if (message === MISSING_API_KEY_MESSAGE) return MISSING_API_KEY_MESSAGE;
 	const scrubbed = scrubSensitiveText(message, apiKey).trim();
 	if (isGenericErrorMessage(scrubbed)) return GENERIC_CURSOR_SDK_ERROR_MESSAGE;
 	if (isLikelyAuthError(scrubbed)) return AUTH_CURSOR_SDK_ERROR_MESSAGE;
@@ -144,7 +154,7 @@ export function streamCursor(
 			throwIfAborted();
 
 			const apiKey = options?.apiKey;
-			if (!apiKey) throw new Error(MISSING_API_KEY_MESSAGE);
+			if (isMissingCursorApiKey(apiKey)) throw new Error(MISSING_API_KEY_MESSAGE);
 
 			const cwd = process.cwd();
 			const fastEnabled = getEffectiveFastForModelId(model.id);

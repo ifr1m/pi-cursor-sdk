@@ -166,6 +166,28 @@ export interface DiscoverModelsOptions {
 	onFallback?: (issue: CursorModelFallbackIssue) => void;
 }
 
+function getCliApiKeyFromArgv(argv: string[] = process.argv): string | undefined {
+	for (let index = 0; index < argv.length; index++) {
+		const arg = argv[index];
+		if (arg === "--api-key") {
+			const value = argv[index + 1];
+			if (!value || value.startsWith("--")) return undefined;
+			const trimmed = value.trim();
+			return trimmed || undefined;
+		}
+		const prefix = "--api-key=";
+		if (arg.startsWith(prefix)) {
+			const trimmed = arg.slice(prefix.length).trim();
+			return trimmed || undefined;
+		}
+	}
+	return undefined;
+}
+
+function getDiscoveryApiKey(): string | undefined {
+	return process.env.CURSOR_API_KEY?.trim() || getCliApiKeyFromArgv();
+}
+
 export interface CursorModelMetadata {
 	piModelId: string;
 	baseModelId: string;
@@ -462,7 +484,7 @@ function useFallbackModels(options: DiscoverModelsOptions, issue: CursorModelFal
 }
 
 export async function discoverModels(options: DiscoverModelsOptions = {}): Promise<ProviderModelConfig[]> {
-	const apiKey = process.env.CURSOR_API_KEY?.trim();
+	const apiKey = getDiscoveryApiKey();
 	if (!apiKey) {
 		return useFallbackModels(options, {
 			reason: "missing-api-key",
@@ -491,4 +513,5 @@ export async function discoverModels(options: DiscoverModelsOptions = {}): Promi
 export const __testUtils = {
 	parseContextWindow,
 	registerModelItems,
+	getCliApiKeyFromArgv,
 };

@@ -18,9 +18,9 @@ Current behavior:
 
 ## Requirements
 
-- Node.js
+- Node.js 18+
 - pi
-- a Cursor API key exposed as the `CURSOR_API_KEY` environment variable
+- a Cursor API key exposed as the `CURSOR_API_KEY` environment variable for full model discovery
 
 No global `@cursor/sdk` install is required. This package depends on `@cursor/sdk`, so a normal package install brings in the SDK version the extension was built and tested against.
 
@@ -66,6 +66,14 @@ Or pass it for one command:
 ```bash
 CURSOR_API_KEY="your-key" pi -e . --model cursor/gpt-5.5@1m -p "Say ok only."
 ```
+
+You can also pass pi's `--api-key` option for a one-shot run:
+
+```bash
+pi -e . --api-key "your-key" --model cursor/composer-2 --cursor-no-fast -p "Say ok only."
+```
+
+Use `CURSOR_API_KEY` when possible. It gives the extension a key during startup model discovery. `--api-key` is also read for discovery, but shell wrappers and launchers are easier to diagnose when the key is exported as `CURSOR_API_KEY` before pi starts.
 
 Actual Cursor runs require `CURSOR_API_KEY` or pi's `--api-key` option. If model discovery cannot authenticate or reach Cursor, pi may still list fallback Cursor models. A runtime setup/auth error means the key was missing, invalid, unauthorized, or not exported into the pi process.
 
@@ -131,7 +139,7 @@ pi --model cursor/gpt-5.5@1m --cursor-fast -p "Say ok only"
 pi --model cursor/composer-2 --cursor-no-fast -p "Say ok only"
 ```
 
-`composer-2` can default to fast. Use `--cursor-no-fast` for a one-shot no-fast `composer-2` run.
+`composer-2` can default to fast. Use `--cursor-no-fast` for a one-shot no-fast `composer-2` run. In print mode (`-p`), `--cursor-no-fast` is silent and does not write `~/.pi/agent/cursor-sdk.json`; absence of the `cursor fast` status in interactive mode means fast mode is off.
 
 When fast is enabled, the default pi footer gets an extension status line:
 

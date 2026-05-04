@@ -387,6 +387,26 @@ describe("streamCursor", () => {
 		expect((error as any).error.errorMessage).toContain("--api-key");
 	});
 
+	it("treats unresolved CURSOR_API_KEY provider placeholders as a missing API key", async () => {
+		const originalKey = process.env.CURSOR_API_KEY;
+		delete process.env.CURSOR_API_KEY;
+		try {
+			const stream = streamCursor(makeModel(), makeContext(), { apiKey: "CURSOR_API_KEY" });
+			const events = await collectEvents(stream);
+
+			const error = events.find((e: any) => e.type === "error");
+			expect(error).toBeDefined();
+			expect((error as any).error.errorMessage).toBe("CURSOR_API_KEY or --api-key is required for Cursor SDK runs.");
+			expect(mockedCreate).not.toHaveBeenCalled();
+		} finally {
+			if (originalKey === undefined) {
+				delete process.env.CURSOR_API_KEY;
+			} else {
+				process.env.CURSOR_API_KEY = originalKey;
+			}
+		}
+	});
+
 	it("turns generic Cursor SDK failures into actionable setup errors", async () => {
 		mockedCreate.mockRejectedValueOnce(new Error("Error"));
 
