@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 - 2026-05-07
+
+### Fixed
+
+- Restores the GitHub install path to the normal source package layout after the npm-only bundled dependency patch.
+
 ## 0.1.3 - 2026-05-07
 
 ### Fixed
