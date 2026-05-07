@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 - 2026-05-07
+
+### Fixed
+
+- Bundled the resolved `@cursor/sdk` runtime dependency tree so npm consumers receive the patched `sqlite3` and `undici` dependency graph used by local verification.
+
 ## 0.1.2 - 2026-05-07
 
 ### Changed
