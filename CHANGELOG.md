@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2 - 2026-05-07
+
+### Changed
+
+- Migrated the local pi development baseline and peer metadata from deprecated `@mariozechner/*` packages to maintained `@earendil-works/*` `0.74.0`.
+- Regenerated the npm lockfile against the current stable dependency graph and cleared moderate audit findings with current transitive overrides.
+
 ## 0.1.1 - 2026-05-05
 
 ### Fixed
