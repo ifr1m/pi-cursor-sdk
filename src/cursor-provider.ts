@@ -6,7 +6,7 @@ import {
 	type Model,
 	type SimpleStreamOptions,
 	type AssistantMessage,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
 import { Agent, createAgentPlatform } from "@cursor/sdk";
 import type { InteractionUpdate, SDKAgent } from "@cursor/sdk";
 import { buildCursorPrompt } from "./context.js";

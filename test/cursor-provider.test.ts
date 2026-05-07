@@ -36,7 +36,7 @@ import { streamCursor } from "../src/cursor-provider.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../src/model-discovery.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
 import type { ModelListItem } from "@cursor/sdk";
-import type { Context, Model } from "@mariozechner/pi-ai";
+import type { Context, Model } from "@earendil-works/pi-ai";
 
 // Access the mocks via the module
 const mockedCreate = vi.mocked(Agent.create);

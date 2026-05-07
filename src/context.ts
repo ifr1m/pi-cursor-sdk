@@ -1,4 +1,4 @@
-import type { Context, Message, ToolCall } from "@mariozechner/pi-ai";
+import type { Context, Message, ToolCall } from "@earendil-works/pi-ai";
 import type { SDKImage } from "@cursor/sdk";
 
 export interface CursorPrompt {

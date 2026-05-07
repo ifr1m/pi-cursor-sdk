@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { getAgentDir } from "@mariozechner/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { BUNDLED_CONTEXT_WINDOWS } from "./bundled-context-windows.js";
 
 const CONTEXT_WINDOW_CACHE_FILE = "cursor-sdk-context-windows.json";

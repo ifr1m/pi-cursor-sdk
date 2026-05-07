@@ -5,8 +5,8 @@ import type {
 	ModelParameterValue,
 	ModelSelection,
 } from "@cursor/sdk";
-import type { ProviderModelConfig } from "@mariozechner/pi-coding-agent";
-import type { ModelThinkingLevel, ThinkingLevelMap } from "@mariozechner/pi-ai";
+import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type { ModelThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai";
 import { getCachedContextWindow } from "./context-window-cache.js";
 
 const FALLBACK_CONTEXT_WINDOW = 128000;

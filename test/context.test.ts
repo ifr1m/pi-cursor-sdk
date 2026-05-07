@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildCursorPrompt } from "../src/context.js";
-import type { Context, UserMessage, AssistantMessage, ToolResultMessage } from "@mariozechner/pi-ai";
+import type { Context, UserMessage, AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
 
 describe("buildCursorPrompt", () => {
 	it("includes system prompt", () => {
