@@ -14,7 +14,11 @@ import { getEffectiveFastForModelId } from "./cursor-state.js";
 import { buildCursorModelSelection } from "./model-discovery.js";
 import { getCheckpointContextWindow, saveCachedContextWindow } from "./context-window-cache.js";
 import { buildCursorPiToolDisplay, formatCursorToolTranscript, mergeCursorToolCalls } from "./cursor-tool-transcript.js";
-import { isCursorNativeToolDisplayEnabled, recordCursorNativeToolDisplay } from "./cursor-native-tool-display.js";
+import {
+	canRenderCursorToolNatively,
+	isCursorNativeToolDisplayRuntimeEnabled,
+	recordCursorNativeToolDisplay,
+} from "./cursor-native-tool-display.js";
 
 function makeInitialMessage(model: Model<Api>): AssistantMessage {
 	return {
@@ -209,12 +213,27 @@ export function streamCursor(
 			let activityTraceChars = 0;
 			let activityTraceTruncated = false;
 			let nativeToolDisplayCounter = 0;
+			let textContentIndex = -1;
 			const textDeltas: string[] = [];
 			const startedToolCalls = new Map<string, unknown>();
 			const completedToolFingerprints = new Set<string>();
 
-			const appendBufferedTextDelta = (text: string): void => {
+			const appendLiveTextDelta = (text: string): void => {
 				textDeltas.push(text);
+				if (textContentIndex < 0) {
+					textContentIndex = partial.content.length;
+					partial.content.push({ type: "text", text: "" });
+					stream.push({ type: "text_start", contentIndex: textContentIndex, partial });
+				}
+				const block = partial.content[textContentIndex];
+				if (block.type !== "text") return;
+				block.text += text;
+				stream.push({
+					type: "text_delta",
+					contentIndex: textContentIndex,
+					delta: text,
+					partial,
+				});
 			};
 
 			const appendTraceDelta = (text: string): void => {
@@ -271,21 +290,10 @@ export function streamCursor(
 			};
 
 			const flushText = (deltas: string[]): string => {
-				if (deltas.length === 0) return "";
-				const textContentIndex = partial.content.length;
-				partial.content.push({ type: "text", text: "" });
-				stream.push({ type: "text_start", contentIndex: textContentIndex, partial });
+				for (const delta of deltas) appendLiveTextDelta(delta);
+				if (textContentIndex < 0) return "";
 				const block = partial.content[textContentIndex];
 				if (block.type !== "text") return "";
-				for (const delta of deltas) {
-					block.text += delta;
-					stream.push({
-						type: "text_delta",
-						contentIndex: textContentIndex,
-						delta,
-						partial,
-					});
-				}
 				stream.push({
 					type: "text_end",
 					contentIndex: textContentIndex,
@@ -295,38 +303,52 @@ export function streamCursor(
 				return block.text;
 			};
 
-			const getToolFingerprint = (toolCall: unknown): string => {
+			const getToolFingerprint = (value: unknown): string => {
 				try {
-					return JSON.stringify(toolCall);
+					return JSON.stringify(value);
 				} catch {
-					return String(toolCall);
+					return String(value);
 				}
 			};
 
 			const handleCompletedToolCall = (toolCall: unknown): void => {
-				const fingerprint = getToolFingerprint(toolCall);
+				const transcript = scrubSensitiveText(formatCursorToolTranscript(toolCall, { cwd }), resolvedApiKey);
+				const display = buildCursorPiToolDisplay(toolCall, { cwd });
+				const fingerprint = getToolFingerprint({ toolName: display.toolName, args: display.args, result: display.result });
 				if (completedToolFingerprints.has(fingerprint)) return;
 				completedToolFingerprints.add(fingerprint);
 
-				const transcript = scrubSensitiveText(formatCursorToolTranscript(toolCall, { cwd }), resolvedApiKey);
-				if (isCursorNativeToolDisplayEnabled()) {
-					const display = buildCursorPiToolDisplay(toolCall, { cwd });
+				if (isCursorNativeToolDisplayRuntimeEnabled() && canRenderCursorToolNatively(display.toolName)) {
+					const id = `cursor-tool-${++nativeToolDisplayCounter}`;
+					const contentIndex = partial.content.length;
+					const scrubbedArgs = scrubDisplayValue(display.args, resolvedApiKey) as Record<string, unknown>;
+					const scrubbedResult = scrubDisplayValue(display.result, resolvedApiKey) as typeof display.result;
+					partial.content.push({
+						type: "toolCall",
+						id,
+						name: display.toolName,
+						arguments: scrubbedArgs,
+					});
+					stream.push({ type: "toolcall_start", contentIndex, partial });
 					recordCursorNativeToolDisplay({
 						...display,
-						id: `cursor-tool-${++nativeToolDisplayCounter}`,
-						args: scrubDisplayValue(display.args, resolvedApiKey) as Record<string, unknown>,
-						result: scrubDisplayValue(display.result, resolvedApiKey) as typeof display.result,
+						id,
+						args: scrubbedArgs,
+						result: scrubbedResult,
 					});
-				} else {
-					appendTraceBlock(transcript || `Cursor tool: ${formatCursorToolName(toolCall)} completed`);
+					const block = partial.content[contentIndex];
+					if (block.type === "toolCall") stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial });
+					return;
 				}
+
+				appendTraceBlock(transcript || `Cursor tool: ${formatCursorToolName(toolCall)} completed`);
 			};
 
 			const onDelta = (args: { update: InteractionUpdate }): void => {
 				const update = args.update;
 
 				if (update.type === "text-delta") {
-					appendBufferedTextDelta(update.text);
+					appendLiveTextDelta(update.text);
 				} else if (update.type === "thinking-delta") {
 					appendTraceDelta(update.text);
 				} else if (update.type === "thinking-completed") {
@@ -376,11 +398,11 @@ export function streamCursor(
 			const result = await run.wait();
 			await cacheSdkContextWindow(agent.agentId, model.id);
 
-			// Close open thinking/activity trace before flushing final assistant text so saved
-			// message content is trace first, final answer second.
+			// Close any open thinking/activity trace, then use the final run result only when
+			// Cursor did not stream text deltas.
 			closeTraceBlock();
 
-			const finalText = flushText(hasUsableText(result.result) ? [result.result] : textDeltas);
+			const finalText = flushText(textDeltas.length === 0 && hasUsableText(result.result) ? [result.result] : []);
 			setApproximateUsage(partial, promptInputTokens, finalText);
 
 			if (result.status === "cancelled") {

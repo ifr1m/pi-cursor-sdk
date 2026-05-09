@@ -1,79 +1,72 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
-import { Container } from "@earendil-works/pi-tui";
-import type { TUI } from "@earendil-works/pi-tui";
+import {
+	createBashToolDefinition,
+	createLsToolDefinition,
+	createReadToolDefinition,
+	type ExtensionAPI,
+	type ToolDefinition,
+} from "@earendil-works/pi-coding-agent";
+import type { TSchema } from "typebox";
 import type { CursorPiToolDisplay } from "./cursor-tool-transcript.js";
 
-const CURSOR_NATIVE_TOOL_MESSAGE_TYPE = "cursor-native-tool-display";
+const NATIVE_CURSOR_TOOL_NAMES = new Set(["read", "bash", "ls"]);
 
 export interface CursorNativeToolDisplayItem extends CursorPiToolDisplay {
 	id: string;
 }
 
-interface CursorNativeToolDisplayMessageDetails {
-	cwd: string;
-	tools: CursorNativeToolDisplayItem[];
-}
-
 let nativeToolDisplayEnabled = false;
-const pendingNativeToolDisplays: CursorNativeToolDisplayItem[] = [];
-
-function createNoopTui(): TUI {
-	return { requestRender: () => {} } as TUI;
-}
+const nativeToolResults = new Map<string, CursorNativeToolDisplayItem>();
 
 export function isCursorNativeToolDisplayEnabled(): boolean {
 	return nativeToolDisplayEnabled;
 }
 
+export function isCursorNativeToolDisplayRuntimeEnabled(): boolean {
+	if (!nativeToolDisplayEnabled) return false;
+	const override = process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY;
+	if (override === "1" || override === "true") return true;
+	if (override === "0" || override === "false") return false;
+	return process.stdout.isTTY === true;
+}
+
+export function canRenderCursorToolNatively(toolName: string): boolean {
+	return NATIVE_CURSOR_TOOL_NAMES.has(toolName);
+}
+
 export function recordCursorNativeToolDisplay(item: CursorNativeToolDisplayItem): void {
-	if (!nativeToolDisplayEnabled) return;
-	pendingNativeToolDisplays.push(item);
+	if (!nativeToolDisplayEnabled || !canRenderCursorToolNatively(item.toolName)) return;
+	nativeToolResults.set(item.id, item);
 }
 
-function drainCursorNativeToolDisplays(): CursorNativeToolDisplayItem[] {
-	return pendingNativeToolDisplays.splice(0);
+function consumeCursorNativeToolDisplay(id: string): CursorNativeToolDisplayItem | undefined {
+	const item = nativeToolResults.get(id);
+	if (item) nativeToolResults.delete(id);
+	return item;
 }
 
-function renderNativeToolDisplay(details: CursorNativeToolDisplayMessageDetails, expanded: boolean): Container | undefined {
-	if (!Array.isArray(details.tools) || details.tools.length === 0) return undefined;
-
-	const container = new Container();
-	const tui = createNoopTui();
-	for (const tool of details.tools) {
-		const component = new ToolExecutionComponent(
-			tool.toolName,
-			tool.id,
-			tool.args,
-			{ showImages: true },
-			undefined,
-			tui,
-			details.cwd,
-		);
-		component.setExpanded(expanded);
-		component.markExecutionStarted();
-		component.updateResult({ ...tool.result, isError: tool.isError });
-		container.addChild(component);
-	}
-	return container;
+function wrapNativeCursorTool<TParams extends TSchema, TDetails, TState>(
+	definition: ToolDefinition<TParams, TDetails, TState>,
+): ToolDefinition<TParams, TDetails, TState> {
+	return {
+		...definition,
+		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			const cursorDisplay = consumeCursorNativeToolDisplay(toolCallId);
+			if (cursorDisplay) {
+				return {
+					content: cursorDisplay.result.content,
+					details: cursorDisplay.result.details as TDetails,
+					terminate: true,
+				};
+			}
+			return definition.execute(toolCallId, params, signal, onUpdate, ctx);
+		},
+	};
 }
 
 export function registerCursorNativeToolDisplay(pi: ExtensionAPI): void {
 	nativeToolDisplayEnabled = true;
-
-	pi.registerMessageRenderer<CursorNativeToolDisplayMessageDetails>(CURSOR_NATIVE_TOOL_MESSAGE_TYPE, (message, options) => {
-		const details = message.details as CursorNativeToolDisplayMessageDetails | undefined;
-		return details ? renderNativeToolDisplay(details, options.expanded) : undefined;
-	});
-
-	pi.on("agent_end", () => {
-		const tools = drainCursorNativeToolDisplays();
-		if (tools.length === 0) return;
-		pi.sendMessage({
-			customType: CURSOR_NATIVE_TOOL_MESSAGE_TYPE,
-			content: "",
-			display: true,
-			details: { cwd: process.cwd(), tools } satisfies CursorNativeToolDisplayMessageDetails,
-		});
-	});
+	const cwd = process.cwd();
+	pi.registerTool(wrapNativeCursorTool(createReadToolDefinition(cwd)));
+	pi.registerTool(wrapNativeCursorTool(createBashToolDefinition(cwd)));
+	pi.registerTool(wrapNativeCursorTool(createLsToolDefinition(cwd)));
 }

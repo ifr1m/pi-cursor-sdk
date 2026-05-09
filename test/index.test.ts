@@ -18,6 +18,7 @@ const mockedStreamCursor = vi.mocked(streamCursor);
 
 function createMockPi() {
 	const registered: Array<{ name: string; config: Record<string, unknown> }> = [];
+	const tools: any[] = [];
 	const handlers = new Map<string, Array<(event: unknown, ctx: any) => Promise<void> | void>>();
 	return {
 		registerProvider: vi.fn((name: string, config: Record<string, unknown>) => {
@@ -25,7 +26,9 @@ function createMockPi() {
 		}),
 		registerFlag: vi.fn(),
 		registerCommand: vi.fn(),
-		registerMessageRenderer: vi.fn(),
+		registerTool: vi.fn((tool: any) => {
+			tools.push(tool);
+		}),
 		sendMessage: vi.fn(),
 		on: vi.fn((event: string, handler: (event: unknown, ctx: any) => Promise<void> | void) => {
 			handlers.set(event, [...(handlers.get(event) ?? []), handler]);
@@ -33,6 +36,7 @@ function createMockPi() {
 		getFlag: vi.fn().mockReturnValue(false),
 		appendEntry: vi.fn(),
 		_registered: registered,
+		_tools: tools,
 		_handlers: handlers,
 	};
 }
@@ -71,7 +75,8 @@ describe("extension factory", () => {
 			"cursor-fast",
 			expect.objectContaining({ description: expect.stringContaining("Toggle Cursor fast") }),
 		);
-		expect(pi.registerMessageRenderer).toHaveBeenCalledWith("cursor-native-tool-display", expect.any(Function));
+		expect(pi.registerTool).toHaveBeenCalledTimes(3);
+		expect(pi._tools.map((tool) => tool.name)).toEqual(["read", "bash", "ls"]);
 		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
 		expect(pi.on).toHaveBeenCalledWith("model_select", expect.any(Function));
 		expect(mockedDiscover).toHaveBeenCalledOnce();
@@ -171,7 +176,7 @@ describe("extension factory", () => {
 		expect(notify).not.toHaveBeenCalled();
 	});
 
-	it("emits recorded Cursor tool displays as custom native-tool messages at agent end", async () => {
+	it("registered native Cursor tool wrappers return recorded Cursor results without executing built-ins", async () => {
 		mockedDiscover.mockResolvedValueOnce([]);
 		const pi = createMockPi();
 		await extensionFactory(pi as any);
@@ -184,21 +189,13 @@ describe("extension factory", () => {
 			isError: false,
 		});
 
-		const agentEndHandlers = pi._handlers.get("agent_end") ?? [];
-		await agentEndHandlers.at(-1)!({}, {});
+		const readTool = pi._tools.find((tool) => tool.name === "read");
+		const result = await readTool.execute("cursor-tool-1", { path: "README.md" }, undefined, undefined, {});
 
-		expect(pi.sendMessage).toHaveBeenCalledWith({
-			customType: "cursor-native-tool-display",
-			content: "",
-			display: true,
-			details: expect.objectContaining({
-				tools: [
-					expect.objectContaining({
-						toolName: "read",
-						args: { path: "README.md" },
-					}),
-				],
-			}),
+		expect(result).toEqual({
+			content: [{ type: "text", text: "# pi-cursor-sdk" }],
+			details: undefined,
+			terminate: true,
 		});
 	});
 });

@@ -333,15 +333,15 @@ describe("streamCursor", () => {
 		expect(trace).toContain("# pi-cursor-sdk");
 	});
 
-	it("prefers the final run result over intermediate cursor progress text", async () => {
+	it("streams Cursor text deltas live and only falls back to final result when no deltas arrive", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
-			opts.onDelta({ update: { type: "text-delta", text: "I’m checking files." } });
-			opts.onDelta({ update: { type: "text-delta", text: "I found the issue." } });
+			opts.onDelta({ update: { type: "text-delta", text: "Final " } });
+			opts.onDelta({ update: { type: "text-delta", text: "answer." } });
 			return {
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
-				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "Final answer only." }),
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "Final answer." }),
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
@@ -356,8 +356,8 @@ describe("streamCursor", () => {
 		const events = await collectEvents(stream);
 		const text = events.filter((e: any) => e.type === "text_delta").map((e: any) => e.delta).join("");
 
-		expect(text).toBe("Final answer only.");
-		expect(text).not.toContain("I’m checking files");
+		expect(text).toBe("Final answer.");
+		expect(events.filter((e: any) => e.type === "text_delta")).toHaveLength(2);
 	});
 
 	it("omits raw cursor call ids while rendering completed cursor tools", async () => {
@@ -446,7 +446,7 @@ describe("streamCursor", () => {
 		expect(trace).not.toContain("bearer-token-value");
 	});
 
-	it("keeps late cursor thinking before final text in the saved content order", async () => {
+	it("keeps late cursor thinking in the saved content order after live text", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
 			opts.onDelta({ update: { type: "text-delta", text: "Final answer" } });
 			opts.onDelta({ update: { type: "thinking-delta", text: "late trace" } });
@@ -471,8 +471,8 @@ describe("streamCursor", () => {
 		const done = events.find((e: any) => e.type === "done") as any;
 
 		expect(done.message.content).toEqual([
-			{ type: "thinking", thinking: "late trace" },
 			{ type: "text", text: "Final answer" },
+			{ type: "thinking", thinking: "late trace" },
 		]);
 	});
 
