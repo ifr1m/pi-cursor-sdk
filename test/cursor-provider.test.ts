@@ -280,12 +280,73 @@ describe("streamCursor", () => {
 		const text = events.filter((e: any) => e.type === "text_delta").map((e: any) => e.delta).join("");
 		const done = events.find((e: any) => e.type === "done") as any;
 
-		expect(trace).toContain("Cursor tool started (list_dir, call c1)");
-		expect(trace).toContain("Cursor tool completed (list_dir, call c1)");
+		expect(trace).toContain("Cursor tool: list_dir started");
+		expect(trace).toContain("Cursor tool: list_dir completed");
+		expect(trace).not.toContain("call c1");
 		expect(trace).not.toContain("README.md");
 		expect(trace).toContain("Cursor summary: Inspected files");
 		expect(text).toBe("done");
 		expect(done.message.content.map((block: any) => block.type)).toEqual(["thinking", "text"]);
+	});
+
+	it("prefers the final run result over intermediate cursor progress text", async () => {
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			opts.onDelta({ update: { type: "text-delta", text: "I’m checking files." } });
+			opts.onDelta({ update: { type: "text-delta", text: "I found the issue." } });
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "Final answer only." }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
+		const events = await collectEvents(stream);
+		const text = events.filter((e: any) => e.type === "text_delta").map((e: any) => e.delta).join("");
+
+		expect(text).toBe("Final answer only.");
+		expect(text).not.toContain("I’m checking files");
+	});
+
+	it("keeps cursor tool activity one-line and omits raw call ids", async () => {
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			opts.onDelta({
+				update: {
+					type: "tool-call-started",
+					toolCall: { name: "shell\nextra" },
+					callId: "call_abc\nfc_secret",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "done" }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
+		const events = await collectEvents(stream);
+		const trace = events.filter((e: any) => e.type === "thinking_delta").map((e: any) => e.delta).join("");
+
+		expect(trace).toContain("Cursor tool: shell extra started\n");
+		expect(trace).not.toContain("call_abc");
+		expect(trace).not.toContain("fc_secret");
 	});
 
 	it("keeps late cursor thinking before final text in the saved content order", async () => {
@@ -318,12 +379,17 @@ describe("streamCursor", () => {
 		]);
 	});
 
-	it("updates usage from cursor turn-ended events", async () => {
+	it("uses pi prompt/output estimates instead of Cursor cumulative internal usage", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
 			opts.onDelta({
 				update: {
 					type: "turn-ended",
-					usage: { inputTokens: 10, outputTokens: 7, cacheReadTokens: 3, cacheWriteTokens: 2 },
+					usage: {
+						inputTokens: 6746960,
+						outputTokens: 17701,
+						cacheReadTokens: 6559232,
+						cacheWriteTokens: 0,
+					},
 				},
 			});
 			opts.onDelta({ update: { type: "text-delta", text: "done" } });
@@ -346,13 +412,11 @@ describe("streamCursor", () => {
 		const events = await collectEvents(stream);
 		const done = events.find((e: any) => e.type === "done") as any;
 
-		expect(done.message.usage).toMatchObject({
-			input: 10,
-			output: 7,
-			cacheRead: 3,
-			cacheWrite: 2,
-			totalTokens: 22,
-		});
+		expect(done.message.usage.input).toBeGreaterThan(0);
+		expect(done.message.usage.output).toBe(1);
+		expect(done.message.usage.cacheRead).toBe(0);
+		expect(done.message.usage.cacheWrite).toBe(0);
+		expect(done.message.usage.totalTokens).toBeLessThan(1000);
 	});
 
 	it("aborts after agent creation without sending a prompt when already cancelled", async () => {
@@ -383,6 +447,7 @@ describe("streamCursor", () => {
 
 		const error = events.find((e: any) => e.type === "error");
 		expect(error).toBeDefined();
+		expect((error as any).error.errorMessage).toContain("/login");
 		expect((error as any).error.errorMessage).toContain("CURSOR_API_KEY");
 		expect((error as any).error.errorMessage).toContain("--api-key");
 	});
@@ -397,9 +462,40 @@ describe("streamCursor", () => {
 			const error = events.find((e: any) => e.type === "error");
 			expect(error).toBeDefined();
 			expect((error as any).error.errorMessage).toBe(
-				"Cursor SDK runs require CURSOR_API_KEY or pi --api-key. Set CURSOR_API_KEY before starting pi, or restart pi with --api-key.",
+				"Cursor SDK runs require a Cursor API key. Run /login -> Use an API key -> Cursor, set CURSOR_API_KEY before starting pi, or restart pi with --api-key.",
 			);
 			expect(mockedCreate).not.toHaveBeenCalled();
+		} finally {
+			if (originalKey === undefined) {
+				delete process.env.CURSOR_API_KEY;
+			} else {
+				process.env.CURSOR_API_KEY = originalKey;
+			}
+		}
+	});
+
+	it("resolves CURSOR_API_KEY provider placeholders through the env var when present", async () => {
+		const originalKey = process.env.CURSOR_API_KEY;
+		process.env.CURSOR_API_KEY = "env-key-123";
+		try {
+			const mockSend = vi.fn().mockResolvedValue({
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished" }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			});
+			mockedCreate.mockResolvedValue({
+				send: mockSend,
+				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+			});
+
+			const stream = streamCursor(makeModel(), makeContext(), { apiKey: "CURSOR_API_KEY" });
+			await collectEvents(stream);
+
+			expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ apiKey: "env-key-123" }));
 		} finally {
 			if (originalKey === undefined) {
 				delete process.env.CURSOR_API_KEY;
@@ -418,6 +514,7 @@ describe("streamCursor", () => {
 		const error = events.find((e: any) => e.type === "error");
 		expect(error).toBeDefined();
 		expect((error as any).error.errorMessage).toContain("Cursor SDK request failed");
+		expect((error as any).error.errorMessage).toContain("/login");
 		expect((error as any).error.errorMessage).toContain("CURSOR_API_KEY");
 		expect((error as any).error.errorMessage).toContain("--api-key");
 		expect((error as any).error.errorMessage).not.toBe("Error");
@@ -432,6 +529,7 @@ describe("streamCursor", () => {
 		const error = events.find((e: any) => e.type === "error");
 		const message = (error as any).error.errorMessage;
 		expect(message).toContain("invalid or unauthorized");
+		expect(message).toContain("/login");
 		expect(message).toContain("CURSOR_API_KEY");
 		expect(message).not.toContain("super-secret-key-12345");
 	});

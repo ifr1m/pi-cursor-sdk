@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -29,16 +29,28 @@ function register(items: ModelListItem[]) {
 	return __testUtils.registerModelItems(items);
 }
 
+function writeStoredCursorApiKey(apiKey: string): void {
+	writeFileSync(
+		join(process.env.PI_CODING_AGENT_DIR!, "auth.json"),
+		JSON.stringify({ cursor: { type: "api_key", key: apiKey } }, null, 2),
+	);
+}
+
 describe("discoverModels", () => {
 	const originalEnv = process.env;
 	const originalArgv = process.argv;
+	let tmpAgentDir: string;
 
 	beforeEach(() => {
 		process.env = { ...originalEnv };
-		process.argv = [...originalArgv];
+		delete process.env.CURSOR_API_KEY;
+		tmpAgentDir = mkdtempSync(join(tmpdir(), "pi-cursor-discovery-"));
+		process.env.PI_CODING_AGENT_DIR = tmpAgentDir;
+		process.argv = ["node", "vitest"];
 	});
 
 	afterEach(() => {
+		rmSync(tmpAgentDir, { recursive: true, force: true });
 		process.env = originalEnv;
 		process.argv = originalArgv;
 		vi.clearAllMocks();
@@ -63,9 +75,11 @@ describe("discoverModels", () => {
 				message: expect.stringContaining("CURSOR_API_KEY"),
 			}),
 		]);
+		expect(issues[0].message).toContain("/login");
 		expect(issues[0].message).toContain("--api-key");
-		expect(issues[0].message).toContain("selection only");
-		expect(issues[0].message).toContain("will fail until pi is restarted");
+		expect(issues[0].message).toContain("fallback models can run once auth exists");
+		expect(issues[0].message).toContain("/reload");
+		expect(issues[0].message).not.toContain("will fail until pi is restarted");
 		expect(mockedList).not.toHaveBeenCalled();
 	});
 
@@ -93,6 +107,82 @@ describe("discoverModels", () => {
 
 		expect(mockedList).toHaveBeenCalledWith({ apiKey: "cli-key-123" });
 		expect(models.map((model) => model.id)).toEqual(["composer-2"]);
+	});
+
+	it("uses stored pi auth for model discovery when env and CLI are absent", async () => {
+		writeStoredCursorApiKey("stored-key-123");
+		mockedList.mockResolvedValueOnce([
+			{
+				id: "composer-2",
+				displayName: "Composer 2",
+				variants: [{ params: [], displayName: "Composer 2", isDefault: true }],
+			},
+		]);
+
+		const models = await discoverModels();
+
+		expect(mockedList).toHaveBeenCalledWith({ apiKey: "stored-key-123" });
+		expect(models.map((model) => model.id)).toEqual(["composer-2"]);
+	});
+
+	it("prefers CLI --api-key over stored pi auth for model discovery", async () => {
+		writeStoredCursorApiKey("stored-key-123");
+		process.argv = ["node", "pi", "--api-key", "cli-key-123"];
+		mockedList.mockResolvedValueOnce([
+			{
+				id: "composer-2",
+				displayName: "Composer 2",
+				variants: [{ params: [], displayName: "Composer 2", isDefault: true }],
+			},
+		]);
+
+		await discoverModels();
+
+		expect(mockedList).toHaveBeenCalledWith({ apiKey: "cli-key-123" });
+	});
+
+	it("prefers stored pi auth over CURSOR_API_KEY for model discovery", async () => {
+		writeStoredCursorApiKey("stored-key-123");
+		process.env.CURSOR_API_KEY = "env-key-123";
+		mockedList.mockResolvedValueOnce([
+			{
+				id: "composer-2",
+				displayName: "Composer 2",
+				variants: [{ params: [], displayName: "Composer 2", isDefault: true }],
+			},
+		]);
+
+		await discoverModels();
+
+		expect(mockedList).toHaveBeenCalledWith({ apiKey: "stored-key-123" });
+	});
+
+	it('treats unresolved stored "CURSOR_API_KEY" auth as missing when env is absent', async () => {
+		writeStoredCursorApiKey("CURSOR_API_KEY");
+		const issues: CursorModelFallbackIssue[] = [];
+
+		const models = await discoverModels({ onFallback: (issue) => issues.push(issue) });
+
+		expect(models.some((model) => model.id === "composer-2")).toBe(true);
+		expect(issues).toEqual([expect.objectContaining({ reason: "missing-api-key" })]);
+		expect(issues[0].message).toContain("/login");
+		expect(mockedList).not.toHaveBeenCalled();
+	});
+
+	it('resolves stored "CURSOR_API_KEY" auth through the env var when present', async () => {
+		writeStoredCursorApiKey("CURSOR_API_KEY");
+		process.env.CURSOR_API_KEY = "env-key-123";
+		mockedList.mockResolvedValueOnce([
+			{
+				id: "composer-2",
+				displayName: "Composer 2",
+				variants: [{ params: [], displayName: "Composer 2", isDefault: true }],
+			},
+		]);
+
+		await discoverModels();
+
+		expect(mockedList).toHaveBeenCalledWith({ apiKey: "env-key-123" });
 	});
 
 	it("parses pi --api-key=value for model discovery", () => {
@@ -534,6 +624,7 @@ describe("discoverModels", () => {
 				message: expect.stringContaining("Cursor model discovery failed"),
 			}),
 		]);
+		expect(issues[0].message).toContain("/login");
 		expect(issues[0].message).not.toContain("test-key-123");
 	});
 
@@ -549,7 +640,8 @@ describe("discoverModels", () => {
 				message: expect.stringContaining("Cursor model discovery returned no models"),
 			}),
 		]);
-		expect(issues[0].message).toContain("selection only");
+		expect(issues[0].message).toContain("/login");
+		expect(issues[0].message).toContain("/reload");
 	});
 
 	it("uses id as name when displayName is missing", async () => {

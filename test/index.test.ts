@@ -117,7 +117,7 @@ describe("extension factory", () => {
 			options.onFallback({
 				reason: "missing-api-key",
 				message:
-					"CURSOR_API_KEY or --api-key is required for Cursor model discovery. Using fallback Cursor models for selection only; Cursor runs in this session will fail until pi is restarted with a key.",
+					"Cursor model discovery needs an API key from /login (Use an API key -> Cursor), CURSOR_API_KEY, or --api-key. Using fallback Cursor models so /login and model selection still work; fallback models can run once auth exists. After adding auth to an already-started pi session, run /reload or restart pi to refresh the full live Cursor model catalog.",
 			});
 			return [
 				{
@@ -145,7 +145,7 @@ describe("extension factory", () => {
 		await sessionHandlers.at(-1)!({}, ctx);
 
 		expect(notify).toHaveBeenCalledWith(
-			"CURSOR_API_KEY or --api-key is required for Cursor model discovery. Using fallback Cursor models for selection only; Cursor runs in this session will fail until pi is restarted with a key.",
+			"Cursor model discovery needs an API key from /login (Use an API key -> Cursor), CURSOR_API_KEY, or --api-key. Using fallback Cursor models so /login and model selection still work; fallback models can run once auth exists. After adding auth to an already-started pi session, run /reload or restart pi to refresh the full live Cursor model catalog.",
 			"warning",
 		);
 	});

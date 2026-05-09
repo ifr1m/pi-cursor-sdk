@@ -14,10 +14,11 @@ Current implementation notes:
 - Cursor fast status uses `ctx.ui.setStatus()`; the default pi footer remains intact.
 - Installed `@cursor/sdk` user messages accept images, and Cursor models are treated as image-capable; registered input metadata is `text` plus `image`.
 - `@cursor/sdk` is a package dependency of this extension; users should not need a global SDK install.
-- Cursor auth uses the `CURSOR_API_KEY` environment variable. The extension config file stores only non-secret Cursor-only state such as fast defaults.
+- Cursor auth uses pi-native API-key resolution for provider `cursor`: CLI `--api-key`, stored `~/.pi/agent/auth.json` API key from `/login`, then `CURSOR_API_KEY`. The extension config file stores only non-secret Cursor-only state such as fast defaults.
 - Local agents do not pass `settingSources` by default because the current Cursor SDK writes setting/rule loading INFO logs directly to terminal output, which corrupts pi's TUI.
 - Cursor SDK models are treated as thinking-capable even when pi reports `thinking=no`; that pi column only means the SDK did not expose a pi-controllable thinking parameter for that model.
-- Cursor-side thinking and tool activity are surfaced as trace content before final text. Cursor text deltas are buffered until the run finishes so the saved message order is trace first, final answer second.
+- Cursor-side thinking and tool activity are surfaced as bounded trace content before final text. Cursor text deltas are treated as intermediate progress unless the final run result is unavailable, so the saved visible answer stays clean while message content order remains trace first, final answer second.
+- Cursor SDK usage events report cumulative internal agent/tool/cache work, not the replayable pi prompt context. The extension reports approximate prompt/output usage for pi context display and compaction decisions instead of copying raw Cursor SDK usage.
 - For models without a catalog `context` parameter, context windows are not hardcoded. The extension ships a bundled SDK-derived default/non-Max cache generated from `createAgentPlatform().checkpointStore.loadLatest(agentId).tokenDetails.maxTokens`. Successful runs can update a local override cache, but model discovery does not probe models at startup.
 - Max Mode context windows are distinct from default/non-Max context windows. `@cursor/sdk` 1.0.12 exposes internal protobuf fields named `maxMode`/`max_mode`, but the public `ModelSelection` type and the local executor path do not pass a Max Mode selector for local agent runs. Do not advertise Max Mode context windows unless the SDK catalog exposes an exact parameter/variant or the SDK public API adds a Max Mode selector that the extension actually sends.
 
@@ -56,6 +57,14 @@ At startup, the extension calls:
 ```ts
 Cursor.models.list({ apiKey });
 ```
+
+Discovery resolves `apiKey` in this order:
+
+1. CLI `--api-key`.
+2. Stored pi auth for provider `cursor` from `AuthStorage.create().getApiKey("cursor", { includeFallback: false })`.
+3. `CURSOR_API_KEY`.
+
+Users can persist the stored key through `/login` -> `Use an API key` -> `Cursor`. If auth is added after startup, fallback models can run once pi resolves the saved key for provider requests, but `/reload` or restart is required to refresh the full live Cursor model catalog.
 
 For each model, use:
 

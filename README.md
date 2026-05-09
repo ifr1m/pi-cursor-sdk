@@ -18,25 +18,21 @@ Or install from GitHub:
 pi install https://github.com/fitchmultz/pi-cursor-sdk
 ```
 
-2. Export your Cursor API key before starting pi:
-
-```bash
-export CURSOR_API_KEY="your-key"
-```
-
-3. Start pi with a Cursor model:
+2. Start pi with a Cursor model:
 
 ```bash
 pi --model cursor/composer-2
 ```
 
-Inside pi, use `/model` to choose another Cursor model.
+3. In pi, run `/login`, choose `Use an API key`, choose `Cursor`, and paste your Cursor API key.
+
+If pi started without a key, run `/reload` or restart pi after `/login` to refresh the full live Cursor model catalog. Inside pi, use `/model` to choose another Cursor model.
 
 ## Requirements
 
 - Node.js 18+
 - pi
-- a Cursor API key available as `CURSOR_API_KEY` or passed with pi's `--api-key`
+- a Cursor API key saved through `/login`, available as `CURSOR_API_KEY`, or passed with pi's `--api-key`
 
 No global `@cursor/sdk` install is required. This package depends on `@cursor/sdk`, so normal package installation brings in the SDK version this extension was built and tested against.
 
@@ -76,6 +72,22 @@ pi -e . --model cursor/composer-2
 Preferred setup:
 
 ```bash
+pi --model cursor/composer-2
+```
+
+Then, inside pi:
+
+1. Run `/login`.
+2. Select `Use an API key`.
+3. Select `Cursor`.
+4. Paste your Cursor API key.
+5. The key is saved in pi's native `~/.pi/agent/auth.json`.
+
+If pi started without a key, fallback Cursor models still register so `/login` is reachable. After `/login`, fallback model runs can use the stored key, but `/reload` or a restart is needed to refresh the full live Cursor model catalog discovered from the Cursor SDK.
+
+Environment setup:
+
+```bash
 export CURSOR_API_KEY="your-key"
 pi --model cursor/composer-2
 ```
@@ -86,9 +98,7 @@ One-shot setup:
 pi --api-key "your-key" --model cursor/composer-2 --cursor-no-fast -p "Say ok only."
 ```
 
-Use `CURSOR_API_KEY` when possible. It gives the extension a key during startup model discovery. `--api-key` is also read for discovery and runs, but shell wrappers and launchers are easier to diagnose when the key is exported as `CURSOR_API_KEY` before pi starts.
-
-Important: if pi starts without a valid `CURSOR_API_KEY` or `--api-key`, model discovery may fall back to a conservative Cursor model list. That fallback list is only for selection/display. Cursor runs in that already-started session will fail until you restart pi with a valid key.
+Discovery uses pi's native resolution order for this extension: `--api-key`, the stored `cursor` key in `~/.pi/agent/auth.json`, then `CURSOR_API_KEY`.
 
 Do not store the API key in `~/.pi/agent/cursor-sdk.json`. That file is only for non-secret extension state such as Cursor fast defaults. `PATH` is only for executable lookup and should not contain the API key.
 
@@ -103,7 +113,7 @@ pi --list-models cursor
 Expected behavior:
 
 - with a valid key, Cursor models appear under the `cursor` provider
-- if discovery cannot authenticate or reach Cursor, pi may still show fallback Cursor models, but those rows are selection-only and actual runs will fail until restart with a valid key
+- if discovery cannot authenticate or reach Cursor, pi may still show fallback Cursor models; after adding auth with `/login`, fallback model runs can use the saved key, and `/reload` or restart refreshes the live catalog
 
 Smoke test:
 
@@ -188,30 +198,33 @@ Images from the latest user message are forwarded to Cursor. Historical images a
 
 ## Fallback models
 
-If `CURSOR_API_KEY` is missing, model discovery fails, or discovery returns no models, the extension registers conservative fallback Cursor models and notifies interactive users when possible:
+If no key is available from `/login`, `CURSOR_API_KEY`, or `--api-key`, model discovery fails, or discovery returns no models, the extension registers conservative fallback Cursor models and notifies interactive users when possible:
 
 - `composer-2`
 - `gpt-5.5@1m`, `gpt-5.5@272k`
 - `claude-sonnet-4-6@1m`, `claude-sonnet-4-6@300k`
 - `claude-opus-4-7@1m`, `claude-opus-4-7@300k`
 
-Fallback models are only a startup model list. Actual Cursor runs still need `CURSOR_API_KEY` or `--api-key`.
+Fallback models are a conservative startup model list. Actual Cursor runs still need a key from `/login`, `CURSOR_API_KEY`, or `--api-key`. If you add auth after startup, run `/reload` or restart pi to refresh the full live Cursor model catalog.
 
 ## Limits
 
 - **Local Cursor SDK agents only.** This extension does not use Cursor cloud agents.
-- **Cursor-side tool use is not exposed as pi tool calls.** You may see compact Cursor trace text before the final answer, but you will not get normal pi tool-call rows for Cursor's internal tool activity.
+- **Cursor-side tool use is not exposed as pi tool calls.** You may see a concise Cursor activity trace before the final answer, but you will not get normal pi tool-call rows for Cursor's internal tool activity.
 - **Pi tool schemas are not passed through to Cursor.** This extension is a Cursor provider, not a bridge that forwards pi's tool system into Cursor.
 - **One fresh Cursor agent is created per provider call.** Cursor agent state is not reused between pi provider calls.
 - **Ambient Cursor setting/rule layers are not loaded by default.** The current Cursor SDK writes setting/rule loading logs directly to terminal output, which corrupts pi's TUI, so the extension leaves those layers out.
 - **Max Mode is not exposed for these local runs.** The extension only advertises exact context windows supported by the SDK path it uses.
 - **Output token limits are conservative.** Cursor SDK model metadata does not currently expose output token limits directly.
+- **Token usage is approximate in pi.** Cursor SDK usage events include internal agent/tool/cache work, so the extension reports an approximate replayable pi prompt/output size for context display and compaction decisions.
 
 ## Troubleshooting
 
 ### I can see Cursor models, but runs fail
 
-You may be seeing fallback startup models. Restart pi with a key in the same shell or launcher that starts pi:
+You may be seeing fallback startup models or a missing/invalid key. In interactive pi, run `/login`, choose `Use an API key`, choose `Cursor`, paste the key, then run `/reload` or restart pi.
+
+You can also restart pi with a key in the same shell or launcher that starts pi:
 
 ```bash
 export CURSOR_API_KEY="your-key"

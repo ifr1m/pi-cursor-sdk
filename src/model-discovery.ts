@@ -5,14 +5,19 @@ import type {
 	ModelParameterValue,
 	ModelSelection,
 } from "@cursor/sdk";
-import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import { AuthStorage, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { ModelThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai";
 import { getCachedContextWindow } from "./context-window-cache.js";
 
+const CURSOR_PROVIDER_ID = "cursor";
+const CURSOR_API_KEY_ENV_VAR = "CURSOR_API_KEY";
 const FALLBACK_CONTEXT_WINDOW = 128000;
 const FALLBACK_MAX_TOKENS = 16384;
 const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const TEXT_AND_IMAGE_INPUT: ProviderModelConfig["input"] = ["text", "image"];
+const AUTH_SETUP_HINT = "/login (Use an API key -> Cursor), CURSOR_API_KEY, or --api-key";
+const CATALOG_REFRESH_HINT =
+	"After adding auth to an already-started pi session, run /reload or restart pi to refresh the full live Cursor model catalog.";
 
 const FALLBACK_MODEL_ITEMS: ModelListItem[] = [
 	{
@@ -184,8 +189,29 @@ function getCliApiKeyFromArgv(argv: string[] = process.argv): string | undefined
 	return undefined;
 }
 
-function getDiscoveryApiKey(): string | undefined {
-	return process.env.CURSOR_API_KEY?.trim() || getCliApiKeyFromArgv();
+function normalizeApiKey(value: string | undefined): string | undefined {
+	const trimmed = value?.trim();
+	if (!trimmed) return undefined;
+	if (trimmed === CURSOR_API_KEY_ENV_VAR) return process.env.CURSOR_API_KEY?.trim() || undefined;
+	return trimmed;
+}
+
+async function getStoredCursorApiKey(): Promise<string | undefined> {
+	try {
+		return normalizeApiKey(await AuthStorage.create().getApiKey(CURSOR_PROVIDER_ID, { includeFallback: false }));
+	} catch {
+		return undefined;
+	}
+}
+
+async function getDiscoveryApiKey(): Promise<string | undefined> {
+	const cliApiKey = normalizeApiKey(getCliApiKeyFromArgv());
+	if (cliApiKey) return cliApiKey;
+
+	const storedApiKey = await getStoredCursorApiKey();
+	if (storedApiKey) return storedApiKey;
+
+	return normalizeApiKey(process.env.CURSOR_API_KEY);
 }
 
 export interface CursorModelMetadata {
@@ -484,12 +510,11 @@ function useFallbackModels(options: DiscoverModelsOptions, issue: CursorModelFal
 }
 
 export async function discoverModels(options: DiscoverModelsOptions = {}): Promise<ProviderModelConfig[]> {
-	const apiKey = getDiscoveryApiKey();
+	const apiKey = await getDiscoveryApiKey();
 	if (!apiKey) {
 		return useFallbackModels(options, {
 			reason: "missing-api-key",
-			message:
-				"CURSOR_API_KEY or --api-key is required for Cursor model discovery. Using fallback Cursor models for selection only; Cursor runs in this session will fail until pi is restarted with a key.",
+			message: `Cursor model discovery needs an API key from ${AUTH_SETUP_HINT}. Using fallback Cursor models so /login and model selection still work; fallback models can run once auth exists. ${CATALOG_REFRESH_HINT}`,
 		});
 	}
 
@@ -500,14 +525,12 @@ export async function discoverModels(options: DiscoverModelsOptions = {}): Promi
 		}
 		return useFallbackModels(options, {
 			reason: "empty-model-list",
-			message:
-				"Cursor model discovery returned no models. Using fallback Cursor models for selection only; verify CURSOR_API_KEY or restart pi with --api-key before running Cursor models.",
+			message: `Cursor model discovery returned no models. Using fallback Cursor models; verify ${AUTH_SETUP_HINT}. ${CATALOG_REFRESH_HINT}`,
 		});
 	} catch {
 		return useFallbackModels(options, {
 			reason: "discovery-failed",
-			message:
-				"Cursor model discovery failed. Using fallback Cursor models for selection only; verify CURSOR_API_KEY or restart pi with --api-key before running Cursor models.",
+			message: `Cursor model discovery failed. Using fallback Cursor models; verify ${AUTH_SETUP_HINT}. ${CATALOG_REFRESH_HINT}`,
 		});
 	}
 }
@@ -516,4 +539,5 @@ export const __testUtils = {
 	parseContextWindow,
 	registerModelItems,
 	getCliApiKeyFromArgv,
+	normalizeApiKey,
 };

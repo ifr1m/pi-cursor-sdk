@@ -9,7 +9,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { Agent, createAgentPlatform } from "@cursor/sdk";
 import type { InteractionUpdate, SDKAgent } from "@cursor/sdk";
-import { buildCursorPrompt } from "./context.js";
+import { buildCursorPrompt, type CursorPrompt } from "./context.js";
 import { getEffectiveFastForModelId } from "./cursor-state.js";
 import { buildCursorModelSelection } from "./model-discovery.js";
 import { getCheckpointContextWindow, saveCachedContextWindow } from "./context-window-cache.js";
@@ -43,11 +43,14 @@ class CursorAbortError extends Error {
 
 const CURSOR_API_KEY_ENV_VAR = "CURSOR_API_KEY";
 const MISSING_API_KEY_MESSAGE =
-	"Cursor SDK runs require CURSOR_API_KEY or pi --api-key. Set CURSOR_API_KEY before starting pi, or restart pi with --api-key.";
+	"Cursor SDK runs require a Cursor API key. Run /login -> Use an API key -> Cursor, set CURSOR_API_KEY before starting pi, or restart pi with --api-key.";
 const GENERIC_CURSOR_SDK_ERROR_MESSAGE =
-	"Cursor SDK request failed. The API key may be missing, invalid, or unauthorized. Verify CURSOR_API_KEY or pass --api-key, then retry.";
+	"Cursor SDK request failed. The API key may be missing, invalid, or unauthorized. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
 const AUTH_CURSOR_SDK_ERROR_MESSAGE =
-	"Cursor SDK request failed because the API key may be invalid or unauthorized. Verify CURSOR_API_KEY or pass --api-key, then retry.";
+	"Cursor SDK request failed because the API key may be invalid or unauthorized. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
+const APPROX_CHARS_PER_TOKEN = 4;
+const IMAGE_TOKEN_ESTIMATE = 1200;
+const CURSOR_ACTIVITY_TRACE_MAX_CHARS = 50000;
 
 function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -77,12 +80,11 @@ function isLikelyAuthError(message: string): boolean {
 	return /\b(unauthorized|unauthorised|forbidden|invalid api key|invalid key|authentication|auth|401|403)\b/i.test(message);
 }
 
-function hasEnvCursorApiKey(): boolean {
-	return Boolean(process.env.CURSOR_API_KEY?.trim());
-}
-
-function isMissingCursorApiKey(apiKey?: string): boolean {
-	return !apiKey || (apiKey === CURSOR_API_KEY_ENV_VAR && !hasEnvCursorApiKey());
+function resolveCursorApiKey(apiKey?: string): string | undefined {
+	const trimmed = apiKey?.trim();
+	if (!trimmed) return undefined;
+	if (trimmed === CURSOR_API_KEY_ENV_VAR) return process.env.CURSOR_API_KEY?.trim();
+	return trimmed;
 }
 
 function sanitizeError(error: unknown, apiKey?: string): string {
@@ -122,15 +124,48 @@ async function cacheSdkContextWindow(agentId: string, modelId: string): Promise<
 	}
 }
 
+function estimateTextTokens(text: string): number {
+	return Math.ceil(text.length / APPROX_CHARS_PER_TOKEN);
+}
+
+function estimatePromptInputTokens(prompt: CursorPrompt): number {
+	return estimateTextTokens(prompt.text) + prompt.images.length * IMAGE_TOKEN_ESTIMATE;
+}
+
+function setApproximateUsage(partial: AssistantMessage, promptInputTokens: number, outputText: string): void {
+	partial.usage.input = promptInputTokens;
+	partial.usage.output = estimateTextTokens(outputText);
+	partial.usage.cacheRead = 0;
+	partial.usage.cacheWrite = 0;
+	partial.usage.totalTokens = partial.usage.input + partial.usage.output;
+}
+
+function sanitizeSingleLine(value: string): string {
+	return value.replace(/\s+/g, " ").trim();
+}
+
+function truncateSingleLine(value: string, maxLength = 240): string {
+	const sanitized = sanitizeSingleLine(value);
+	return sanitized.length > maxLength ? `${sanitized.slice(0, maxLength - 1)}…` : sanitized;
+}
+
 function summarizeCursorToolResult(result: unknown): string {
 	if (result === undefined) return "";
 	const parts: string[] = [];
 	const status = getObjectField(result, "status");
-	if (typeof status === "string") parts.push(status);
+	if (typeof status === "string") parts.push(sanitizeSingleLine(status));
 	const value = getObjectField(result, "value");
 	const exitCode = getObjectField(value, "exitCode") ?? getObjectField(result, "exitCode");
 	if (typeof exitCode === "number") parts.push(`exit ${exitCode}`);
-	return parts.length > 0 ? `: ${parts.join(", ")}` : "";
+	return parts.length > 0 ? ` (${parts.join(", ")})` : "";
+}
+
+function formatCursorToolName(toolCall: unknown): string {
+	return truncateSingleLine(getCursorToolName(toolCall), 80) || "unknown";
+}
+
+function hasUsableText(value: string | undefined): value is string {
+	return typeof value === "string" && value.trim().length > 0;
 }
 
 export function streamCursor(
@@ -143,6 +178,7 @@ export function streamCursor(
 	(async () => {
 		const partial = makeInitialMessage(model);
 		let agent: SDKAgent | null = null;
+		let resolvedApiKey: string | undefined;
 		let abortSignal: AbortSignal | undefined;
 		let abortListener: (() => void) | undefined;
 
@@ -154,8 +190,9 @@ export function streamCursor(
 			stream.push({ type: "start", partial });
 			throwIfAborted();
 
-			const apiKey = options?.apiKey;
-			if (isMissingCursorApiKey(apiKey)) throw new Error(MISSING_API_KEY_MESSAGE);
+			const apiKey = resolveCursorApiKey(options?.apiKey);
+			if (!apiKey) throw new Error(MISSING_API_KEY_MESSAGE);
+			resolvedApiKey = apiKey;
 
 			const cwd = process.cwd();
 			const fastEnabled = getEffectiveFastForModelId(model.id);
@@ -171,8 +208,10 @@ export function streamCursor(
 			throwIfAborted();
 
 			const prompt = buildCursorPrompt(context);
-			let textContentIndex = -1;
+			const promptInputTokens = estimatePromptInputTokens(prompt);
 			let thinkingContentIndex = -1;
+			let activityTraceChars = 0;
+			let activityTraceTruncated = false;
 			const textDeltas: string[] = [];
 
 			const appendBufferedTextDelta = (text: string): void => {
@@ -180,6 +219,16 @@ export function streamCursor(
 			};
 
 			const appendTraceDelta = (text: string): void => {
+				if (activityTraceTruncated) return;
+
+				let delta = text;
+				if (activityTraceChars + delta.length > CURSOR_ACTIVITY_TRACE_MAX_CHARS) {
+					const remainingChars = Math.max(CURSOR_ACTIVITY_TRACE_MAX_CHARS - activityTraceChars, 0);
+					delta = `${delta.slice(0, remainingChars)}\n[Cursor activity trace truncated]\n`;
+					activityTraceTruncated = true;
+				}
+				if (!delta) return;
+
 				if (thinkingContentIndex < 0) {
 					thinkingContentIndex = partial.content.length;
 					partial.content.push({ type: "thinking", thinking: "" });
@@ -187,28 +236,42 @@ export function streamCursor(
 				}
 				const block = partial.content[thinkingContentIndex];
 				if (block.type === "thinking") {
-					block.thinking += text;
+					block.thinking += delta;
+					activityTraceChars += delta.length;
 					stream.push({
 						type: "thinking_delta",
 						contentIndex: thinkingContentIndex,
-						delta: text,
+						delta,
 						partial,
 					});
 				}
 			};
 
-			const appendCursorToolStatus = (text: string): void => {
+			const appendTraceLine = (text: string): void => {
 				appendTraceDelta(`${text}\n`);
 			};
 
-			const flushBufferedText = (fallbackText?: string): void => {
-				const deltas = textDeltas.length > 0 ? textDeltas : fallbackText ? [fallbackText] : [];
-				if (deltas.length === 0) return;
-				textContentIndex = partial.content.length;
+			const closeTraceBlock = (): void => {
+				if (thinkingContentIndex < 0) return;
+				const block = partial.content[thinkingContentIndex];
+				if (block.type === "thinking") {
+					stream.push({
+						type: "thinking_end",
+						contentIndex: thinkingContentIndex,
+						content: block.thinking,
+						partial,
+					});
+				}
+				thinkingContentIndex = -1;
+			};
+
+			const flushText = (deltas: string[]): string => {
+				if (deltas.length === 0) return "";
+				const textContentIndex = partial.content.length;
 				partial.content.push({ type: "text", text: "" });
 				stream.push({ type: "text_start", contentIndex: textContentIndex, partial });
 				const block = partial.content[textContentIndex];
-				if (block.type !== "text") return;
+				if (block.type !== "text") return "";
 				for (const delta of deltas) {
 					block.text += delta;
 					stream.push({
@@ -224,6 +287,7 @@ export function streamCursor(
 					content: block.text,
 					partial,
 				});
+				return block.text;
 			};
 
 			const onDelta = (args: { update: InteractionUpdate }): void => {
@@ -234,34 +298,18 @@ export function streamCursor(
 				} else if (update.type === "thinking-delta") {
 					appendTraceDelta(update.text);
 				} else if (update.type === "thinking-completed") {
-					if (thinkingContentIndex >= 0) {
-						const block = partial.content[thinkingContentIndex];
-						if (block.type === "thinking") {
-							stream.push({
-								type: "thinking_end",
-								contentIndex: thinkingContentIndex,
-								content: block.thinking,
-								partial,
-							});
-						}
-						thinkingContentIndex = -1;
-					}
+					closeTraceBlock();
 				} else if (update.type === "tool-call-started") {
-					appendCursorToolStatus(`Cursor tool started (${getCursorToolName(update.toolCall)}, call ${update.callId})`);
+					appendTraceLine(`Cursor tool: ${formatCursorToolName(update.toolCall)} started`);
 				} else if (update.type === "tool-call-completed") {
 					const suffix = summarizeCursorToolResult(getCursorToolResult(update.toolCall));
-					appendCursorToolStatus(`Cursor tool completed (${getCursorToolName(update.toolCall)}, call ${update.callId})${suffix}`);
+					appendTraceLine(`Cursor tool: ${formatCursorToolName(update.toolCall)} completed${suffix}`);
 				} else if (update.type === "summary") {
-					appendCursorToolStatus(`Cursor summary: ${update.summary}`);
-				} else if (update.type === "turn-ended" && update.usage) {
-					partial.usage.input = update.usage.inputTokens;
-					partial.usage.output = update.usage.outputTokens;
-					partial.usage.cacheRead = update.usage.cacheReadTokens;
-					partial.usage.cacheWrite = update.usage.cacheWriteTokens;
-					partial.usage.totalTokens =
-						update.usage.inputTokens + update.usage.outputTokens + update.usage.cacheReadTokens + update.usage.cacheWriteTokens;
+					appendTraceLine(`Cursor summary: ${truncateSingleLine(update.summary)}`);
 				}
-				// partial-tool-call, summary-started, summary-completed,
+				// Cursor turn-ended usage is intentionally not copied into pi usage: the SDK reports
+				// cumulative internal agent/tool/cache tokens, not the replayable pi prompt context.
+				// partial-tool-call, summary-started, summary-completed, turn-ended,
 				// shell-output-delta, token-delta, step-* are intentionally not surfaced.
 			};
 
@@ -288,22 +336,12 @@ export function streamCursor(
 			const result = await run.wait();
 			await cacheSdkContextWindow(agent.agentId, model.id);
 
-			// Close open thinking/trace before flushing final assistant text so saved
+			// Close open thinking/activity trace before flushing final assistant text so saved
 			// message content is trace first, final answer second.
-			if (thinkingContentIndex >= 0) {
-				const block = partial.content[thinkingContentIndex];
-				if (block.type === "thinking") {
-					stream.push({
-						type: "thinking_end",
-						contentIndex: thinkingContentIndex,
-						content: block.thinking,
-						partial,
-					});
-				}
-				thinkingContentIndex = -1;
-			}
+			closeTraceBlock();
 
-			flushBufferedText(result.result);
+			const finalText = flushText(hasUsableText(result.result) ? [result.result] : textDeltas);
+			setApproximateUsage(partial, promptInputTokens, finalText);
 
 			if (result.status === "cancelled") {
 				partial.stopReason = "aborted";
@@ -317,7 +355,7 @@ export function streamCursor(
 				stream.push({ type: "error", reason: "aborted", error: partial });
 			} else {
 				partial.stopReason = "error";
-				partial.errorMessage = sanitizeError(error, options?.apiKey);
+				partial.errorMessage = sanitizeError(error, resolvedApiKey ?? options?.apiKey);
 				stream.push({ type: "error", reason: "error", error: partial });
 			}
 		} finally {
