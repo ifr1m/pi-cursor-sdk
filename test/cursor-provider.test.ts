@@ -253,10 +253,19 @@ describe("streamCursor", () => {
 		expect(toolEvents).toHaveLength(0);
 	});
 
-	it("surfaces cursor tool activity in the trace without polluting final text", async () => {
+	it("surfaces cursor tool results as pi-like trace transcript without polluting final text", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
-			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "list_dir" }, callId: "c1" } });
-			opts.onDelta({ update: { type: "tool-call-completed", toolCall: { name: "list_dir", result: { files: ["README.md"] } }, callId: "c1" } });
+			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "README.md" } }, callId: "c1" } });
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "read",
+						result: { status: "success", value: { content: "# pi-cursor-sdk\n\nReadme body", totalLines: 3, fileSize: 29 } },
+					},
+					callId: "c1",
+				},
+			});
 			opts.onDelta({ update: { type: "summary", summary: "Inspected files" } });
 			opts.onDelta({ update: { type: "text-delta", text: "done" } });
 			return {
@@ -280,13 +289,13 @@ describe("streamCursor", () => {
 		const text = events.filter((e: any) => e.type === "text_delta").map((e: any) => e.delta).join("");
 		const done = events.find((e: any) => e.type === "done") as any;
 
-		expect(trace).toContain("Cursor tool: list_dir started");
-		expect(trace).toContain("Cursor tool: list_dir completed");
+		expect(trace).toContain("read README.md");
+		expect(trace).toContain("# pi-cursor-sdk");
+		expect(trace).not.toContain("Cursor tool: read started");
 		expect(trace).not.toContain("call c1");
-		expect(trace).not.toContain("README.md");
 		expect(trace).toContain("Cursor summary: Inspected files");
 		expect(text).toBe("done");
-		expect(done.message.content.map((block: any) => block.type)).toEqual(["thinking", "text"]);
+		expect(done.message.content.map((block: any) => block.type)).toEqual(["thinking", "thinking", "text"]);
 	});
 
 	it("prefers the final run result over intermediate cursor progress text", async () => {
@@ -316,12 +325,22 @@ describe("streamCursor", () => {
 		expect(text).not.toContain("I’m checking files");
 	});
 
-	it("keeps cursor tool activity one-line and omits raw call ids", async () => {
+	it("omits raw cursor call ids while rendering completed cursor tools", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
 			opts.onDelta({
 				update: {
 					type: "tool-call-started",
-					toolCall: { name: "shell\nextra" },
+					toolCall: { name: "shell", args: { command: "date" } },
+					callId: "call_abc\nfc_secret",
+				},
+			});
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "shell",
+						result: { status: "success", value: { stdout: "Sat May  9\n", stderr: "", exitCode: 0, executionTime: 12 } },
+					},
 					callId: "call_abc\nfc_secret",
 				},
 			});
@@ -344,9 +363,52 @@ describe("streamCursor", () => {
 		const events = await collectEvents(stream);
 		const trace = events.filter((e: any) => e.type === "thinking_delta").map((e: any) => e.delta).join("");
 
-		expect(trace).toContain("Cursor tool: shell extra started\n");
+		expect(trace).toContain("$ date\n");
+		expect(trace).toContain("Sat May  9");
+		expect(trace).toContain("Took 0.0s");
 		expect(trace).not.toContain("call_abc");
 		expect(trace).not.toContain("fc_secret");
+	});
+
+	it("scrubs secrets from cursor tool transcript output", async () => {
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "secrets.txt" } }, callId: "c1" } });
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "read",
+						result: {
+							status: "success",
+							value: { content: "token=super-secret-key-12345\nAuthorization: Bearer bearer-token-value" },
+						},
+					},
+					callId: "c1",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "done" }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "super-secret-key-12345" });
+		const events = await collectEvents(stream);
+		const trace = events.filter((e: any) => e.type === "thinking_delta").map((e: any) => e.delta).join("");
+
+		expect(trace).toContain("read secrets.txt");
+		expect(trace).toContain("[redacted]");
+		expect(trace).not.toContain("super-secret-key-12345");
+		expect(trace).not.toContain("bearer-token-value");
 	});
 
 	it("keeps late cursor thinking before final text in the saved content order", async () => {

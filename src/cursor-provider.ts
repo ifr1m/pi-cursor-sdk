@@ -13,6 +13,7 @@ import { buildCursorPrompt, type CursorPrompt } from "./context.js";
 import { getEffectiveFastForModelId } from "./cursor-state.js";
 import { buildCursorModelSelection } from "./model-discovery.js";
 import { getCheckpointContextWindow, saveCachedContextWindow } from "./context-window-cache.js";
+import { formatCursorToolTranscript, mergeCursorToolCalls } from "./cursor-tool-transcript.js";
 
 function makeInitialMessage(model: Model<Api>): AssistantMessage {
 	return {
@@ -109,10 +110,6 @@ function getCursorToolName(toolCall: unknown): string {
 	return "unknown";
 }
 
-function getCursorToolResult(toolCall: unknown): unknown {
-	return getObjectField(toolCall, "result");
-}
-
 async function cacheSdkContextWindow(agentId: string, modelId: string): Promise<void> {
 	try {
 		const platform = await createAgentPlatform();
@@ -147,17 +144,6 @@ function sanitizeSingleLine(value: string): string {
 function truncateSingleLine(value: string, maxLength = 240): string {
 	const sanitized = sanitizeSingleLine(value);
 	return sanitized.length > maxLength ? `${sanitized.slice(0, maxLength - 1)}…` : sanitized;
-}
-
-function summarizeCursorToolResult(result: unknown): string {
-	if (result === undefined) return "";
-	const parts: string[] = [];
-	const status = getObjectField(result, "status");
-	if (typeof status === "string") parts.push(sanitizeSingleLine(status));
-	const value = getObjectField(result, "value");
-	const exitCode = getObjectField(value, "exitCode") ?? getObjectField(result, "exitCode");
-	if (typeof exitCode === "number") parts.push(`exit ${exitCode}`);
-	return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }
 
 function formatCursorToolName(toolCall: unknown): string {
@@ -213,6 +199,7 @@ export function streamCursor(
 			let activityTraceChars = 0;
 			let activityTraceTruncated = false;
 			const textDeltas: string[] = [];
+			const startedToolCalls = new Map<string, unknown>();
 
 			const appendBufferedTextDelta = (text: string): void => {
 				textDeltas.push(text);
@@ -249,6 +236,12 @@ export function streamCursor(
 
 			const appendTraceLine = (text: string): void => {
 				appendTraceDelta(`${text}\n`);
+			};
+
+			const appendTraceBlock = (text: string): void => {
+				closeTraceBlock();
+				appendTraceDelta(text.endsWith("\n") ? text : `${text}\n`);
+				closeTraceBlock();
 			};
 
 			const closeTraceBlock = (): void => {
@@ -300,10 +293,12 @@ export function streamCursor(
 				} else if (update.type === "thinking-completed") {
 					closeTraceBlock();
 				} else if (update.type === "tool-call-started") {
-					appendTraceLine(`Cursor tool: ${formatCursorToolName(update.toolCall)} started`);
+					startedToolCalls.set(update.callId, update.toolCall);
 				} else if (update.type === "tool-call-completed") {
-					const suffix = summarizeCursorToolResult(getCursorToolResult(update.toolCall));
-					appendTraceLine(`Cursor tool: ${formatCursorToolName(update.toolCall)} completed${suffix}`);
+					const mergedToolCall = mergeCursorToolCalls(startedToolCalls.get(update.callId), update.toolCall);
+					startedToolCalls.delete(update.callId);
+					const transcript = scrubSensitiveText(formatCursorToolTranscript(mergedToolCall, { cwd }), resolvedApiKey);
+					appendTraceBlock(transcript || `Cursor tool: ${formatCursorToolName(mergedToolCall)} completed`);
 				} else if (update.type === "summary") {
 					appendTraceLine(`Cursor summary: ${truncateSingleLine(update.summary)}`);
 				}

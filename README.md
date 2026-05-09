@@ -210,7 +210,7 @@ Fallback models are a conservative startup model list. Actual Cursor runs still 
 ## Limits
 
 - **Local Cursor SDK agents only.** This extension does not use Cursor cloud agents.
-- **Cursor-side tool use is not exposed as pi tool calls.** You may see a concise Cursor activity trace before the final answer, but you will not get normal pi tool-call rows for Cursor's internal tool activity.
+- **Cursor-side tool use is not exposed as pi tool calls.** Cursor thinking remains visible, and Cursor internal tools are rendered as a bounded pi-like transcript before the final answer where possible, but they are not normal pi `toolCall`/`toolResult` rows because Cursor executes them inside the SDK. This avoids duplicate reads/shell commands, but it also means Cursor runs do not get pi's native green tool-result cards or tool-call counts unless pi adds a non-executing external tool transcript API.
 - **Pi tool schemas are not passed through to Cursor.** This extension is a Cursor provider, not a bridge that forwards pi's tool system into Cursor.
 - **One fresh Cursor agent is created per provider call.** Cursor agent state is not reused between pi provider calls.
 - **Ambient Cursor setting/rule layers are not loaded by default.** The current Cursor SDK writes setting/rule loading logs directly to terminal output, which corrupts pi's TUI, so the extension leaves those layers out.
