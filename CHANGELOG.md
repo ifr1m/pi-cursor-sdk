@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Avoid loading failures when another extension already owns `read`, `bash`, or `ls`; Cursor native replay now registers only non-conflicting wrappers and falls back to scrubbed activity transcripts for skipped tools.
+- `PI_CURSOR_NATIVE_TOOL_DISPLAY=0` now skips Cursor native replay tool registration instead of only disabling replay at runtime.
+
 ## 0.1.5 - 2026-05-09
 
 ### Changed
