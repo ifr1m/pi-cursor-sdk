@@ -210,7 +210,7 @@ Fallback models are a conservative startup model list. Actual Cursor runs still 
 ## Limits
 
 - **Local Cursor SDK agents only.** This extension does not use Cursor cloud agents.
-- **Cursor-side tool use is not re-executed by pi.** Cursor still uses its own internal SDK tools. The extension records completed Cursor tool activity and, in interactive TTY sessions, replays supported `read`, `bash`, and `ls` activity through pi's native tool-call path with recorded results (for example green `read` and `$ ...` cards) without forcing Cursor to call pi tools or rerun commands. As Cursor SDK tool completions arrive, the extension mirrors native Codex ordering by ending a tool-use turn, letting pi render the recorded tool results immediately, then continuing with live post-tool Cursor thinking/text, any later Cursor tool batches, or Cursor's final answer as the next assistant turn. Non-interactive/session consumers still get bounded scrubbed transcript data so `pi -p` keeps printing normal assistant text.
+- **Cursor-side tool use is not re-executed by pi.** Cursor still uses its own internal SDK tools. The extension records completed Cursor tool activity and, in interactive TTY sessions, replays supported `read`, `bash`, and `ls` activity through pi's native tool-call path with recorded results (for example green `read` and `$ ...` cards) without forcing Cursor to call pi tools or rerun commands. Native replay wrappers are registered only for tool names not already owned by another extension; skipped tools fall back to the scrubbed Cursor activity transcript. As Cursor SDK tool completions arrive, the extension mirrors native Codex ordering by ending a tool-use turn, letting pi render the recorded tool results immediately, then continuing with live post-tool Cursor thinking/text, any later Cursor tool batches, or Cursor's final answer as the next assistant turn. Non-interactive/session consumers still get bounded scrubbed transcript data so `pi -p` keeps printing normal assistant text.
 - **Pi tool schemas are not passed through to Cursor.** This extension is a Cursor provider, not a bridge that forwards pi's tool system into Cursor.
 - **One fresh Cursor agent is created per provider call.** Cursor agent state is not reused between pi provider calls.
 - **Ambient Cursor setting/rule layers are not loaded by default.** The current Cursor SDK writes setting/rule loading logs directly to terminal output, which corrupts pi's TUI, so the extension leaves those layers out.
@@ -262,6 +262,16 @@ Fast mode is currently off. The footer only shows `cursor fast` when fast mode i
 ### My Cursor app settings or rules do not seem to apply
 
 They are not loaded by default in this extension. See [Limits](#limits).
+
+### Cursor native tool cards conflict with another extension
+
+Cursor native replay is a UI enhancement for interactive TTY sessions. If another extension already owns `read`, `bash`, or `ls`, this extension skips only the conflicting native replay wrapper and uses the scrubbed Cursor activity transcript for that tool instead. To disable Cursor native replay registration entirely, start pi with:
+
+```bash
+PI_CURSOR_NATIVE_TOOL_DISPLAY=0 pi --model cursor/composer-2
+```
+
+`PI_CURSOR_REGISTER_NATIVE_TOOLS=0` is also accepted as a registration-only opt-out.
 
 ## Development
 

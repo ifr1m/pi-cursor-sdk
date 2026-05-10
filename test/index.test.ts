@@ -11,15 +11,42 @@ vi.mock("../src/cursor-provider.js", () => ({
 import extensionFactory from "../src/index.js";
 import { discoverModels } from "../src/model-discovery.js";
 import { streamCursor } from "../src/cursor-provider.js";
-import { __testUtils as nativeToolDisplayTestUtils, recordCursorNativeToolDisplay } from "../src/cursor-native-tool-display.js";
+import {
+	__testUtils as nativeToolDisplayTestUtils,
+	canRenderCursorToolNatively,
+	recordCursorNativeToolDisplay,
+} from "../src/cursor-native-tool-display.js";
 
 const mockedDiscover = vi.mocked(discoverModels);
 const mockedStreamCursor = vi.mocked(streamCursor);
 
-function createMockPi() {
+function createBuiltinToolInfo(name: string) {
+	return {
+		name,
+		description: "",
+		parameters: {},
+		sourceInfo: { source: "builtin", path: `<builtin:${name}>` },
+	};
+}
+
+async function runSessionStartHandlers(pi: ReturnType<typeof createMockPi>, ctxOverrides: Record<string, unknown> = {}): Promise<void> {
+	const notify = vi.fn();
+	const ctx = {
+		hasUI: true,
+		ui: { notify, setStatus: vi.fn() },
+		sessionManager: { getBranch: vi.fn(() => []) },
+		...ctxOverrides,
+	};
+	for (const handler of pi._handlers.get("session_start") ?? []) {
+		await handler({ reason: "startup" }, ctx);
+	}
+}
+
+function createMockPi(existingTools?: any[]) {
 	const registered: Array<{ name: string; config: Record<string, unknown> }> = [];
 	const tools: any[] = [];
 	const handlers = new Map<string, Array<(event: unknown, ctx: any) => Promise<void> | void>>();
+	const initialTools = existingTools ?? ["read", "bash", "ls"].map(createBuiltinToolInfo);
 	return {
 		registerProvider: vi.fn((name: string, config: Record<string, unknown>) => {
 			registered.push({ name, config });
@@ -28,6 +55,19 @@ function createMockPi() {
 		registerCommand: vi.fn(),
 		registerTool: vi.fn((tool: any) => {
 			tools.push(tool);
+		}),
+		getAllTools: vi.fn(() => {
+			const toolsByName = new Map<string, any>();
+			for (const tool of initialTools) toolsByName.set(tool.name, tool);
+			for (const tool of tools) {
+				toolsByName.set(tool.name, {
+					name: tool.name,
+					description: tool.description,
+					parameters: tool.parameters,
+					sourceInfo: { source: "test", path: "pi-cursor-sdk-test" },
+				});
+			}
+			return [...toolsByName.values()];
 		}),
 		sendMessage: vi.fn(),
 		on: vi.fn((event: string, handler: (event: unknown, ctx: any) => Promise<void> | void) => {
@@ -44,6 +84,8 @@ function createMockPi() {
 describe("extension factory", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		delete process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY;
+		delete process.env.PI_CURSOR_REGISTER_NATIVE_TOOLS;
 		nativeToolDisplayTestUtils.reset();
 	});
 
@@ -61,8 +103,10 @@ describe("extension factory", () => {
 		];
 		mockedDiscover.mockResolvedValueOnce(mockModels);
 
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const pi = createMockPi();
 		await extensionFactory(pi as any);
+		await runSessionStartHandlers(pi);
 
 		expect(pi.registerFlag).toHaveBeenCalledWith(
 			"cursor-fast",
@@ -178,9 +222,11 @@ describe("extension factory", () => {
 	});
 
 	it("registered native Cursor tool wrappers return recorded Cursor results without executing built-ins", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		mockedDiscover.mockResolvedValueOnce([]);
 		const pi = createMockPi();
 		await extensionFactory(pi as any);
+		await runSessionStartHandlers(pi);
 
 		recordCursorNativeToolDisplay({
 			id: "cursor-tool-1",
@@ -198,5 +244,38 @@ describe("extension factory", () => {
 			details: undefined,
 			terminate: true,
 		});
+	});
+
+	it("does not register native Cursor tool wrappers when native display is disabled", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createMockPi();
+		await extensionFactory(pi as any);
+		await runSessionStartHandlers(pi);
+
+		expect(pi.registerTool).not.toHaveBeenCalled();
+		expect(canRenderCursorToolNatively("read")).toBe(false);
+	});
+
+	it("skips only native Cursor tool wrappers owned by another extension", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createMockPi([
+			{
+				name: "read",
+				description: "hashline read",
+				parameters: {},
+				sourceInfo: { source: "package", path: "/opt/homebrew/lib/node_modules/pi-hashline-edit/index.ts" },
+			},
+			createBuiltinToolInfo("bash"),
+			createBuiltinToolInfo("ls"),
+		]);
+		await extensionFactory(pi as any);
+		await runSessionStartHandlers(pi);
+
+		expect(pi._tools.map((tool) => tool.name)).toEqual(["bash", "ls"]);
+		expect(canRenderCursorToolNatively("read")).toBe(false);
+		expect(canRenderCursorToolNatively("bash")).toBe(true);
+		expect(canRenderCursorToolNatively("ls")).toBe(true);
 	});
 });

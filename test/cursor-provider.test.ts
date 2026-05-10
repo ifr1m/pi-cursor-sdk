@@ -73,6 +73,36 @@ async function collectEvents(stream: ReturnType<typeof streamCursor>) {
 	return events;
 }
 
+async function registerNativeToolDisplayForTest(registeredTools: any[]): Promise<void> {
+	const handlers: Array<(event: unknown, ctx: any) => Promise<void> | void> = [];
+	registerCursorNativeToolDisplay({
+		on: vi.fn((event: string, handler: (event: unknown, ctx: any) => Promise<void> | void) => {
+			if (event === "session_start") handlers.push(handler);
+		}),
+		registerTool: vi.fn((tool: any) => {
+			registeredTools.push(tool);
+		}),
+		getAllTools: vi.fn(() => {
+			const toolsByName = new Map<string, any>();
+			for (const name of ["read", "bash", "ls"]) {
+				toolsByName.set(name, { name, description: "", parameters: {}, sourceInfo: { source: "builtin", path: `<builtin:${name}>` } });
+			}
+			for (const tool of registeredTools) {
+				toolsByName.set(tool.name, {
+					name: tool.name,
+					description: tool.description,
+					parameters: tool.parameters,
+					sourceInfo: { source: "test", path: "cursor-native-tool-display-test" },
+				});
+			}
+			return [...toolsByName.values()];
+		}),
+	} as any);
+	for (const handler of handlers) {
+		await handler({ reason: "startup" }, { hasUI: false, ui: { notify: vi.fn() } });
+	}
+}
+
 const cursorModelItems: ModelListItem[] = [
 	{
 		id: "gpt-5.5",
@@ -339,11 +369,7 @@ describe("streamCursor", () => {
 	it("replays native Cursor tools as a toolUse turn before final text", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: any[] = [];
-		registerCursorNativeToolDisplay({
-			registerTool: vi.fn((tool: any) => {
-				registeredTools.push(tool);
-			}),
-		} as any);
+		await registerNativeToolDisplayForTest(registeredTools);
 
 		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
 		const runWait = vi.fn(
@@ -433,11 +459,7 @@ describe("streamCursor", () => {
 	it("streams post-tool Cursor thinking and text while a native replay run is still active", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: any[] = [];
-		registerCursorNativeToolDisplay({
-			registerTool: vi.fn((tool: any) => {
-				registeredTools.push(tool);
-			}),
-		} as any);
+		await registerNativeToolDisplayForTest(registeredTools);
 
 		let onDelta: ((args: { update: any }) => void) | undefined;
 		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
@@ -536,11 +558,7 @@ describe("streamCursor", () => {
 	it("does not duplicate final result after an earlier post-tool text turn", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: any[] = [];
-		registerCursorNativeToolDisplay({
-			registerTool: vi.fn((tool: any) => {
-				registeredTools.push(tool);
-			}),
-		} as any);
+		await registerNativeToolDisplayForTest(registeredTools);
 
 		let onDelta: ((args: { update: any }) => void) | undefined;
 		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
