@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.7 - 2026-05-10
+
+### Fixed
+
+- Preserve Cursor post-tool thinking and text that arrive before a native replay tool-use turn closes.
+- Count prompt input only once when one Cursor SDK run is split across multiple native replay turns.
+- Tighten native replay registration tests and documentation around registration opt-out behavior.
+
 ## 0.1.6 - 2026-05-10
 
 ### Fixed
