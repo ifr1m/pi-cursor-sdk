@@ -12,6 +12,7 @@ import type { CursorPiToolDisplay } from "./cursor-tool-transcript.js";
 const NATIVE_CURSOR_TOOL_NAMES = ["read", "bash", "ls"] as const;
 type NativeCursorToolName = (typeof NATIVE_CURSOR_TOOL_NAMES)[number];
 const NATIVE_CURSOR_TOOL_DISPLAY_ENV = "PI_CURSOR_NATIVE_TOOL_DISPLAY";
+// Registration-only kill switch for users who want transcript fallback without shadowing read/bash/ls.
 const NATIVE_CURSOR_TOOL_REGISTRATION_ENV = "PI_CURSOR_REGISTER_NATIVE_TOOLS";
 
 export interface CursorNativeToolDisplayItem extends CursorPiToolDisplay {
@@ -19,8 +20,7 @@ export interface CursorNativeToolDisplayItem extends CursorPiToolDisplay {
 	terminate?: boolean;
 }
 
-let nativeToolDisplayEnabled = false;
-const registeredNativeToolNames = new Set<string>();
+const registeredNativeToolNames = new Set<NativeCursorToolName>();
 const nativeToolResults = new Map<string, CursorNativeToolDisplayItem>();
 
 function readBooleanEnv(name: string): boolean | undefined {
@@ -36,13 +36,16 @@ function isCursorNativeToolDisplayRequested(): boolean {
 	return process.stdout.isTTY === true;
 }
 
+function isNativeCursorToolName(toolName: string): toolName is NativeCursorToolName {
+	return NATIVE_CURSOR_TOOL_NAMES.some((nativeToolName) => nativeToolName === toolName);
+}
+
 function isCursorNativeToolRegistrationRequested(): boolean {
-	if (readBooleanEnv(NATIVE_CURSOR_TOOL_REGISTRATION_ENV) === false) return false;
-	return isCursorNativeToolDisplayRequested();
+	return readBooleanEnv(NATIVE_CURSOR_TOOL_REGISTRATION_ENV) !== false && isCursorNativeToolDisplayRequested();
 }
 
 export function isCursorNativeToolDisplayEnabled(): boolean {
-	return nativeToolDisplayEnabled;
+	return registeredNativeToolNames.size > 0;
 }
 
 export function isCursorNativeToolDisplayRuntimeEnabled(): boolean {
@@ -50,7 +53,7 @@ export function isCursorNativeToolDisplayRuntimeEnabled(): boolean {
 }
 
 export function canRenderCursorToolNatively(toolName: string): boolean {
-	return registeredNativeToolNames.has(toolName);
+	return isNativeCursorToolName(toolName) && registeredNativeToolNames.has(toolName);
 }
 
 export function recordCursorNativeToolDisplay(item: CursorNativeToolDisplayItem): void {
@@ -66,7 +69,6 @@ function consumeCursorNativeToolDisplay(id: string): CursorNativeToolDisplayItem
 
 export const __testUtils = {
 	reset(): void {
-		nativeToolDisplayEnabled = false;
 		registeredNativeToolNames.clear();
 		nativeToolResults.clear();
 	},
@@ -103,15 +105,13 @@ function registerNativeCursorTool(pi: ExtensionAPI, toolName: NativeCursorToolNa
 	pi.registerTool(wrapNativeCursorTool(createLsToolDefinition(cwd)));
 }
 
-function getExistingToolOwner(pi: ExtensionAPI, toolName: NativeCursorToolName): string | undefined {
+function hasNonBuiltinTool(pi: ExtensionAPI, toolName: NativeCursorToolName): boolean {
 	const existingTool = pi.getAllTools().find((tool) => tool.name === toolName);
-	if (!existingTool || existingTool.sourceInfo.source === "builtin") return undefined;
-	return existingTool.sourceInfo.path ?? existingTool.sourceInfo.source;
+	return existingTool !== undefined && existingTool.sourceInfo.source !== "builtin";
 }
 
 function registerAvailableNativeCursorTools(pi: ExtensionAPI, ctx: ExtensionContext): void {
 	if (!isCursorNativeToolRegistrationRequested()) {
-		nativeToolDisplayEnabled = false;
 		registeredNativeToolNames.clear();
 		return;
 	}
@@ -120,8 +120,7 @@ function registerAvailableNativeCursorTools(pi: ExtensionAPI, ctx: ExtensionCont
 	const skippedToolNames: string[] = [];
 	for (const toolName of NATIVE_CURSOR_TOOL_NAMES) {
 		if (registeredNativeToolNames.has(toolName)) continue;
-		const existingOwner = getExistingToolOwner(pi, toolName);
-		if (existingOwner) {
+		if (hasNonBuiltinTool(pi, toolName)) {
 			skippedToolNames.push(toolName);
 			continue;
 		}
@@ -129,7 +128,6 @@ function registerAvailableNativeCursorTools(pi: ExtensionAPI, ctx: ExtensionCont
 		registeredNativeToolNames.add(toolName);
 	}
 
-	nativeToolDisplayEnabled = registeredNativeToolNames.size > 0;
 	if (skippedToolNames.length > 0 && readBooleanEnv(NATIVE_CURSOR_TOOL_DISPLAY_ENV) === true && ctx.hasUI) {
 		ctx.ui.notify(
 			`Cursor native tool replay skipped for ${skippedToolNames.join(", ")} because another extension already provides ${skippedToolNames.length === 1 ? "that tool" : "those tools"}. Cursor will use scrubbed activity transcripts for skipped tools.`,
@@ -139,7 +137,7 @@ function registerAvailableNativeCursorTools(pi: ExtensionAPI, ctx: ExtensionCont
 }
 
 export function registerCursorNativeToolDisplay(pi: ExtensionAPI): void {
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", (_event, ctx) => {
 		registerAvailableNativeCursorTools(pi, ctx);
 	});
 }

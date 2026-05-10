@@ -70,6 +70,7 @@ interface CursorNativeLiveRun {
 	id: string;
 	agent: SDKAgent;
 	promptInputTokens: number;
+	promptInputTokensReported: boolean;
 	pendingEvents: CursorNativeQueuedEvent[];
 	textDeltas: string[];
 	finalText?: string;
@@ -374,6 +375,13 @@ function collectCursorNativeToolBatch(run: CursorNativeLiveRun): CursorNativeToo
 	return tools;
 }
 
+function takeCursorNativePromptInputTokens(run: CursorNativeLiveRun): number {
+	// Native replay can split one Cursor run into multiple pi turns; count prompt input once.
+	if (run.promptInputTokensReported) return 0;
+	run.promptInputTokensReported = true;
+	return run.promptInputTokens;
+}
+
 function emitCursorNativeToolUseTurn(
 	stream: AssistantMessageEventStream,
 	partial: AssistantMessage,
@@ -396,7 +404,7 @@ function emitCursorNativeToolUseTurn(
 		if (block.type === "toolCall") stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial });
 		recordCursorNativeToolDisplay({ ...tool, terminate: shouldTerminate });
 	}
-	setApproximateUsage(partial, run.promptInputTokens, outputText);
+	setApproximateUsage(partial, takeCursorNativePromptInputTokens(run), outputText);
 	partial.stopReason = "toolUse";
 	stream.push({ type: "done", reason: "toolUse", message: partial });
 }
@@ -455,7 +463,7 @@ async function emitCursorNativeRunNextTurn(
 			if (!outputText) {
 				outputText += await emitTextDeltas(stream, partial, splitTextIntoReplayDeltas(run.finalText ?? run.textDeltas.join("")));
 			}
-			setApproximateUsage(partial, run.promptInputTokens, outputText);
+			setApproximateUsage(partial, takeCursorNativePromptInputTokens(run), outputText);
 			partial.stopReason = "stop";
 			stream.push({ type: "done", reason: "stop", message: partial });
 			await disposeCursorNativeRun(run);
@@ -534,12 +542,13 @@ export function streamCursor(
 			const useNativeToolReplay = isCursorNativeToolDisplayRuntimeEnabled();
 			const nativeReplayId = createCursorNativeReplayId();
 			const textDeltas: string[] = [];
-			let liveStreamClosed = false;
+			let nativeToolReplayStarted = false;
 			const liveRun: CursorNativeLiveRun | undefined = useNativeToolReplay
 				? {
 						id: nativeReplayId,
 						agent,
 						promptInputTokens,
+						promptInputTokensReported: false,
 						pendingEvents: [],
 						textDeltas,
 						done: false,
@@ -651,6 +660,7 @@ export function streamCursor(
 				completedToolFingerprints.add(fingerprint);
 
 				if (useNativeToolReplay && canRenderCursorToolNatively(display.toolName) && liveRun) {
+					nativeToolReplayStarted = true;
 					const id = `${nativeReplayId}-tool-${++nativeToolDisplayCounter}`;
 					queueCursorNativeEvent(liveRun, {
 						type: "tool",
@@ -672,19 +682,19 @@ export function streamCursor(
 
 				if (update.type === "text-delta") {
 					textDeltas.push(update.text);
-					if (liveRun && liveStreamClosed) {
+					if (liveRun && nativeToolReplayStarted) {
 						queueCursorNativeEvent(liveRun, { type: "text-delta", text: update.text });
 					} else if (!useNativeToolReplay) {
 						appendLiveTextDelta(update.text);
 					}
 				} else if (update.type === "thinking-delta") {
-					if (liveRun && liveStreamClosed) {
+					if (liveRun && nativeToolReplayStarted) {
 						queueCursorNativeEvent(liveRun, { type: "thinking-delta", text: update.text });
 					} else {
 						appendTraceDelta(update.text);
 					}
 				} else if (update.type === "thinking-completed") {
-					if (liveRun && liveStreamClosed) {
+					if (liveRun && nativeToolReplayStarted) {
 						queueCursorNativeEvent(liveRun, { type: "thinking-completed" });
 					} else {
 						closeTraceBlock();
@@ -697,7 +707,7 @@ export function streamCursor(
 					handleCompletedToolCall(mergedToolCall);
 				} else if (update.type === "summary") {
 					const summary = `Cursor summary: ${truncateSingleLine(update.summary)}\n`;
-					if (liveRun && liveStreamClosed) {
+					if (liveRun && nativeToolReplayStarted) {
 						queueCursorNativeEvent(liveRun, { type: "thinking-delta", text: summary });
 					} else {
 						appendTraceDelta(summary);
@@ -754,7 +764,6 @@ export function streamCursor(
 				await waitForCursorNativeRunProgress(liveRun, options?.signal);
 				await settleCursorNativeToolBatch(liveRun);
 				closeTraceBlock();
-				liveStreamClosed = true;
 				await emitCursorNativeRunNextTurn(stream, partial, liveRun, options?.signal);
 				agent = null;
 				return;

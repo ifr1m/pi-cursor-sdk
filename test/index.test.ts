@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ExtensionAPI, ExtensionContext, ProviderConfig, ToolDefinition, ToolInfo } from "@earendil-works/pi-coding-agent";
+import { Type, type TSchema } from "typebox";
 
 vi.mock("../src/model-discovery.js", () => ({
 	discoverModels: vi.fn(),
@@ -20,18 +22,26 @@ import {
 const mockedDiscover = vi.mocked(discoverModels);
 const mockedStreamCursor = vi.mocked(streamCursor);
 
-function createBuiltinToolInfo(name: string) {
+type DiscoverOptions = Parameters<typeof discoverModels>[0];
+type RegisteredTool = ToolDefinition<TSchema, unknown, unknown>;
+type TestExtensionContext = Pick<ExtensionContext, "hasUI"> & {
+	ui: Pick<ExtensionContext["ui"], "notify" | "setStatus">;
+	sessionManager: Pick<ExtensionContext["sessionManager"], "getBranch">;
+};
+type TestEventHandler = (event: unknown, ctx: TestExtensionContext) => Promise<void> | void;
+
+function createBuiltinToolInfo(name: string): ToolInfo {
 	return {
 		name,
 		description: "",
-		parameters: {},
-		sourceInfo: { source: "builtin", path: `<builtin:${name}>` },
+		parameters: Type.Object({}),
+		sourceInfo: { source: "builtin", path: `<builtin:${name}>`, scope: "temporary", origin: "top-level" },
 	};
 }
 
-async function runSessionStartHandlers(pi: ReturnType<typeof createMockPi>, ctxOverrides: Record<string, unknown> = {}): Promise<void> {
+async function runSessionStartHandlers(pi: ReturnType<typeof createMockPi>, ctxOverrides: Partial<TestExtensionContext> = {}): Promise<void> {
 	const notify = vi.fn();
-	const ctx = {
+	const ctx: TestExtensionContext = {
 		hasUI: true,
 		ui: { notify, setStatus: vi.fn() },
 		sessionManager: { getBranch: vi.fn(() => []) },
@@ -42,35 +52,35 @@ async function runSessionStartHandlers(pi: ReturnType<typeof createMockPi>, ctxO
 	}
 }
 
-function createMockPi(existingTools?: any[]) {
-	const registered: Array<{ name: string; config: Record<string, unknown> }> = [];
-	const tools: any[] = [];
-	const handlers = new Map<string, Array<(event: unknown, ctx: any) => Promise<void> | void>>();
+function createMockPi(existingTools?: ToolInfo[]) {
+	const registered: Array<{ name: string; config: ProviderConfig }> = [];
+	const tools: RegisteredTool[] = [];
+	const handlers = new Map<string, TestEventHandler[]>();
 	const initialTools = existingTools ?? ["read", "bash", "ls"].map(createBuiltinToolInfo);
 	return {
-		registerProvider: vi.fn((name: string, config: Record<string, unknown>) => {
+		registerProvider: vi.fn((name: string, config: ProviderConfig) => {
 			registered.push({ name, config });
 		}),
 		registerFlag: vi.fn(),
 		registerCommand: vi.fn(),
-		registerTool: vi.fn((tool: any) => {
+		registerTool: vi.fn((tool: RegisteredTool) => {
 			tools.push(tool);
 		}),
 		getAllTools: vi.fn(() => {
-			const toolsByName = new Map<string, any>();
+			const toolsByName = new Map<string, ToolInfo>();
 			for (const tool of initialTools) toolsByName.set(tool.name, tool);
 			for (const tool of tools) {
 				toolsByName.set(tool.name, {
 					name: tool.name,
 					description: tool.description,
 					parameters: tool.parameters,
-					sourceInfo: { source: "test", path: "pi-cursor-sdk-test" },
+					sourceInfo: { source: "test", path: "pi-cursor-sdk-test", scope: "temporary", origin: "top-level" },
 				});
 			}
 			return [...toolsByName.values()];
 		}),
 		sendMessage: vi.fn(),
-		on: vi.fn((event: string, handler: (event: unknown, ctx: any) => Promise<void> | void) => {
+		on: vi.fn((event: string, handler: TestEventHandler) => {
 			handlers.set(event, [...(handlers.get(event) ?? []), handler]);
 		}),
 		getFlag: vi.fn().mockReturnValue(false),
@@ -105,7 +115,7 @@ describe("extension factory", () => {
 
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const pi = createMockPi();
-		await extensionFactory(pi as any);
+		await extensionFactory(pi as unknown as ExtensionAPI);
 		await runSessionStartHandlers(pi);
 
 		expect(pi.registerFlag).toHaveBeenCalledWith(
@@ -159,7 +169,7 @@ describe("extension factory", () => {
 		]);
 
 		const pi = createMockPi();
-		await extensionFactory(pi as any);
+		await extensionFactory(pi as unknown as ExtensionAPI);
 
 		expect(pi.registerProvider).toHaveBeenCalledOnce();
 		const [call] = pi._registered;
@@ -167,7 +177,7 @@ describe("extension factory", () => {
 	});
 
 	it("notifies interactive users when fallback models are registered", async () => {
-		mockedDiscover.mockImplementationOnce(async (options: any) => {
+		mockedDiscover.mockImplementationOnce(async (options: DiscoverOptions) => {
 			options.onFallback({
 				reason: "missing-api-key",
 				message:
@@ -187,7 +197,7 @@ describe("extension factory", () => {
 		});
 
 		const pi = createMockPi();
-		await extensionFactory(pi as any);
+		await extensionFactory(pi as unknown as ExtensionAPI);
 
 		const notify = vi.fn();
 		const ctx = {
@@ -205,13 +215,13 @@ describe("extension factory", () => {
 	});
 
 	it("does not notify fallback discovery issues without UI", async () => {
-		mockedDiscover.mockImplementationOnce(async (options: any) => {
+		mockedDiscover.mockImplementationOnce(async (options: DiscoverOptions) => {
 			options.onFallback({ reason: "empty-model-list", message: "Cursor model discovery returned no models; using fallback Cursor model list." });
 			return [];
 		});
 
 		const pi = createMockPi();
-		await extensionFactory(pi as any);
+		await extensionFactory(pi as unknown as ExtensionAPI);
 
 		const notify = vi.fn();
 		const ctx = { hasUI: false, ui: { notify, setStatus: vi.fn() }, sessionManager: { getBranch: vi.fn(() => []) } };
@@ -225,7 +235,7 @@ describe("extension factory", () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		mockedDiscover.mockResolvedValueOnce([]);
 		const pi = createMockPi();
-		await extensionFactory(pi as any);
+		await extensionFactory(pi as unknown as ExtensionAPI);
 		await runSessionStartHandlers(pi);
 
 		recordCursorNativeToolDisplay({
@@ -250,7 +260,19 @@ describe("extension factory", () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
 		mockedDiscover.mockResolvedValueOnce([]);
 		const pi = createMockPi();
-		await extensionFactory(pi as any);
+		await extensionFactory(pi as unknown as ExtensionAPI);
+		await runSessionStartHandlers(pi);
+
+		expect(pi.registerTool).not.toHaveBeenCalled();
+		expect(canRenderCursorToolNatively("read")).toBe(false);
+	});
+
+	it("does not register native Cursor tool wrappers when native tool registration is disabled", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		process.env.PI_CURSOR_REGISTER_NATIVE_TOOLS = "0";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createMockPi();
+		await extensionFactory(pi as unknown as ExtensionAPI);
 		await runSessionStartHandlers(pi);
 
 		expect(pi.registerTool).not.toHaveBeenCalled();
@@ -264,13 +286,18 @@ describe("extension factory", () => {
 			{
 				name: "read",
 				description: "hashline read",
-				parameters: {},
-				sourceInfo: { source: "package", path: "/opt/homebrew/lib/node_modules/pi-hashline-edit/index.ts" },
+				parameters: Type.Object({}),
+				sourceInfo: {
+					source: "package",
+					path: "/opt/homebrew/lib/node_modules/pi-hashline-edit/index.ts",
+					scope: "user",
+					origin: "package",
+				},
 			},
 			createBuiltinToolInfo("bash"),
 			createBuiltinToolInfo("ls"),
 		]);
-		await extensionFactory(pi as any);
+		await extensionFactory(pi as unknown as ExtensionAPI);
 		await runSessionStartHandlers(pi);
 
 		expect(pi._tools.map((tool) => tool.name)).toEqual(["bash", "ls"]);
