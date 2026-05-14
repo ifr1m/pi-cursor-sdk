@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.9 - 2026-05-14
+
+### Fixed
+
+- Clean up recorded native Cursor tool replay outputs when abandoned replay runs are disposed, avoiding retained file or command output in process memory.
+- Restore `/cursor-fast` state when session persistence fails during command handling.
+- Preserve distinct same-payload Cursor tool completions while deduplicating duplicate SDK completion surfaces.
+- Respect exact `model@context` context-window cache overrides before falling back to parsed base-model context values.
+- Emit native replay text block endings with saved content indexes instead of searching by object identity.
+- Redact discovery failure details with the same secret patterns used for stream errors.
+
+### Changed
+
+- Update fallback Sonnet 4.6 context variants from `300k` to the current `200k` catalog variant.
+- Skip ambiguous Cursor SDK aliases shared by multiple base models or colliding with base model IDs, preventing misleading pi model rows.
+- Reduce context-window cache reloads during model catalog registration.
+- Document image carry-forward as a product decision rather than silently changing current latest-user-message image forwarding behavior.
+
 ## 0.1.8 - 2026-05-14
 
 ### Changed
