@@ -4,6 +4,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { BUNDLED_CONTEXT_WINDOWS } from "./bundled-context-windows.js";
 
 const CONTEXT_WINDOW_CACHE_FILE = "cursor-sdk-context-windows.json";
+let userContextWindowOverrideLoadCount = 0;
 
 interface ContextWindowCacheFile {
 	contextWindows?: Record<string, number>;
@@ -18,6 +19,7 @@ function isPositiveInteger(value: unknown): value is number {
 }
 
 function loadUserContextWindowOverrides(): Map<string, number> {
+	userContextWindowOverrideLoadCount += 1;
 	const path = getCachePath();
 	const overrides = new Map<string, number>();
 	if (!existsSync(path)) return overrides;
@@ -80,4 +82,8 @@ export function saveCachedContextWindow(modelId: string, contextWindow: number):
 
 export const __testUtils = {
 	getCachePath,
+	getUserContextWindowOverrideLoadCount: () => userContextWindowOverrideLoadCount,
+	resetUserContextWindowOverrideLoadCount: () => {
+		userContextWindowOverrideLoadCount = 0;
+	},
 };

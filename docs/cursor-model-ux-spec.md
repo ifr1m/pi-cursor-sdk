@@ -13,6 +13,7 @@ Current implementation notes:
 - Cursor `fast` is extension state, not model identity.
 - Cursor fast status uses `ctx.ui.setStatus()`; the default pi footer remains intact.
 - Installed `@cursor/sdk` user messages accept images, and Cursor models are treated as image-capable; registered input metadata is `text` plus `image`.
+- Product decision pending: image payload forwarding currently sends images only from the latest user message. If the latest user turn is plain text after an earlier image turn, the transcript keeps an `[image omitted from transcript]` placeholder but no image bytes are sent to Cursor. Changing this to carry images forward across turns requires a deliberate product decision about token cost, privacy, stale visual context, and expected multimodal follow-up behavior.
 - `@cursor/sdk` is a package dependency of this extension; users should not need a global SDK install.
 - Cursor auth uses pi-native API-key resolution for provider `cursor`: CLI `--api-key`, stored `~/.pi/agent/auth.json` API key from `/login`, then `CURSOR_API_KEY`. The extension config file stores only non-secret Cursor-only state such as fast defaults.
 - Local agents do not pass `settingSources` by default because the current Cursor SDK writes setting/rule loading INFO logs directly to terminal output, which corrupts pi's TUI.
@@ -21,7 +22,7 @@ Current implementation notes:
 - Cursor SDK usage events report cumulative internal agent/tool/cache work, not the replayable pi prompt context. The extension reports approximate prompt/output usage for pi context display and compaction decisions instead of copying raw Cursor SDK usage. When native replay splits one Cursor SDK run into multiple pi turns, prompt input is counted once for the run; later synthetic replay turns report `input: 0` and only their own output estimate.
 - For models without a catalog `context` parameter, context windows are not hardcoded. The extension ships a bundled SDK-derived default/non-Max cache generated from `createAgentPlatform().checkpointStore.loadLatest(agentId).tokenDetails.maxTokens`. Successful runs can update a local override cache, but model discovery does not probe models at startup.
 - Max Mode context windows are distinct from default/non-Max context windows. `@cursor/sdk` 1.0.13 documentation says the SDK may enable Max Mode automatically when a selected model requires it, but the public local-agent `ModelSelection` path still does not expose a manual Max Mode selector. Do not advertise Max Mode context windows unless the SDK catalog exposes an exact parameter/variant or the SDK public API adds a Max Mode selector that the extension actually sends.
-- `@cursor/sdk` 1.0.13 adds latest-style `ModelListItem.aliases`. The extension registers those aliases as pi model IDs (with the same context suffixes when applicable) and sends the alias back in `ModelSelection.id`, while sharing Cursor-only state such as fast defaults with the underlying catalog `id`.
+- `@cursor/sdk` 1.0.13 adds latest-style `ModelListItem.aliases`. The extension registers only unambiguous aliases as pi model IDs (with the same context suffixes when applicable) and sends the alias back in `ModelSelection.id`, while sharing Cursor-only state such as fast defaults with the underlying catalog `id`. Aliases shared by multiple base models, such as generic family aliases, are skipped because the pi row metadata would otherwise imply one base model while Cursor may resolve the alias to another.
 
 ## Goal
 
@@ -137,8 +138,9 @@ Register a `cursor` provider with `pi.registerProvider()`.
 
 Rules:
 
-- Register one pi model for each Cursor base model and SDK alias when there is no Cursor `context` parameter.
-- Register one pi model per Cursor `context` value for each Cursor base model and SDK alias when the model exposes a `context` parameter.
+- Register one pi model for each Cursor base model and each unambiguous SDK alias when there is no Cursor `context` parameter.
+- Register one pi model per Cursor `context` value for each Cursor base model and each unambiguous SDK alias when the model exposes a `context` parameter.
+- Skip SDK aliases that collide with another base model ID or are shared by multiple base models; those aliases can resolve differently from the pi row metadata.
 - Do not encode `reasoning`, `effort`, `thinking`, or `fast` into pi model IDs.
 - Prefer stable, readable `@<context>` suffixes that do not conflict with pi's final `:<thinking>` suffix parser.
 - Sort Cursor models by base ID, then context value in Cursor SDK order before calling `pi.registerProvider()`. Registration order matters for `/model` display and model cycling; `--list-models` sorts output separately.
@@ -486,42 +488,22 @@ Fast flag example:
 pi --model cursor/gpt-5.5@1m --cursor-fast -p "Say ok only"
 ```
 
-## Current Discovered Model Capability Examples
+## Discovered Model Capability Examples
 
-Current live Cursor data says:
+These examples document the capability shapes the extension handles, not an exhaustive live catalog. The exact Cursor catalog changes over time; use `pi -e . --list-models cursor` or `Cursor.models.list()` for the current model surface. When the SDK reports aliases, only unambiguous aliases are registered; shared generic aliases are skipped.
 
-| Model | Cursor controls | Pi representation |
+| Example model shape | Cursor controls | Pi representation |
 |---|---|---|
-| `default` | none | plain model |
-| `composer-2` | fast | plain model + fast extension state |
-| `composer-1.5` | none | plain model |
-| `gpt-5.5` | context, reasoning, fast | context variants + native thinking + fast state |
-| `gpt-5.4` | context, reasoning, fast | context variants + native thinking + fast state |
-| `gpt-5.4-mini` | reasoning | plain model + native thinking |
-| `gpt-5.4-nano` | reasoning | plain model + native thinking |
-| `gpt-5.3-codex` | reasoning, fast | plain model + native thinking + fast state |
-| `gpt-5.3-codex-spark` | reasoning | plain model + native thinking |
-| `gpt-5.2` | reasoning, fast | plain model + native thinking + fast state |
-| `gpt-5.2-codex` | reasoning, fast | plain model + native thinking + fast state |
-| `gpt-5.1-codex-max` | reasoning, fast | plain model + native thinking + fast state |
-| `gpt-5.1-codex-mini` | reasoning | plain model + native thinking |
-| `gpt-5.1` | reasoning | plain model + native thinking |
-| `claude-opus-4-7` | thinking, context, effort | context variants + native thinking |
-| `claude-opus-4-6` | thinking, context, effort, fast | context variants + native thinking + fast state |
-| `claude-opus-4-5` | thinking | plain model + native thinking |
-| `claude-sonnet-4-6` | thinking, context, effort | context variants + native thinking |
-| `claude-sonnet-4-5` | thinking, context | context-qualified model + native thinking |
-| `claude-sonnet-4` | thinking, context | context-qualified model + native thinking |
-| `claude-haiku-4-5` | thinking | plain model + native thinking |
-| `grok-4.3` | context | context variants |
-| `grok-4-20` | thinking | plain model + native thinking |
-| `gemini-3.1-pro` | none | plain model |
-| `gemini-3-flash` | none | plain model |
-| `gemini-2.5-flash` | none | plain model |
-| `gpt-5-mini` | none | plain model |
-| `kimi-k2.5` | none | plain model |
+| plain model, such as `default` or models with no exposed controls | none | plain model |
+| `composer-2`-style model | fast | plain model + fast extension state |
+| GPT-style reasoning model with context variants | context, reasoning, fast when exposed | context variants + native thinking + optional fast state |
+| Claude-style thinking model with context variants | thinking, context, effort when exposed | context variants + native thinking + optional fast state |
+| Claude-style thinking model without context variants | thinking and/or effort | plain model + native thinking |
+| context-only model | context | context variants |
+| unique latest alias for any shape | aliases | same pi rows as the base model shape, using the alias as `ModelSelection.id` |
+| shared generic alias across multiple base models | aliases | skipped to avoid misleading pi rows |
 
-If Cursor later adds `fast`, `context`, `reasoning`, or `effort` to a model, the extension picks it up dynamically.
+If Cursor later adds `fast`, `context`, `reasoning`, `effort`, or aliases to a model, the extension picks up unambiguous capability changes dynamically.
 
 ## Detailed Examples
 

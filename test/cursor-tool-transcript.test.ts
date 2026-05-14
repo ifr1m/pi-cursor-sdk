@@ -100,6 +100,30 @@ describe("formatCursorToolTranscript", () => {
 		expect(transcript).toContain("Took 0.0s");
 	});
 
+	it("builds native pi display data for Cursor ls calls without parsing formatted transcript headers", () => {
+		const display = buildCursorPiToolDisplay({
+			name: "ls",
+			args: { path: "." },
+			result: {
+				status: "success",
+				value: {
+					directoryTreeRoot: {
+						name: "root",
+						children: [{ name: "src" }, { name: "test" }],
+					},
+				},
+			},
+		});
+
+		expect(display).toMatchObject({
+			toolName: "ls",
+			args: { path: "." },
+			result: { content: [{ type: "text", text: "root\n  src\n  test" }] },
+			isError: false,
+		});
+		expect(display.result.content[0].text).not.toContain("ls .");
+	});
+
 	it("builds native pi display data for Cursor read and shell calls", () => {
 		const readDisplay = buildCursorPiToolDisplay({
 			name: "read",

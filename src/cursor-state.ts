@@ -105,16 +105,25 @@ function restoreMapValue(map: Map<string, boolean>, key: string, previous: boole
 function persistFastPreference(pi: ExtensionAPI, baseModelId: string, fast: boolean): void {
 	const previousSession = sessionFastPreferences.get(baseModelId);
 	const previousGlobal = globalFastPreferences.get(baseModelId);
+	let savedGlobal = false;
 	sessionFastPreferences.set(baseModelId, fast);
 	globalFastPreferences.set(baseModelId, fast);
 	try {
 		saveGlobalFastPreferences();
+		savedGlobal = true;
+		pi.appendEntry<CursorFastEntryData>(FAST_ENTRY_TYPE, { baseModelId, fast });
 	} catch (error) {
 		restoreMapValue(sessionFastPreferences, baseModelId, previousSession);
 		restoreMapValue(globalFastPreferences, baseModelId, previousGlobal);
+		if (savedGlobal) {
+			try {
+				saveGlobalFastPreferences();
+			} catch {
+				// Preserve the original append failure reported to the user.
+			}
+		}
 		throw error;
 	}
-	pi.appendEntry<CursorFastEntryData>(FAST_ENTRY_TYPE, { baseModelId, fast });
 }
 
 export function getEffectiveFastForModelId(modelId: string): boolean | undefined {

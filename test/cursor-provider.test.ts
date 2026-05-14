@@ -32,7 +32,7 @@ vi.mock("@cursor/sdk", () => {
 });
 
 import { Agent, createAgentPlatform } from "@cursor/sdk";
-import { streamCursor } from "../src/cursor-provider.js";
+import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../src/model-discovery.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
 import { __testUtils as nativeToolDisplayTestUtils, registerCursorNativeToolDisplay } from "../src/cursor-native-tool-display.js";
@@ -197,6 +197,8 @@ describe("streamCursor", () => {
 		vi.clearAllMocks();
 		delete process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY;
 		delete process.env.PI_CURSOR_REGISTER_NATIVE_TOOLS;
+		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
+		cursorProviderTestUtils.resetCursorNativeReplayIdleDisposeMs();
 		nativeToolDisplayTestUtils.reset();
 		modelDiscoveryTestUtils.registerModelItems(cursorModelItems);
 		// Re-setup default mock return after clearing
@@ -383,6 +385,52 @@ describe("streamCursor", () => {
 		expect(trace).toContain("# pi-cursor-sdk");
 	});
 
+	it("dedupes a completed tool call reported through both delta and step callbacks", async () => {
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void; onStep: (a: unknown) => void }) => {
+			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "README.md" } }, callId: "c1" } });
+			opts.onStep({
+				step: {
+					type: "toolCall",
+					message: {
+						type: "read",
+						args: { path: "README.md" },
+						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
+					},
+				},
+			});
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "read",
+						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
+					},
+					callId: "c1",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "done" }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
+		const events = await collectEvents(stream);
+		const trace = events.filter((e: any) => e.type === "thinking_delta").map((e: any) => e.delta).join("");
+
+		expect(trace.match(/read README\.md/g)).toHaveLength(1);
+		expect(trace.match(/# pi-cursor-sdk/g)).toHaveLength(1);
+	});
+
 	it("replays native Cursor tools as a toolUse turn before final text", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: RegisteredTool[] = [];
@@ -470,6 +518,140 @@ describe("streamCursor", () => {
 		expect(replayText).toBe("Final answer only.");
 		expect(replayDone.reason).toBe("stop");
 		expect(replayDone.message.content).toEqual([{ type: "text", text: "Final answer only." }]);
+	});
+
+	it("disposes abandoned native replay runs after the idle timeout", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		cursorProviderTestUtils.setCursorNativeReplayIdleDisposeMs(1);
+		const registeredTools: RegisteredTool[] = [];
+		await registerNativeToolDisplayForTest(registeredTools);
+
+		const mockDispose = vi.fn().mockResolvedValue(undefined);
+		const runWait = vi.fn(() => new Promise<{ id: string; status: "finished"; result: string }>(() => {}));
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "README.md" } }, callId: "c1" } });
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "read",
+						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
+					},
+					callId: "c1",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "running",
+				wait: runWait,
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: mockDispose,
+		});
+
+		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		const done = events.find((e: any) => e.type === "done") as any;
+
+		expect(done.reason).toBe("toolUse");
+		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(1);
+		expect(nativeToolDisplayTestUtils.nativeToolResultCount()).toBe(1);
+		expect(mockDispose).not.toHaveBeenCalled();
+
+		await vi.waitFor(() => expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0));
+		expect(nativeToolDisplayTestUtils.nativeToolResultCount()).toBe(0);
+		expect(mockDispose).toHaveBeenCalledTimes(1);
+	});
+
+	it("cleans up pending native replay runs when replay aborts mid-flight", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		const registeredTools: RegisteredTool[] = [];
+		await registerNativeToolDisplayForTest(registeredTools);
+
+		const controller = new AbortController();
+		const mockDispose = vi.fn().mockResolvedValue(undefined);
+		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
+		const runWait = vi.fn(
+			() =>
+				new Promise<{ id: string; status: "finished"; result: string }>((resolve) => {
+					resolveRun = resolve;
+				}),
+		);
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "README.md" } }, callId: "c1" } });
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "read",
+						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
+					},
+					callId: "c1",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "running",
+				wait: runWait,
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: mockDispose,
+		});
+
+		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		const firstDone = firstEvents.find((e: any) => e.type === "done") as any;
+		const toolCall = firstDone.message.content.find((block: any) => block.type === "toolCall");
+		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const toolResult = await readTool.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+
+		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(1);
+		expect(mockDispose).not.toHaveBeenCalled();
+
+		const replayContext = makeContext();
+		replayContext.messages = [
+			...replayContext.messages,
+			firstDone.message,
+			{
+				role: "toolResult",
+				toolCallId: toolCall.id,
+				toolName: "read",
+				content: toolResult.content,
+				details: toolResult.details,
+				isError: false,
+				timestamp: 2,
+			},
+		];
+
+		const replayEventsPromise = collectEvents(streamCursor(makeModel(), replayContext, { apiKey: "test-key", signal: controller.signal }));
+		await Promise.resolve();
+		controller.abort();
+		const replayEvents = await replayEventsPromise;
+		const error = replayEvents.find((e: any) => e.type === "error") as any;
+
+		expect(error.reason).toBe("aborted");
+		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
+		expect(nativeToolDisplayTestUtils.nativeToolResultCount()).toBe(0);
+		expect(mockDispose).toHaveBeenCalledTimes(1);
+
+		resolveRun({ id: "run-1", status: "finished", result: "late result" });
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
+		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
 
 	it("streams post-tool Cursor thinking and text while a native replay run is still active", async () => {
@@ -569,6 +751,7 @@ describe("streamCursor", () => {
 		expect(replayText).toBe("Final answer.");
 		expect(finalDone.reason).toBe("stop");
 		expect(finalDone.message.content.map((block: any) => block.type)).toEqual(["thinking", "text"]);
+		expect(replayEvents.find((event: any) => event.type === "text_end")?.contentIndex).toBe(1);
 	});
 
 	it("queues post-tool thinking and text that arrive before the native tool-use turn closes", async () => {
@@ -665,6 +848,7 @@ describe("streamCursor", () => {
 		expect(replayThinking).toBe("Post-tool thought.");
 		expect(replayText).toBe("Final answer.");
 		expect(finalDone.message.content.map((block: any) => block.type)).toEqual(["thinking", "text"]);
+		expect(replayEvents.find((event: any) => event.type === "text_end")?.contentIndex).toBe(1);
 	});
 
 	it("does not duplicate final result after an earlier post-tool text turn", async () => {
@@ -842,6 +1026,82 @@ describe("streamCursor", () => {
 		expect(trace).toContain("Took 0.0s");
 		expect(trace).not.toContain("call_abc");
 		expect(trace).not.toContain("fc_secret");
+	});
+
+	it("keeps distinct completed tool calls with identical display payloads", async () => {
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			for (const callId of ["c1", "c2"]) {
+				opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "shell", args: { command: "date" } }, callId } });
+				opts.onDelta({
+					update: {
+						type: "tool-call-completed",
+						toolCall: {
+							name: "shell",
+							result: { status: "success", value: { stdout: "Thu May 14\n", stderr: "", exitCode: 0 } },
+						},
+						callId,
+					},
+				});
+			}
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "done" }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
+		const events = await collectEvents(stream);
+		const trace = events.filter((e: any) => e.type === "thinking_delta").map((e: any) => e.delta).join("");
+
+		expect(trace.match(/\$ date/g)).toHaveLength(2);
+		expect(trace.match(/Thu May 14/g)).toHaveLength(2);
+	});
+
+	it("keeps distinct completed tool calls with identical payloads even without started events", async () => {
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			for (const callId of ["c1", "c2"]) {
+				opts.onDelta({
+					update: {
+						type: "tool-call-completed",
+						toolCall: {
+							name: "shell",
+							args: { command: "date" },
+							result: { status: "success", value: { stdout: "Thu May 14\n", stderr: "", exitCode: 0 } },
+						},
+						callId,
+					},
+				});
+			}
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "done" }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
+		const events = await collectEvents(stream);
+		const trace = events.filter((e: any) => e.type === "thinking_delta").map((e: any) => e.delta).join("");
+
+		expect(trace.match(/\$ date/g)).toHaveLength(2);
+		expect(trace.match(/Thu May 14/g)).toHaveLength(2);
 	});
 
 	it("scrubs secrets from cursor tool transcript output", async () => {

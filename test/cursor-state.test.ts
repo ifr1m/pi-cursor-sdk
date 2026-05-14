@@ -134,6 +134,24 @@ describe("Cursor fast state", () => {
 		expect(pi.appendEntry).not.toHaveBeenCalled();
 	});
 
+	it("rolls fast state back when the session journal append fails", async () => {
+		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2": true } }));
+		const { pi, ctx, commands, handlers } = createHarness({ modelId: "composer-2" });
+		pi.appendEntry.mockImplementationOnce(() => {
+			throw new Error("journal unavailable");
+		});
+		await handlers.get("session_start")({}, ctx);
+
+		await commands.get("cursor-fast").handler("", ctx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Failed to save Cursor fast preference"), "error");
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor fast");
+		expect(getEffectiveFastForModelId("composer-2")).toBe(true);
+		expect(JSON.parse(readFileSync(__testUtils.getConfigPath(), "utf-8"))).toEqual({
+			fastDefaults: { "composer-2": true },
+		});
+	});
+
 	it("restores fast state from the active session branch", async () => {
 		const { ctx, handlers } = createHarness({
 			modelId: "composer-2",

@@ -56,9 +56,14 @@ export function canRenderCursorToolNatively(toolName: string): boolean {
 	return isNativeCursorToolName(toolName) && registeredNativeToolNames.has(toolName);
 }
 
-export function recordCursorNativeToolDisplay(item: CursorNativeToolDisplayItem): void {
-	if (!canRenderCursorToolNatively(item.toolName)) return;
+export function recordCursorNativeToolDisplay(item: CursorNativeToolDisplayItem): boolean {
+	if (!canRenderCursorToolNatively(item.toolName)) return false;
 	nativeToolResults.set(item.id, item);
+	return true;
+}
+
+export function deleteCursorNativeToolDisplay(id: string): void {
+	nativeToolResults.delete(id);
 }
 
 function consumeCursorNativeToolDisplay(id: string): CursorNativeToolDisplayItem | undefined {
@@ -68,6 +73,7 @@ function consumeCursorNativeToolDisplay(id: string): CursorNativeToolDisplayItem
 }
 
 export const __testUtils = {
+	nativeToolResultCount: () => nativeToolResults.size,
 	reset(): void {
 		registeredNativeToolNames.clear();
 		nativeToolResults.clear();

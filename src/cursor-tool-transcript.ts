@@ -281,15 +281,18 @@ function renderTreeNode(node: unknown, depth = 0, lines: string[] = []): string[
 	return lines;
 }
 
-function formatLs(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
-	const path = formatPathArg(args, options) ?? ".";
-	if (result.status === "error") return joinSections(`ls ${path}`, formatError(result.error));
-
+function getLsBody(result: NormalizedResult, options: TranscriptOptions): string {
 	const value = asRecord(result.value);
 	const root = value?.directoryTreeRoot ?? result.value;
 	const treeLines = renderTreeNode(root);
 	const body = treeLines.length > 0 ? treeLines.join("\n") : stringifyUnknown(result.value);
-	return joinSections(`ls ${path}`, limitText(body, options));
+	return limitText(body, options);
+}
+
+function formatLs(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
+	const path = formatPathArg(args, options) ?? ".";
+	if (result.status === "error") return joinSections(`ls ${path}`, formatError(result.error));
+	return joinSections(`ls ${path}`, getLsBody(result, options));
 }
 
 function formatGlob(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
@@ -528,7 +531,7 @@ export function buildCursorPiToolDisplay(toolCall: unknown, options: TranscriptO
 		return {
 			toolName: "ls",
 			args,
-			result: textToolResult(result.status === "error" ? formatError(result.error) : formatLs(args, result, options).split("\n\n").slice(1).join("\n\n").trim()),
+			result: textToolResult(result.status === "error" ? formatError(result.error) : getLsBody(result, options).trim()),
 			isError: result.status === "error",
 		};
 	}

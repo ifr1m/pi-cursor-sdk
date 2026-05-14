@@ -137,7 +137,7 @@ How to read model IDs:
 - `cursor/...` is the Cursor provider registered by this extension
 - `@1m`, `@272k`, and `@300k` are context-window variants
 - `:medium`, `:high`, and `:xhigh` are pi thinking-level suffixes for models where the Cursor SDK exposes a pi-controllable thinking parameter
-- latest-style Cursor aliases returned by `Cursor.models.list()` are registered too, using the same context suffixes when the target model has context variants
+- unambiguous latest-style Cursor aliases returned by `Cursor.models.list()` are registered too, using the same context suffixes when the target model has context variants; aliases shared by multiple base models or colliding with a base model ID are skipped because their SDK resolution and displayed metadata can diverge
 
 Examples with pi thinking controls:
 
@@ -203,7 +203,7 @@ If no key is available from `/login`, `CURSOR_API_KEY`, or `--api-key`, model di
 
 - `composer-2`
 - `gpt-5.5@1m`, `gpt-5.5@272k`
-- `claude-sonnet-4-6@1m`, `claude-sonnet-4-6@300k`
+- `claude-sonnet-4-6@1m`, `claude-sonnet-4-6@200k`
 - `claude-opus-4-7@1m`, `claude-opus-4-7@300k`
 
 Fallback models are a conservative startup model list. Actual Cursor runs still need a key from `/login`, `CURSOR_API_KEY`, or `--api-key`. If you add auth after startup, run `/reload` or restart pi to refresh the full live Cursor model catalog.

@@ -7,7 +7,7 @@ import type {
 } from "@cursor/sdk";
 import { AuthStorage, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { ModelThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai";
-import { getCachedContextWindow, getCachedContextWindowExact } from "./context-window-cache.js";
+import { loadContextWindowCache } from "./context-window-cache.js";
 
 const CURSOR_PROVIDER_ID = "cursor";
 const CURSOR_API_KEY_ENV_VAR = "CURSOR_API_KEY";
@@ -88,7 +88,7 @@ const FALLBACK_MODEL_ITEMS: ModelListItem[] = [
 			{
 				id: "context",
 				displayName: "Context",
-				values: [{ value: "1m" }, { value: "300k" }],
+				values: [{ value: "1m" }, { value: "200k" }],
 			},
 			{
 				id: "effort",
@@ -165,6 +165,7 @@ export type CursorModelFallbackReason = "missing-api-key" | "discovery-failed" |
 export interface CursorModelFallbackIssue {
 	reason: CursorModelFallbackReason;
 	message: string;
+	errorMessage?: string;
 }
 
 export interface DiscoverModelsOptions {
@@ -351,9 +352,14 @@ function getModelName(item: ModelListItem, context?: string, alias?: string): st
 	return context ? `${baseName} @ ${context}` : baseName;
 }
 
-function getContextWindow(piModelId: string, context?: string, baseModelId?: string): number {
-	if (context) return parseContextWindow(context) ?? FALLBACK_CONTEXT_WINDOW;
-	return getCachedContextWindowExact(piModelId) ?? (baseModelId ? getCachedContextWindow(baseModelId) : undefined) ?? FALLBACK_CONTEXT_WINDOW;
+function getContextWindow(contextWindowCache: Map<string, number>, piModelId: string, context?: string, baseModelId?: string): number {
+	return (
+		contextWindowCache.get(piModelId) ??
+		(context ? parseContextWindow(context) : undefined) ??
+		(baseModelId ? contextWindowCache.get(baseModelId) : undefined) ??
+		contextWindowCache.get("default") ??
+		FALLBACK_CONTEXT_WINDOW
+	);
 }
 
 function toMetadata(
@@ -362,6 +368,7 @@ function toMetadata(
 	selectionModelId: string,
 	defaultParams: ModelParameterValue[],
 	context: string | undefined,
+	contextWindowCache: Map<string, number>,
 ): CursorModelMetadata {
 	const thinkingLevelMap = getThinkingLevelMap(item);
 	const fastValue = getParamValue(defaultParams, "fast")?.toLowerCase();
@@ -372,7 +379,7 @@ function toMetadata(
 		displayName: item.displayName || item.id,
 		defaultParams: cloneParams(defaultParams),
 		...(context ? { context } : {}),
-		contextWindow: getContextWindow(piModelId, context, item.id),
+		contextWindow: getContextWindow(contextWindowCache, piModelId, context, item.id),
 		supportsFast: getParameter(item, "fast") !== undefined,
 		defaultFast: fastValue === "true",
 		supportsReasoning: thinkingLevelMap !== undefined,
@@ -404,11 +411,25 @@ function getContextValues(item: ModelListItem): string[] {
 	return getParameter(item, "context")?.values.map((value) => value.value) ?? [];
 }
 
-function getModelIds(item: ModelListItem, reservedBaseModelIds: Set<string>): string[] {
+function getAmbiguousAliases(items: ModelListItem[]): Set<string> {
+	const aliasOwners = new Map<string, Set<string>>();
+	for (const item of items) {
+		for (const rawAlias of item.aliases ?? []) {
+			const alias = rawAlias.trim();
+			if (!alias || alias === item.id) continue;
+			const owners = aliasOwners.get(alias) ?? new Set<string>();
+			owners.add(item.id);
+			aliasOwners.set(alias, owners);
+		}
+	}
+	return new Set([...aliasOwners.entries()].filter(([, owners]) => owners.size > 1).map(([alias]) => alias));
+}
+
+function getModelIds(item: ModelListItem, reservedBaseModelIds: Set<string>, ambiguousAliases: Set<string>): string[] {
 	const ids = [item.id];
 	for (const rawAlias of item.aliases ?? []) {
 		const alias = rawAlias.trim();
-		if (!alias || alias === item.id || ids.includes(alias) || reservedBaseModelIds.has(alias)) continue;
+		if (!alias || alias === item.id || ids.includes(alias) || reservedBaseModelIds.has(alias) || ambiguousAliases.has(alias)) continue;
 		ids.push(alias);
 	}
 	return ids;
@@ -418,20 +439,22 @@ function toModelConfigs(
 	item: ModelListItem,
 	usedPiModelIds: Set<string>,
 	reservedBaseModelIds: Set<string>,
+	ambiguousAliases: Set<string>,
+	contextWindowCache: Map<string, number>,
 ): ProviderModelConfig[] {
 	const defaultParams = getDefaultParams(item);
 	const contextValues = getContextValues(item);
 	const contexts = contextValues.length > 0 ? contextValues : [undefined];
 	const configs: ProviderModelConfig[] = [];
 
-	for (const selectionModelId of getModelIds(item, reservedBaseModelIds)) {
+	for (const selectionModelId of getModelIds(item, reservedBaseModelIds, ambiguousAliases)) {
 		const alias = selectionModelId === item.id ? undefined : selectionModelId;
 		for (const context of contexts) {
 			const params = context ? replaceParam(defaultParams, "context", context) : defaultParams;
 			const piModelId = encodePiModelId(selectionModelId, context);
 			if (usedPiModelIds.has(piModelId)) continue;
 			usedPiModelIds.add(piModelId);
-			const metadata = toMetadata(item, piModelId, selectionModelId, params, context);
+			const metadata = toMetadata(item, piModelId, selectionModelId, params, context, contextWindowCache);
 			metadataByPiModelId.set(piModelId, metadata);
 			configs.push(toModelConfig(metadata, getModelName(item, context, alias)));
 		}
@@ -448,7 +471,9 @@ function registerModelItems(items: ModelListItem[]): ProviderModelConfig[] {
 	metadataByPiModelId.clear();
 	const usedPiModelIds = new Set<string>();
 	const reservedBaseModelIds = new Set(items.map((item) => item.id));
-	return sortModelsByBaseId(items).flatMap((item) => toModelConfigs(item, usedPiModelIds, reservedBaseModelIds));
+	const ambiguousAliases = getAmbiguousAliases(items);
+	const contextWindowCache = loadContextWindowCache();
+	return sortModelsByBaseId(items).flatMap((item) => toModelConfigs(item, usedPiModelIds, reservedBaseModelIds, ambiguousAliases, contextWindowCache));
 }
 
 export function getCursorModelMetadata(modelId: string): CursorModelMetadata | undefined {
@@ -532,6 +557,24 @@ export function buildCursorModelSelection(
 	return params.length > 0 ? { id: metadata.selectionModelId, params } : { id: metadata.selectionModelId };
 }
 
+function scrubDiscoveryErrorText(text: string, apiKey: string): string {
+	let scrubbed = text.replace(new RegExp(apiKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "[redacted]");
+	return scrubbed
+		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
+		.replace(/((?:^|[\s,{])cookie["']?\s*[:=]\s*["']?)[^\n]+/gi, "$1[redacted]")
+		.replace(
+			/((?:authorization|api[_-]?key|apiKey|token|session(?:[_-]?id)?)["']?\s*[:=]\s*["']?)[^"'\s,;}]+/gi,
+			"$1[redacted]",
+		)
+		.trim();
+}
+
+function sanitizeDiscoveryError(error: unknown, apiKey: string): string | undefined {
+	const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+	const scrubbed = scrubDiscoveryErrorText(message, apiKey);
+	return scrubbed || undefined;
+}
+
 function useFallbackModels(options: DiscoverModelsOptions, issue: CursorModelFallbackIssue): ProviderModelConfig[] {
 	options.onFallback?.(issue);
 	return registerModelItems(FALLBACK_MODEL_ITEMS);
@@ -555,10 +598,12 @@ export async function discoverModels(options: DiscoverModelsOptions = {}): Promi
 			reason: "empty-model-list",
 			message: `Cursor model discovery returned no models. Using fallback Cursor models; verify ${AUTH_SETUP_HINT}. ${CATALOG_REFRESH_HINT}`,
 		});
-	} catch {
+	} catch (error) {
+		const errorMessage = sanitizeDiscoveryError(error, apiKey);
 		return useFallbackModels(options, {
 			reason: "discovery-failed",
-			message: `Cursor model discovery failed. Using fallback Cursor models; verify ${AUTH_SETUP_HINT}. ${CATALOG_REFRESH_HINT}`,
+			message: `Cursor model discovery failed${errorMessage ? `: ${errorMessage}` : ""}. Using fallback Cursor models; verify ${AUTH_SETUP_HINT}. ${CATALOG_REFRESH_HINT}`,
+			...(errorMessage ? { errorMessage } : {}),
 		});
 	}
 }
