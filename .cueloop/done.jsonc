@@ -242,6 +242,44 @@
       "blocks": [],
       "relates_to": [],
       "custom_fields": {}
+    },
+    {
+      "id": "RQ-0009",
+      "status": "rejected",
+      "title": "Use pi session cwd in Cursor provider stream when pi exposes it",
+      "priority": "low",
+      "tags": [
+        "pi-extension",
+        "cwd",
+        "provider"
+      ],
+      "scope": [
+        "src/cursor-provider.ts"
+      ],
+      "evidence": [
+        "RQ-0006 replaced process.cwd() with ctx.cwd for native tool replay where ExtensionContext is available.",
+        "src/cursor-provider.ts still uses process.cwd() because pi-ai Context/SimpleStreamOptions do not currently expose session cwd to streamSimple.",
+        "Reviewer noted this provider cwd limitation as optional future debt."
+      ],
+      "plan": [
+        "Monitor or update against pi provider API if Context/SimpleStreamOptions gains session cwd.",
+        "Replace process.cwd() in streamCursor Agent.create local cwd with the provider/session cwd when available.",
+        "Add a provider-level test proving non-process cwd is passed to Cursor Agent.create.",
+        "Run npm test and npm run typecheck."
+      ],
+      "notes": [
+        "Started by agent to verify whether provider stream can use pi session cwd.",
+        "Rejected as not currently actionable: installed pi-ai Context and SimpleStreamOptions expose no session cwd to streamSimple. RQ-0006 already applied ctx.cwd where available for native replay and documented provider-stream limitation in src/cursor-provider.ts. Recreate this task if pi provider APIs later expose session cwd."
+      ],
+      "request": "Follow-up from RQ-0006 reviewer finding.",
+      "created_at": "2026-05-15T16:19:57.688396000Z",
+      "updated_at": "2026-05-15T16:57:15.431670000Z",
+      "completed_at": "2026-05-15T16:57:15.431670000Z",
+      "started_at": "2026-05-15T16:55:33.003869000Z",
+      "depends_on": [],
+      "blocks": [],
+      "relates_to": [],
+      "custom_fields": {}
     }
   ]
 }

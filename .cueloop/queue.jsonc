@@ -2,39 +2,6 @@
   "version": 1,
   "tasks": [
     {
-      "id": "RQ-0009",
-      "status": "todo",
-      "title": "Use pi session cwd in Cursor provider stream when pi exposes it",
-      "priority": "low",
-      "tags": [
-        "pi-extension",
-        "cwd",
-        "provider"
-      ],
-      "scope": [
-        "src/cursor-provider.ts"
-      ],
-      "evidence": [
-        "RQ-0006 replaced process.cwd() with ctx.cwd for native tool replay where ExtensionContext is available.",
-        "src/cursor-provider.ts still uses process.cwd() because pi-ai Context/SimpleStreamOptions do not currently expose session cwd to streamSimple.",
-        "Reviewer noted this provider cwd limitation as optional future debt."
-      ],
-      "plan": [
-        "Monitor or update against pi provider API if Context/SimpleStreamOptions gains session cwd.",
-        "Replace process.cwd() in streamCursor Agent.create local cwd with the provider/session cwd when available.",
-        "Add a provider-level test proving non-process cwd is passed to Cursor Agent.create.",
-        "Run npm test and npm run typecheck."
-      ],
-      "notes": [],
-      "request": "Follow-up from RQ-0006 reviewer finding.",
-      "created_at": "2026-05-15T16:19:57.688396000Z",
-      "updated_at": "2026-05-15T16:19:57.688396000Z",
-      "depends_on": [],
-      "blocks": [],
-      "relates_to": [],
-      "custom_fields": {}
-    },
-    {
       "id": "RQ-0007",
       "status": "todo",
       "title": "Reduce local re-read fallback risk in Cursor tool transcripts",
