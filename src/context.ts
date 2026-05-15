@@ -54,7 +54,14 @@ function formatToolCall(toolCall: ToolCall): string {
 }
 
 export function buildCursorPrompt(context: Context): CursorPrompt {
-	const parts: string[] = [];
+	const parts: string[] = [
+		[
+			"Cursor SDK tool boundary:",
+			"Only tools exposed by the Cursor SDK in this run are callable. The pi system prompt and transcript are context only; they do not grant access to pi tools or tool names mentioned there.",
+			"If the user asks you to search, fetch, browse, or research the web, use an actual Cursor SDK web/search/browser/MCP tool call. If no such Cursor SDK tool is available, say that web search is not configured for this Cursor SDK run.",
+			"Do not plan to use or claim to have used pi-only tools such as WebSearch or WebFetch unless the Cursor SDK actually exposes and executes that tool in this run.",
+		].join("\n"),
+	];
 
 	if (context.systemPrompt) {
 		parts.push(`System instructions from pi:\n${context.systemPrompt}`);
@@ -92,7 +99,12 @@ export function buildCursorPrompt(context: Context): CursorPrompt {
 		}
 	}
 
-	parts.push("Answer the latest user request above using your capabilities. Do not assume access to pi tools.");
+	parts.push(
+		[
+			"Answer the latest user request above using your capabilities. Do not assume access to pi tools.",
+			"If the user asks for web research, do not claim to have searched the web unless a Cursor SDK web/search/browser/MCP tool was actually used.",
+		].join("\n"),
+	);
 
 	const images = extractLatestImages(context.messages);
 

@@ -197,6 +197,7 @@ describe("streamCursor", () => {
 		vi.clearAllMocks();
 		delete process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY;
 		delete process.env.PI_CURSOR_REGISTER_NATIVE_TOOLS;
+		delete process.env.PI_CURSOR_SETTING_SOURCES;
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
 		cursorProviderTestUtils.resetCursorNativeReplayIdleDisposeMs();
 		nativeToolDisplayTestUtils.reset();
@@ -1512,7 +1513,7 @@ describe("streamCursor", () => {
 		}
 	});
 
-	it("creates local Cursor agents without ambient setting sources that write SDK logs to the terminal", async () => {
+	it("does not load Cursor setting sources by default to avoid SDK startup logs in pi", async () => {
 		const mockSend = vi.fn().mockResolvedValue({
 			id: "run-1",
 			agentId: "agent-1",
@@ -1533,6 +1534,58 @@ describe("streamCursor", () => {
 		expect(mockedCreate).toHaveBeenCalledWith(
 			expect.objectContaining({
 				local: { cwd: process.cwd() },
+			}),
+		);
+	});
+
+	it("allows Cursor setting sources to be enabled for users who want ambient MCP/tools", async () => {
+		process.env.PI_CURSOR_SETTING_SOURCES = "all";
+		const mockSend = vi.fn().mockResolvedValue({
+			id: "run-1",
+			agentId: "agent-1",
+			status: "finished",
+			wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished" }),
+			cancel: vi.fn(),
+			supports: () => true,
+			unsupportedReason: () => undefined,
+		});
+		mockedCreate.mockResolvedValue({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const stream = streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" });
+		await collectEvents(stream);
+
+		expect(mockedCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				local: { cwd: process.cwd(), settingSources: ["all"] },
+			}),
+		);
+	});
+
+	it("allows Cursor setting sources to be narrowed", async () => {
+		process.env.PI_CURSOR_SETTING_SOURCES = "project,user";
+		const mockSend = vi.fn().mockResolvedValue({
+			id: "run-1",
+			agentId: "agent-1",
+			status: "finished",
+			wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished" }),
+			cancel: vi.fn(),
+			supports: () => true,
+			unsupportedReason: () => undefined,
+		});
+		mockedCreate.mockResolvedValue({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const stream = streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" });
+		await collectEvents(stream);
+
+		expect(mockedCreate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				local: { cwd: process.cwd(), settingSources: ["project", "user"] },
 			}),
 		);
 	});

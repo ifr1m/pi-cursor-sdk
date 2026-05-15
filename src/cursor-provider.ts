@@ -8,7 +8,7 @@ import {
 	type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import { Agent, createAgentPlatform } from "@cursor/sdk";
-import type { InteractionUpdate, SDKAgent } from "@cursor/sdk";
+import type { InteractionUpdate, SDKAgent, SettingSource } from "@cursor/sdk";
 import { buildCursorPrompt, type CursorPrompt } from "./context.js";
 import { getEffectiveFastForModelId } from "./cursor-state.js";
 import { buildCursorModelSelection } from "./model-discovery.js";
@@ -61,6 +61,7 @@ const IMAGE_TOKEN_ESTIMATE = 1200;
 const CURSOR_ACTIVITY_TRACE_MAX_CHARS = 50000;
 const DEFAULT_CURSOR_NATIVE_REPLAY_IDLE_DISPOSE_MS = 5 * 60 * 1000;
 const CURSOR_NATIVE_REPLAY_TOOL_ID_PATTERN = /^(cursor-replay-\d+-\d+)-tool-\d+$/;
+const CURSOR_SETTING_SOURCES_ENV = "PI_CURSOR_SETTING_SOURCES";
 
 type CursorNativeQueuedEvent =
 	| { type: "thinking-delta"; text: string }
@@ -129,6 +130,18 @@ function resolveCursorApiKey(apiKey?: string): string | undefined {
 	if (!trimmed) return undefined;
 	if (trimmed === CURSOR_API_KEY_ENV_VAR) return process.env.CURSOR_API_KEY?.trim();
 	return trimmed;
+}
+
+function resolveCursorSettingSources(): SettingSource[] | undefined {
+	const raw = process.env[CURSOR_SETTING_SOURCES_ENV]?.trim();
+	if (!raw) return undefined;
+	const normalized = raw.toLowerCase();
+	if (["0", "false", "off", "none", "omit", "disabled"].includes(normalized)) return undefined;
+	if (["1", "true", "on", "all"].includes(normalized)) return ["all"];
+	return raw
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter((entry): entry is SettingSource => Boolean(entry));
 }
 
 function sanitizeError(error: unknown, apiKey?: string): string {
@@ -560,13 +573,12 @@ export function streamCursor(
 			const cwd = process.cwd();
 			const fastEnabled = getEffectiveFastForModelId(model.id);
 			const selection = buildCursorModelSelection(model.id, options?.reasoning ?? "off", fastEnabled);
+			const settingSources = resolveCursorSettingSources();
 
 			agent = await Agent.create({
 				apiKey,
 				model: selection,
-				// Do not pass settingSources here. The Cursor SDK currently writes
-				// setting/rule loading INFO logs directly to process output, which corrupts pi's TUI.
-				local: { cwd },
+				local: settingSources ? { cwd, settingSources } : { cwd },
 			});
 			throwIfAborted();
 

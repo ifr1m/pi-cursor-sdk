@@ -214,7 +214,7 @@ Fallback models are a conservative startup model list. Actual Cursor runs still 
 - **Cursor-side tool use is not re-executed by pi.** Cursor still uses its own internal SDK tools. The extension records completed Cursor tool activity and, in interactive TTY sessions, replays supported `read`, `bash`, and `ls` activity through pi's native tool-call path with recorded results (for example green `read` and `$ ...` cards) without forcing Cursor to call pi tools or rerun commands. Native replay wrappers are registered only for tool names not already owned by another extension; skipped tools fall back to the scrubbed Cursor activity transcript. As Cursor SDK tool completions arrive, the extension mirrors native Codex ordering by ending a tool-use turn, letting pi render the recorded tool results immediately, then continuing with live post-tool Cursor thinking/text, any later Cursor tool batches, or Cursor's final answer as the next assistant turn. Non-interactive/session consumers still get bounded scrubbed transcript data so `pi -p` keeps printing normal assistant text.
 - **Pi tool schemas are not passed through to Cursor.** This extension is a Cursor provider, not a bridge that forwards pi's tool system into Cursor.
 - **One fresh Cursor agent is created per provider call.** Cursor agent state is not reused between pi provider calls.
-- **Ambient Cursor setting/rule layers are not loaded by default.** The current Cursor SDK writes setting/rule loading logs directly to terminal output, which corrupts pi's TUI, so the extension leaves those layers out.
+- **Cursor setting sources are opt-in.** The extension does not pass `local.settingSources` by default because the Cursor SDK can print settings/skills loading output directly to the terminal during startup. To load configured Cursor MCP servers, plugin tools, project/user settings, and related Cursor-native capabilities, start pi with `PI_CURSOR_SETTING_SOURCES=all`. To narrow loading, set a comma-separated list such as `PI_CURSOR_SETTING_SOURCES=project,user,plugins`.
 - **Max Mode is not a manual pi variant.** Cursor's SDK may enable Max Mode automatically for models that require it. This extension only advertises exact context-window variants that the SDK catalog exposes and otherwise uses conservative SDK-derived default/non-Max context windows.
 - **Output token limits are conservative.** Cursor SDK model metadata does not currently expose output token limits directly.
 - **Token usage is approximate in pi.** Cursor SDK usage events include internal agent/tool/cache work, so the extension reports an approximate replayable pi prompt/output size for context display and compaction decisions.
@@ -262,7 +262,11 @@ Fast mode is currently off. The footer only shows `cursor fast` when fast mode i
 
 ### My Cursor app settings or rules do not seem to apply
 
-They are not loaded by default in this extension. See [Limits](#limits).
+Cursor setting sources are not loaded by default because the Cursor SDK can print settings/skills loading output directly to the terminal. Start pi with `PI_CURSOR_SETTING_SOURCES=all`, or choose a narrower list such as `PI_CURSOR_SETTING_SOURCES=project,user,plugins`.
+
+### Cursor does not call my web search MCP/tool
+
+Cursor SDK local agents load MCP servers from Cursor setting sources and inline SDK config. This extension leaves Cursor setting sources off by default to avoid startup log noise, so a web search tool needs to be configured in Cursor and settings sources need to be enabled with `PI_CURSOR_SETTING_SOURCES=all` or a narrower list.
 
 ### Cursor native tool cards conflict with another extension
 

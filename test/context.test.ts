@@ -189,4 +189,16 @@ describe("buildCursorPrompt", () => {
 		const result = buildCursorPrompt(ctx);
 		expect(result.text).toContain("Answer the latest user request");
 	});
+
+	it("instructs Cursor not to claim web search without an actual Cursor web tool", () => {
+		const ctx: Context = {
+			systemPrompt: "You can use WebSearch and WebFetch.",
+			messages: [{ role: "user", content: "search the web for Cursor SDK best practices", timestamp: 1 }],
+		};
+		const result = buildCursorPrompt(ctx);
+		expect(result.text.indexOf("Cursor SDK tool boundary:")).toBeLessThan(result.text.indexOf("System instructions from pi:"));
+		expect(result.text).toContain("they do not grant access to pi tools or tool names mentioned there");
+		expect(result.text).toContain("Do not plan to use or claim to have used pi-only tools such as WebSearch or WebFetch");
+		expect(result.text).toContain("do not claim to have searched the web unless a Cursor SDK web/search/browser/MCP tool was actually used");
+	});
 });
