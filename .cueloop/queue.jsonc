@@ -2,40 +2,6 @@
   "version": 1,
   "tasks": [
     {
-      "id": "RQ-0007",
-      "status": "todo",
-      "title": "Reduce local re-read fallback risk in Cursor tool transcripts",
-      "priority": "low",
-      "tags": [
-        "transcript",
-        "correctness",
-        "cursor-sdk"
-      ],
-      "scope": [
-        "src/cursor-tool-transcript.ts",
-        "test/cursor-tool-transcript.test.ts",
-        "README.md"
-      ],
-      "evidence": [
-        "src/cursor-tool-transcript.ts:218-253 fills empty Cursor read content by reading the current local file.",
-        "That preview may show content Cursor did not actually see if the file changed after Cursor's read."
-      ],
-      "plan": [
-        "Decide whether to remove local read fallback or label it explicitly as a local preview at replay time.",
-        "Adjust transcript and native display output accordingly.",
-        "Update tests and docs for empty Cursor read-result behavior.",
-        "Run npm test and npm run typecheck."
-      ],
-      "notes": [],
-      "request": "From 2026-05-15 extension improvement audit requested by user.",
-      "created_at": "2026-05-15T15:45:25.103158000Z",
-      "updated_at": "2026-05-15T15:45:25.103158000Z",
-      "depends_on": [],
-      "blocks": [],
-      "relates_to": [],
-      "custom_fields": {}
-    },
-    {
       "id": "RQ-0008",
       "status": "todo",
       "title": "Add maintenance path for Cursor fallback model/context snapshot drift",

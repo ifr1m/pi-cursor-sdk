@@ -6,6 +6,8 @@ const DEFAULT_MAX_TRANSCRIPT_LINES = 800;
 const DEFAULT_MAX_LIST_ITEMS = 200;
 const DEFAULT_READ_TRANSCRIPT_CHARS = 4000;
 const DEFAULT_READ_TRANSCRIPT_LINES = 12;
+const LOCAL_READ_PREVIEW_NOTICE =
+	"[local file preview at transcript time; Cursor read result content was unavailable]";
 
 interface TranscriptOptions {
 	maxChars?: number;
@@ -232,7 +234,10 @@ function getReadContent(args: Record<string, unknown>, result: NormalizedResult,
 	};
 	const value = asRecord(result.value);
 	const resultContent = getString(value, "content");
-	return resultContent && resultContent.length > 0 ? resultContent : rawPath ? (readFilePreview(rawPath, readOptions) ?? stringifyUnknown(result.value)) : stringifyUnknown(result.value);
+	if (resultContent && resultContent.length > 0) return resultContent;
+	if (!rawPath) return stringifyUnknown(result.value);
+	const localPreview = readFilePreview(rawPath, readOptions);
+	return localPreview ? `${LOCAL_READ_PREVIEW_NOTICE}\n${localPreview}` : stringifyUnknown(result.value);
 }
 
 function formatRead(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {

@@ -18,7 +18,7 @@ describe("formatCursorToolTranscript", () => {
 		expect(transcript).toBe("read README.md\n\n# pi-cursor-sdk\n\nA pi provider extension\n");
 	});
 
-	it("fills empty Cursor read results from a safe local file preview", () => {
+	it("labels empty Cursor read result local file previews", () => {
 		const dir = mkdtempSync(join(tmpdir(), "cursor-tool-transcript-"));
 		try {
 			writeFileSync(join(dir, "README.md"), "# Local title\n\nLocal body\n");
@@ -33,6 +33,7 @@ describe("formatCursorToolTranscript", () => {
 			);
 
 			expect(transcript).toContain("read README.md");
+			expect(transcript).toContain("[local file preview at transcript time; Cursor read result content was unavailable]");
 			expect(transcript).toContain("# Local title");
 			expect(transcript).toContain("Local body");
 		} finally {
@@ -172,6 +173,29 @@ describe("formatCursorToolTranscript", () => {
 			result: { content: [{ type: "text", text: "Sat May  9" }] },
 			isError: false,
 		});
+	});
+
+	it("labels native read display local previews when Cursor read content is unavailable", () => {
+		const dir = mkdtempSync(join(tmpdir(), "cursor-tool-display-"));
+		try {
+			writeFileSync(join(dir, "README.md"), "# Local display preview\n");
+
+			const display = buildCursorPiToolDisplay(
+				{
+					name: "read",
+					args: { path: join(dir, "README.md") },
+					result: { status: "success", value: { content: "", totalLines: 1, fileSize: 24 } },
+				},
+				{ cwd: dir },
+			);
+
+			expect(display.result.content[0].text).toContain(
+				"[local file preview at transcript time; Cursor read result content was unavailable]",
+			);
+			expect(display.result.content[0].text).toContain("# Local display preview");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("keeps started tool args when the completed Cursor update only contains a result", () => {
