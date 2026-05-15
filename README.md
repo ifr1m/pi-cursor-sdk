@@ -26,7 +26,7 @@ pi --model cursor/composer-2
 
 3. In pi, run `/login`, choose `Use an API key`, choose `Cursor`, and paste your Cursor API key.
 
-If pi started without a key, run `/reload` or restart pi after `/login` to refresh the full live Cursor model catalog. Inside pi, use `/model` to choose another Cursor model.
+If pi started without a key, run `/cursor-refresh-models` after `/login` to refresh the full live Cursor model catalog without restarting pi. Inside pi, use `/model` to choose another Cursor model.
 
 ## Requirements
 
@@ -83,7 +83,7 @@ Then, inside pi:
 4. Paste your Cursor API key.
 5. The key is saved in pi's native `~/.pi/agent/auth.json`.
 
-If pi started without a key, fallback Cursor models still register so `/login` is reachable. After `/login`, fallback model runs can use the stored key, but `/reload` or a restart is needed to refresh the full live Cursor model catalog discovered from the Cursor SDK.
+If pi started without a key, fallback Cursor models still register so `/login` is reachable. After `/login`, fallback model runs can use the stored key, and `/cursor-refresh-models` refreshes the full live Cursor model catalog discovered from the Cursor SDK without restarting pi.
 
 Environment setup:
 
@@ -113,7 +113,7 @@ pi --list-models cursor
 Expected behavior:
 
 - with a valid key, Cursor models appear under the `cursor` provider
-- if discovery cannot authenticate or reach Cursor, pi may still show fallback Cursor models; after adding auth with `/login`, fallback model runs can use the saved key, and `/reload` or restart refreshes the live catalog
+- if discovery cannot authenticate or reach Cursor, pi may still show fallback Cursor models; after adding auth with `/login`, fallback model runs can use the saved key, and `/cursor-refresh-models` refreshes the live catalog
 
 Smoke test:
 
@@ -206,7 +206,7 @@ If no key is available from `/login`, `CURSOR_API_KEY`, or `--api-key`, model di
 - `claude-sonnet-4-6@1m`, `claude-sonnet-4-6@200k`
 - `claude-opus-4-7@1m`, `claude-opus-4-7@300k`
 
-Fallback models are a conservative startup model list. Actual Cursor runs still need a key from `/login`, `CURSOR_API_KEY`, or `--api-key`. If you add auth after startup, run `/reload` or restart pi to refresh the full live Cursor model catalog.
+Fallback models are a conservative startup model list. Actual Cursor runs still need a key from `/login`, `CURSOR_API_KEY`, or `--api-key`. If you add auth after startup, run `/cursor-refresh-models` to refresh the full live Cursor model catalog without restarting pi.
 
 ## Limits
 
@@ -223,7 +223,7 @@ Fallback models are a conservative startup model list. Actual Cursor runs still 
 
 ### I can see Cursor models, but runs fail
 
-You may be seeing fallback startup models or a missing/invalid key. In interactive pi, run `/login`, choose `Use an API key`, choose `Cursor`, paste the key, then run `/reload` or restart pi.
+You may be seeing fallback startup models or a missing/invalid key. In interactive pi, run `/login`, choose `Use an API key`, choose `Cursor`, paste the key, then run `/cursor-refresh-models`.
 
 You can also restart pi with a key in the same shell or launcher that starts pi:
 

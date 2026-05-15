@@ -1,8 +1,23 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ProviderConfig, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { discoverModels, type CursorModelFallbackIssue } from "./model-discovery.js";
 import { registerCursorFastControls } from "./cursor-state.js";
 import { registerCursorNativeToolDisplay } from "./cursor-native-tool-display.js";
 import { streamCursor } from "./cursor-provider.js";
+
+function createCursorProviderConfig(models: ProviderModelConfig[]): ProviderConfig {
+	return {
+		name: "Cursor",
+		baseUrl: "https://cursor.com",
+		apiKey: "CURSOR_API_KEY",
+		api: "cursor-sdk",
+		models,
+		streamSimple: streamCursor,
+	};
+}
+
+function registerCursorProvider(pi: ExtensionAPI, models: ProviderModelConfig[]): void {
+	pi.registerProvider("cursor", createCursorProviderConfig(models));
+}
 
 export default async function (pi: ExtensionAPI) {
 	registerCursorFastControls(pi);
@@ -21,12 +36,24 @@ export default async function (pi: ExtensionAPI) {
 		});
 	}
 
-	pi.registerProvider("cursor", {
-		name: "Cursor",
-		baseUrl: "https://cursor.com",
-		apiKey: "CURSOR_API_KEY",
-		api: "cursor-sdk",
-		models,
-		streamSimple: streamCursor,
+	pi.registerCommand("cursor-refresh-models", {
+		description: "Refresh the live Cursor model catalog without restarting pi",
+		handler: async (_args, ctx) => {
+			let refreshFallbackIssue: CursorModelFallbackIssue | undefined;
+			const refreshedModels = await discoverModels({
+				onFallback: (issue) => {
+					refreshFallbackIssue = issue;
+				},
+			});
+			registerCursorProvider(pi, refreshedModels);
+			if (!ctx.hasUI) return;
+			if (refreshFallbackIssue) {
+				ctx.ui.notify(`Cursor model catalog refresh still using fallback models: ${refreshFallbackIssue.message}`, "warning");
+			} else {
+				ctx.ui.notify(`Cursor model catalog refreshed with ${refreshedModels.length} model${refreshedModels.length === 1 ? "" : "s"}.`, "info");
+			}
+		},
 	});
+
+	registerCursorProvider(pi, models);
 }

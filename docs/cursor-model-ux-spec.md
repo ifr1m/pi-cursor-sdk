@@ -66,7 +66,7 @@ Discovery resolves `apiKey` in this order:
 2. Stored pi auth for provider `cursor` from `AuthStorage.create().getApiKey("cursor", { includeFallback: false })`.
 3. `CURSOR_API_KEY`.
 
-Users can persist the stored key through `/login` -> `Use an API key` -> `Cursor`. If auth is added after startup, fallback models can run once pi resolves the saved key for provider requests, but `/reload` or restart is required to refresh the full live Cursor model catalog.
+Users can persist the stored key through `/login` -> `Use an API key` -> `Cursor`. If auth is added after startup, fallback models can run once pi resolves the saved key for provider requests, and `/cursor-refresh-models` refreshes the full live Cursor model catalog without restarting pi.
 
 For each model, use:
 
@@ -77,7 +77,7 @@ For each model, use:
 - `model.variants`
 - default variant: `variant.isDefault === true`, else first variant
 
-This means new Cursor models and changed Cursor parameters are picked up after reload/restart.
+This means new Cursor models and changed Cursor parameters are picked up after `/cursor-refresh-models`, reload, or restart.
 
 Pi model metadata is also a source of truth for pi-native behavior:
 

@@ -78,7 +78,7 @@ describe("discoverModels", () => {
 		expect(issues[0].message).toContain("/login");
 		expect(issues[0].message).toContain("--api-key");
 		expect(issues[0].message).toContain("fallback models can run once auth exists");
-		expect(issues[0].message).toContain("/reload");
+		expect(issues[0].message).toContain("/cursor-refresh-models");
 		expect(issues[0].message).not.toContain("will fail until pi is restarted");
 		expect(mockedList).not.toHaveBeenCalled();
 	});
@@ -822,7 +822,7 @@ describe("discoverModels", () => {
 			}),
 		]);
 		expect(issues[0].message).toContain("/login");
-		expect(issues[0].message).toContain("/reload");
+		expect(issues[0].message).toContain("/cursor-refresh-models");
 	});
 
 	it("uses id as name when displayName is missing", async () => {

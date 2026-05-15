@@ -2,45 +2,6 @@
   "version": 1,
   "tasks": [
     {
-      "id": "RQ-0004",
-      "status": "todo",
-      "title": "Add live Cursor model catalog refresh after login/auth changes",
-      "priority": "medium",
-      "tags": [
-        "models",
-        "auth",
-        "pi-extension"
-      ],
-      "scope": [
-        "src/index.ts",
-        "src/model-discovery.ts",
-        "README.md",
-        "docs/cursor-model-ux-spec.md",
-        "test/index.test.ts",
-        "test/model-discovery.test.ts"
-      ],
-      "evidence": [
-        "src/index.ts:10-31 discovers models only during async extension startup.",
-        "src/model-discovery.ts:583-608 falls back and tells users to /reload or restart after auth is added.",
-        "Installed pi registerProvider docs state post-load provider registrations take effect immediately without /reload."
-      ],
-      "plan": [
-        "Add a /cursor-refresh-models command that re-runs discoverModels().",
-        "Call pi.registerProvider('cursor', ...) with the refreshed model list and existing streamSimple config.",
-        "Notify users whether a live catalog replaced fallback models or fallback remains active.",
-        "Update README/spec and tests.",
-        "Run npm test and npm run typecheck."
-      ],
-      "notes": [],
-      "request": "From 2026-05-15 extension improvement audit requested by user.",
-      "created_at": "2026-05-15T15:45:25.103158000Z",
-      "updated_at": "2026-05-15T15:45:25.103158000Z",
-      "depends_on": [],
-      "blocks": [],
-      "relates_to": [],
-      "custom_fields": {}
-    },
-    {
       "id": "RQ-0005",
       "status": "todo",
       "title": "Improve or explicitly constrain image follow-up behavior",

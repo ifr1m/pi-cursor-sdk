@@ -17,7 +17,7 @@ const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const TEXT_AND_IMAGE_INPUT: ProviderModelConfig["input"] = ["text", "image"];
 const AUTH_SETUP_HINT = "/login (Use an API key -> Cursor), CURSOR_API_KEY, or --api-key";
 const CATALOG_REFRESH_HINT =
-	"After adding auth to an already-started pi session, run /reload or restart pi to refresh the full live Cursor model catalog.";
+	"After adding auth to an already-started pi session, run /cursor-refresh-models to refresh the full live Cursor model catalog without restarting pi.";
 
 const FALLBACK_MODEL_ITEMS: ModelListItem[] = [
 	{

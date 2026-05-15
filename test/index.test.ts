@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ExtensionAPI, ExtensionContext, ProviderConfig, ToolDefinition, ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ProviderConfig, RegisteredCommand, ToolDefinition, ToolInfo } from "@earendil-works/pi-coding-agent";
 import { Type, type TSchema } from "typebox";
 
 vi.mock("../src/model-discovery.js", () => ({
@@ -54,6 +54,7 @@ async function runSessionStartHandlers(pi: ReturnType<typeof createMockPi>, ctxO
 
 function createMockPi(existingTools?: ToolInfo[]) {
 	const registered: Array<{ name: string; config: ProviderConfig }> = [];
+	const commands = new Map<string, RegisteredCommand>();
 	const tools: RegisteredTool[] = [];
 	const handlers = new Map<string, TestEventHandler[]>();
 	const initialTools = existingTools ?? ["read", "bash", "ls"].map(createBuiltinToolInfo);
@@ -62,7 +63,9 @@ function createMockPi(existingTools?: ToolInfo[]) {
 			registered.push({ name, config });
 		}),
 		registerFlag: vi.fn(),
-		registerCommand: vi.fn(),
+		registerCommand: vi.fn((name: string, command: RegisteredCommand) => {
+			commands.set(name, command);
+		}),
 		registerTool: vi.fn((tool: RegisteredTool) => {
 			tools.push(tool);
 		}),
@@ -86,6 +89,7 @@ function createMockPi(existingTools?: ToolInfo[]) {
 		getFlag: vi.fn().mockReturnValue(false),
 		appendEntry: vi.fn(),
 		_registered: registered,
+		_commands: commands,
 		_tools: tools,
 		_handlers: handlers,
 	};
@@ -129,6 +133,10 @@ describe("extension factory", () => {
 		expect(pi.registerCommand).toHaveBeenCalledWith(
 			"cursor-fast",
 			expect.objectContaining({ description: expect.stringContaining("Toggle Cursor fast") }),
+		);
+		expect(pi.registerCommand).toHaveBeenCalledWith(
+			"cursor-refresh-models",
+			expect.objectContaining({ description: expect.stringContaining("Refresh the live Cursor model catalog") }),
 		);
 		expect(pi.registerTool).toHaveBeenCalledTimes(3);
 		expect(pi._tools.map((tool) => tool.name)).toEqual(["read", "bash", "ls"]);
@@ -176,12 +184,78 @@ describe("extension factory", () => {
 		expect(call.config.models).toHaveLength(2);
 	});
 
+	it("refreshes Cursor models through a live command without reload", async () => {
+		const startupModels = [
+			{
+				id: "composer-2",
+				name: "Cursor Composer 2",
+				reasoning: false,
+				input: ["text", "image"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 128000,
+				maxTokens: 16384,
+			},
+		];
+		const refreshedModels = [
+			{
+				id: "gpt-5.5@1m",
+				name: "GPT-5.5 @ 1m",
+				reasoning: true,
+				input: ["text", "image"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 1000000,
+				maxTokens: 16384,
+			},
+		];
+		mockedDiscover.mockResolvedValueOnce(startupModels).mockResolvedValueOnce(refreshedModels);
+		const pi = createMockPi();
+		await extensionFactory(pi as unknown as ExtensionAPI);
+		const notify = vi.fn();
+
+		await pi._commands.get("cursor-refresh-models")!.handler("", {
+			hasUI: true,
+			ui: { notify, setStatus: vi.fn() },
+			sessionManager: { getBranch: vi.fn(() => []) },
+		} as unknown as ExtensionContext);
+
+		expect(mockedDiscover).toHaveBeenCalledTimes(2);
+		expect(pi.registerProvider).toHaveBeenCalledTimes(2);
+		expect(pi._registered[0].config.models).toBe(startupModels);
+		expect(pi._registered[1].config.models).toBe(refreshedModels);
+		expect(pi._registered[1].config.streamSimple).toBe(mockedStreamCursor);
+		expect(notify).toHaveBeenCalledWith("Cursor model catalog refreshed with 1 model.", "info");
+	});
+
+	it("warns when live Cursor model refresh still uses fallback models", async () => {
+		mockedDiscover
+			.mockResolvedValueOnce([])
+			.mockImplementationOnce(async (options: DiscoverOptions) => {
+				options.onFallback({ reason: "missing-api-key", message: "missing key; using fallback models" });
+				return [];
+			});
+		const pi = createMockPi();
+		await extensionFactory(pi as unknown as ExtensionAPI);
+		const notify = vi.fn();
+
+		await pi._commands.get("cursor-refresh-models")!.handler("", {
+			hasUI: true,
+			ui: { notify, setStatus: vi.fn() },
+			sessionManager: { getBranch: vi.fn(() => []) },
+		} as unknown as ExtensionContext);
+
+		expect(pi.registerProvider).toHaveBeenCalledTimes(2);
+		expect(notify).toHaveBeenCalledWith(
+			"Cursor model catalog refresh still using fallback models: missing key; using fallback models",
+			"warning",
+		);
+	});
+
 	it("notifies interactive users when fallback models are registered", async () => {
 		mockedDiscover.mockImplementationOnce(async (options: DiscoverOptions) => {
 			options.onFallback({
 				reason: "missing-api-key",
 				message:
-					"Cursor model discovery needs an API key from /login (Use an API key -> Cursor), CURSOR_API_KEY, or --api-key. Using fallback Cursor models so /login and model selection still work; fallback models can run once auth exists. After adding auth to an already-started pi session, run /reload or restart pi to refresh the full live Cursor model catalog.",
+					"Cursor model discovery needs an API key from /login (Use an API key -> Cursor), CURSOR_API_KEY, or --api-key. Using fallback Cursor models so /login and model selection still work; fallback models can run once auth exists. After adding auth to an already-started pi session, run /cursor-refresh-models to refresh the full live Cursor model catalog without restarting pi.",
 			});
 			return [
 				{
@@ -209,7 +283,7 @@ describe("extension factory", () => {
 		await sessionHandlers.at(-1)!({}, ctx);
 
 		expect(notify).toHaveBeenCalledWith(
-			"Cursor model discovery needs an API key from /login (Use an API key -> Cursor), CURSOR_API_KEY, or --api-key. Using fallback Cursor models so /login and model selection still work; fallback models can run once auth exists. After adding auth to an already-started pi session, run /reload or restart pi to refresh the full live Cursor model catalog.",
+			"Cursor model discovery needs an API key from /login (Use an API key -> Cursor), CURSOR_API_KEY, or --api-key. Using fallback Cursor models so /login and model selection still work; fallback models can run once auth exists. After adding auth to an already-started pi session, run /cursor-refresh-models to refresh the full live Cursor model catalog without restarting pi.",
 			"warning",
 		);
 	});
