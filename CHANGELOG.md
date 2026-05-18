@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.12 - 2026-05-18
+
+### Fixed
+- Bundle the audited `@cursor/sdk` dependency tree so `pi install npm:pi-cursor-sdk` preserves patched `sqlite3`, `tar`, and `undici` transitive versions even though npm package-level `overrides` are not applied when the package is installed as a dependency.
+
 ## 0.1.11 - 2026-05-18
 
 ### Changed
