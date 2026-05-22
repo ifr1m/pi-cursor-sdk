@@ -103,6 +103,7 @@ interface CursorLiveTurnState {
 	partial: AssistantMessage;
 	thinkingContentIndex: number;
 	textContentIndex: number;
+	emittedText: string;
 }
 
 let cursorNativeReplayCounter = 0;
@@ -557,6 +558,7 @@ function emitCursorLiveQueuedEvent(
 	} else if (event.type === "thinking-completed") {
 		closeCursorNativeThinkingBlock(turn);
 	} else if (event.type === "text-delta") {
+		turn.emittedText += event.text;
 		if (run) run.emittedText += event.text;
 		emitCursorNativeTextDelta(turn, event.text);
 	}
@@ -587,10 +589,12 @@ function isCursorTextBoundary(text: string, index: number): boolean {
 	return !/[\p{L}\p{N}_]/u.test(before) || !/[\p{L}\p{N}_]/u.test(after);
 }
 
-function trimAlreadyEmittedCursorText(text: string, emittedText: string): string {
+function trimAlreadyEmittedCursorText(text: string, emittedText: string, options?: { allowPartialPrefix?: boolean }): string {
 	if (!text || !emittedText) return text;
 	if (text === emittedText) return "";
-	if (text.startsWith(emittedText) && isCursorTextBoundary(text, emittedText.length)) return text.slice(emittedText.length);
+	if (text.startsWith(emittedText) && (options?.allowPartialPrefix || isCursorTextBoundary(text, emittedText.length))) {
+		return text.slice(emittedText.length);
+	}
 	if (emittedText.endsWith(text) && isCursorTextBoundary(emittedText, emittedText.length - text.length)) return "";
 	const trimmedText = text.trim();
 	const trimmedEmittedText = emittedText.trim();
@@ -602,16 +606,28 @@ function trimAlreadyEmittedCursorText(text: string, emittedText: string): string
 	return text;
 }
 
+function trimCurrentTurnAlreadyEmittedCursorText(text: string, currentTurnEmittedText: string, emittedText = currentTurnEmittedText): string {
+	if (!currentTurnEmittedText) return trimAlreadyEmittedCursorText(text, emittedText);
+	const currentTurnTrimmedText = trimAlreadyEmittedCursorText(text, currentTurnEmittedText, { allowPartialPrefix: true });
+	if (currentTurnTrimmedText !== text) return currentTurnTrimmedText;
+	if (emittedText.endsWith(currentTurnEmittedText)) {
+		const emittedTextTrimmedText = trimAlreadyEmittedCursorText(text, emittedText, { allowPartialPrefix: true });
+		if (emittedTextTrimmedText !== text) return emittedTextTrimmedText;
+	}
+	return trimAlreadyEmittedCursorText(text, emittedText);
+}
+
 function selectCursorFinalText(
 	resultText: unknown,
 	textDeltas: readonly string[],
 	emittedText: string,
 	fallbackText?: string,
+	options?: { allowPartialPrefix?: boolean },
 ): string {
 	const candidates = [typeof resultText === "string" ? resultText : undefined, fallbackText, textDeltas.join("")];
 	for (const candidate of candidates) {
 		if (!hasUsableText(candidate)) continue;
-		const trimmedCandidate = trimAlreadyEmittedCursorText(candidate, emittedText);
+		const trimmedCandidate = trimAlreadyEmittedCursorText(candidate, emittedText, options);
 		if (hasUsableText(trimmedCandidate)) return trimmedCandidate;
 	}
 	return "";
@@ -712,6 +728,7 @@ async function emitCursorNativeRunNextTurn(
 		partial,
 		thinkingContentIndex: -1,
 		textContentIndex: -1,
+		emittedText: "",
 	};
 
 	while (true) {
@@ -752,7 +769,7 @@ async function emitCursorNativeRunNextTurn(
 		}
 		if (run.done) {
 			let outputText = closeCursorNativeTurnBlocks(turn);
-			const finalText = trimAlreadyEmittedCursorText(run.finalText ?? run.textDeltas.join(""), run.emittedText);
+			const finalText = trimCurrentTurnAlreadyEmittedCursorText(run.finalText ?? run.textDeltas.join(""), turn.emittedText, run.emittedText);
 			if (finalText) {
 				outputText += await emitTextDeltas(stream, partial, splitTextIntoReplayDeltas(finalText));
 			}
@@ -1281,7 +1298,9 @@ export function streamCursor(
 				partial.stopReason = "aborted";
 				stream.push({ type: "error", reason: "aborted", error: partial });
 			} else {
-				const finalCursorText = selectCursorFinalText(result.result, textDeltas, textDeltas.join(""), cursorPlanTextCandidate);
+				const finalCursorText = selectCursorFinalText(result.result, textDeltas, textDeltas.join(""), cursorPlanTextCandidate, {
+					allowPartialPrefix: true,
+				});
 				const finalText = flushText(hasUsableText(finalCursorText) ? [finalCursorText] : []);
 				setApproximateUsage(partial, promptInputTokens, finalText);
 				stream.push({ type: "done", reason: "stop", message: partial });

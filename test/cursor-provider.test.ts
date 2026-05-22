@@ -2074,6 +2074,98 @@ describe("streamCursor", () => {
 		expect(replayEvents.find((event: any) => event.type === "text_end")?.contentIndex).toBe(1);
 	});
 
+	it("trims current-turn post-tool native replay final text when streamed text is only a word prefix", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		const registeredTools: RegisteredTool[] = [];
+		await registerNativeToolDisplayForTest(registeredTools);
+
+		let onDelta: ((args: { update: any }) => void) | undefined;
+		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
+		const runWait = vi.fn(
+			() =>
+				new Promise<{ id: string; status: "finished"; result: string }>((resolve) => {
+					resolveRun = resolve;
+				}),
+		);
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			onDelta = opts.onDelta as (args: { update: any }) => void;
+			onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "README.md" } }, callId: "c1" } });
+			onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "read",
+						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
+					},
+					callId: "c1",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "running",
+				wait: runWait,
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		const firstDone = firstEvents.find((e: any) => e.type === "done") as any;
+		const toolCall = firstDone.message.content.find((block: any) => block.type === "toolCall");
+		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const toolResult = await readTool.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+
+		const replayContext = makeContext();
+		replayContext.messages = [
+			...replayContext.messages,
+			firstDone.message,
+			{
+				role: "toolResult",
+				toolCallId: toolCall.id,
+				toolName: "read",
+				content: toolResult.content,
+				details: toolResult.details,
+				isError: false,
+				timestamp: 2,
+			},
+		];
+
+		const replayEvents: any[] = [];
+		let sawLiveText: () => void = () => {};
+		const liveTextSeen = new Promise<void>((resolve) => {
+			sawLiveText = resolve;
+		});
+		const replayDone = (async () => {
+			for await (const event of streamCursor(makeModel(), replayContext, { apiKey: "test-key" })) {
+				replayEvents.push(event);
+				if (event.type === "text_delta" && event.delta === "Disconnect") sawLiveText();
+			}
+		})();
+
+		await Promise.resolve();
+		onDelta?.({ update: { type: "text-delta", text: "Disconnect" } });
+		await Promise.race([
+			liveTextSeen,
+			new Promise((_, reject) => setTimeout(() => reject(new Error("timed out waiting for live Cursor text")), 500)),
+		]);
+		resolveRun({ id: "run-1", status: "finished", result: "Disconnecting the CDP session..." });
+		await replayDone;
+
+		const replayText = replayEvents.filter((e: any) => e.type === "text_delta").map((e: any) => e.delta).join("");
+		const finalDone = replayEvents.find((e: any) => e.type === "done") as any;
+
+		expect(runWait).toHaveBeenCalledTimes(1);
+		expect(replayText).toBe("Disconnecting the CDP session...");
+		expect(finalDone.reason).toBe("stop");
+	});
+
 	it("queues post-tool thinking and text that arrive before the native tool-use turn closes", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: RegisteredTool[] = [];
@@ -2443,6 +2535,32 @@ describe("streamCursor", () => {
 
 		expect(text).toBe("Final answer.");
 		expect(events.filter((e: any) => e.type === "text_delta")).toHaveLength(2);
+	});
+
+	it("trims same-turn final text when streamed text is only a word prefix", async () => {
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			opts.onDelta({ update: { type: "text-delta", text: "Disconnect" } });
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "Disconnecting the CDP session..." }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		const text = events.filter((e: any) => e.type === "text_delta").map((e: any) => e.delta).join("");
+		const done = events.find((e: any) => e.type === "done") as any;
+
+		expect(text).toBe("Disconnecting the CDP session...");
+		expect(done.message.content).toEqual([{ type: "text", text: "Disconnecting the CDP session..." }]);
 	});
 
 	it("omits raw cursor call ids while rendering completed cursor tools", async () => {
