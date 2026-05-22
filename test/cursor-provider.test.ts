@@ -36,6 +36,7 @@ vi.mock("@cursor/sdk", () => {
 import { Agent, createAgentPlatform } from "@cursor/sdk";
 import { __testUtils as cursorSessionCwdTestUtils } from "../src/cursor-session-cwd.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
+import { estimateCursorPromptMessageTokens } from "../src/context.js";
 import { registerCursorPiToolBridge, __testUtils as cursorPiToolBridgeTestUtils } from "../src/cursor-pi-tool-bridge.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../src/model-discovery.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
@@ -1269,6 +1270,151 @@ describe("streamCursor", () => {
 		expect(nativeToolDisplayTestUtils.nativeToolResultCount()).toBe(0);
 	});
 
+	it("counts thinking plus tool-call replay turns as nonzero assistant activity", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		const registeredTools: RegisteredTool[] = [];
+		await registerNativeToolDisplayForTest(registeredTools);
+
+		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
+		const runWait = vi.fn(
+			() =>
+				new Promise<{ id: string; status: "finished"; result: string }>((resolve) => {
+					resolveRun = resolve;
+				}),
+		);
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			opts.onDelta({ update: { type: "thinking-delta", text: "Need to inspect the file." } });
+			opts.onDelta({ update: { type: "thinking-completed" } });
+			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "README.md" } }, callId: "c1" } });
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "read",
+						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
+					},
+					callId: "c1",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "running",
+				wait: runWait,
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		const done = events.find((e: any) => e.type === "done") as any;
+
+		expect(done.reason).toBe("toolUse");
+		expect(done.message.content.map((block: any) => block.type)).toEqual(["thinking", "toolCall"]);
+		expect(done.message.usage.output).toBeGreaterThan(0);
+		expect(done.message.usage.totalTokens).toBeGreaterThan(done.message.usage.input);
+
+		const toolCall = done.message.content.find((block: any) => block.type === "toolCall");
+		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const toolResult = await readTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const replayContext = makeContext();
+		replayContext.messages = [
+			...replayContext.messages,
+			done.message,
+			{
+				role: "toolResult" as const,
+				toolCallId: toolCall.id,
+				toolName: "read",
+				content: toolResult.content,
+				details: toolResult.details,
+				isError: false,
+				timestamp: 2,
+			},
+		];
+		resolveRun({ id: "run-1", status: "finished", result: "" });
+		await Promise.resolve();
+		await collectEvents(streamCursor(makeModel(), replayContext, { apiKey: "test-key" }));
+		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
+	});
+
+	it("gives empty final replay turns context total without recounting the original prompt", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		const registeredTools: RegisteredTool[] = [];
+		await registerNativeToolDisplayForTest(registeredTools);
+
+		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
+		const runWait = vi.fn(
+			() =>
+				new Promise<{ id: string; status: "finished"; result: string }>((resolve) => {
+					resolveRun = resolve;
+				}),
+		);
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: (a: unknown) => void }) => {
+			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "README.md" } }, callId: "c1" } });
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "read",
+						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
+					},
+					callId: "c1",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "running",
+				wait: runWait,
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		const firstDone = firstEvents.find((e: any) => e.type === "done") as any;
+		const toolCall = firstDone.message.content.find((block: any) => block.type === "toolCall");
+		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const toolResult = await readTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResultMessage = {
+			role: "toolResult" as const,
+			toolCallId: toolCall.id,
+			toolName: "read",
+			content: toolResult.content,
+			details: toolResult.details,
+			isError: false,
+			timestamp: 2,
+		};
+		const replayContext = makeContext();
+		replayContext.messages = [...replayContext.messages, firstDone.message, toolResultMessage];
+
+		expect(runWait).toHaveBeenCalledTimes(1);
+		resolveRun({ id: "run-1", status: "finished", result: "" });
+		await Promise.resolve();
+
+		const finalEvents = await collectEvents(streamCursor(makeModel(), replayContext, { apiKey: "test-key" }));
+		const finalDone = finalEvents.find((e: any) => e.type === "done") as any;
+
+		expect(finalDone.reason).toBe("stop");
+		expect(finalDone.message.content).toEqual([]);
+		expect(finalDone.message.usage.input).toBe(estimateCursorPromptMessageTokens(toolResultMessage));
+		expect(finalDone.message.usage.input).toBeLessThan(firstDone.message.usage.input);
+		expect(finalDone.message.usage.output).toBe(0);
+		expect(finalDone.message.usage.totalTokens).toBeGreaterThan(finalDone.message.usage.input);
+	});
+
 	it("replays Cursor grep activity through native grep display", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: RegisteredTool[] = [];
@@ -2453,15 +2599,16 @@ describe("streamCursor", () => {
 		const firstDone = firstEvents.find((e: any) => e.type === "done") as any;
 		const firstToolCall = firstDone.message.content.find((block: any) => block.type === "toolCall");
 		const firstToolResult = await readTool.execute(firstToolCall.id, firstToolCall.arguments, undefined, undefined, {});
-		context.messages.push(firstDone.message, {
-			role: "toolResult",
+		const firstToolResultMessage = {
+			role: "toolResult" as const,
 			toolCallId: firstToolCall.id,
 			toolName: "read",
 			content: firstToolResult.content,
 			details: firstToolResult.details,
 			isError: false,
 			timestamp: 2,
-		});
+		};
+		context.messages.push(firstDone.message, firstToolResultMessage);
 
 		const secondStream = streamCursor(makeModel(), context, { apiKey: "test-key" });
 		const secondDonePromise = collectEvents(secondStream);
@@ -2482,15 +2629,16 @@ describe("streamCursor", () => {
 		const secondDone = secondEvents.find((e: any) => e.type === "done") as any;
 		const secondToolCall = secondDone.message.content.find((block: any) => block.type === "toolCall");
 		const secondToolResult = await readTool.execute(secondToolCall.id, secondToolCall.arguments, undefined, undefined, {});
-		context.messages.push(secondDone.message, {
-			role: "toolResult",
+		const secondToolResultMessage = {
+			role: "toolResult" as const,
 			toolCallId: secondToolCall.id,
 			toolName: "read",
 			content: secondToolResult.content,
 			details: secondToolResult.details,
 			isError: false,
 			timestamp: 3,
-		});
+		};
+		context.messages.push(secondDone.message, secondToolResultMessage);
 
 		const finalStream = streamCursor(makeModel(), context, { apiKey: "test-key" });
 		const finalEventsPromise = collectEvents(finalStream);
@@ -2503,8 +2651,19 @@ describe("streamCursor", () => {
 
 		expect(runWait).toHaveBeenCalledTimes(1);
 		expect(firstDone.message.usage.input).toBeGreaterThan(0);
-		expect(secondDone.message.usage.input).toBe(0);
-		expect(finalDone.message.usage.input).toBe(0);
+		expect(firstDone.message.usage.output).toBeGreaterThan(0);
+		expect(firstDone.message.usage.totalTokens).toBeGreaterThan(firstDone.message.usage.input + firstDone.message.usage.output);
+		expect(secondDone.message.usage.input).toBe(estimateCursorPromptMessageTokens(firstToolResultMessage));
+		expect(secondDone.message.usage.input).toBeGreaterThan(0);
+		expect(secondDone.message.usage.input).toBeLessThan(firstDone.message.usage.input);
+		expect(secondDone.message.usage.output).toBeGreaterThan(0);
+		expect(secondDone.message.usage.totalTokens).toBeGreaterThan(secondDone.message.usage.input + secondDone.message.usage.output);
+		expect(finalDone.message.usage.input).toBe(estimateCursorPromptMessageTokens(secondToolResultMessage));
+		expect(finalDone.message.usage.input).not.toBe(estimateCursorPromptMessageTokens(firstToolResultMessage) + estimateCursorPromptMessageTokens(secondToolResultMessage));
+		expect(finalDone.message.usage.input).toBeGreaterThan(0);
+		expect(finalDone.message.usage.input).toBeLessThan(firstDone.message.usage.input);
+		expect(finalDone.message.usage.output).toBeGreaterThan(0);
+		expect(finalDone.message.usage.totalTokens).toBeGreaterThan(finalDone.message.usage.input + finalDone.message.usage.output);
 		expect(secondDone.message.content.map((block: any) => block.type)).toEqual(["text", "toolCall"]);
 		expect(finalText).toBe("Final answer.");
 		expect(finalDone.message.content).toEqual([{ type: "text", text: "Final answer." }]);

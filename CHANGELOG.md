@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Improve Cursor SDK token accounting for `/session` and compaction by keeping raw Cursor internal usage diagnostic-only, counting split-run tool-call activity/tool-result consumption in approximate pi session usage, and using `usage.totalTokens` for the replayable Cursor prompt/context estimate.
+
 ## 0.1.15 - 2026-05-21
 
 ### Added

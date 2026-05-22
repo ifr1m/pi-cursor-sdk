@@ -6,12 +6,22 @@ import {
 	type Model,
 	type SimpleStreamOptions,
 	type AssistantMessage,
+	type Message,
+	type ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Agent, createAgentPlatform } from "@cursor/sdk";
 import type { InteractionUpdate, SDKAgent, SettingSource } from "@cursor/sdk";
 import { installCursorMcpToolTimeoutOverride } from "./cursor-mcp-timeout-override.js";
-import { buildCursorPrompt, type CursorPrompt } from "./context.js";
+import {
+	buildCursorPrompt,
+	CURSOR_APPROX_CHARS_PER_TOKEN,
+	CURSOR_IMAGE_TOKEN_ESTIMATE,
+	estimateCursorContextTokens,
+	estimateCursorPromptMessageTokens,
+	estimateCursorPromptTokens,
+	estimateCursorTextTokens,
+} from "./context.js";
 import {
 	getRegisteredCursorPiToolBridge,
 	type CursorPiBridgeToolRequest,
@@ -64,8 +74,6 @@ const GENERIC_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed. The API key may be missing, invalid, or unauthorized. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
 const AUTH_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed because the API key may be invalid or unauthorized. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
-const APPROX_CHARS_PER_TOKEN = 4;
-const IMAGE_TOKEN_ESTIMATE = 1200;
 const CURSOR_ACTIVITY_TRACE_MAX_CHARS = 50000;
 const DEFAULT_CURSOR_NATIVE_REPLAY_IDLE_DISPOSE_MS = 5 * 60 * 1000;
 const CURSOR_NATIVE_REPLAY_TOOL_ID_PATTERN = /^(cursor-replay-\d+-\d+)-tool-\d+$/;
@@ -85,6 +93,8 @@ interface CursorLiveRun {
 	bridgeRun?: CursorPiToolBridgeRun;
 	promptInputTokens: number;
 	promptInputTokensReported: boolean;
+	pendingSessionInputTokens: number;
+	countedToolResultIds: Set<string>;
 	pendingEvents: CursorLiveQueuedEvent[];
 	textDeltas: string[];
 	emittedText: string;
@@ -263,25 +273,51 @@ async function cacheSdkContextWindow(agentId: string, modelId: string): Promise<
 	}
 }
 
-function estimateTextTokens(text: string): number {
-	return Math.ceil(text.length / APPROX_CHARS_PER_TOKEN);
-}
-
-function estimatePromptInputTokens(prompt: CursorPrompt): number {
-	return estimateTextTokens(prompt.text) + prompt.images.length * IMAGE_TOKEN_ESTIMATE;
-}
-
 function getPromptInputTokenBudget(model: Model<Api>): number {
 	const outputReserveTokens = Math.min(model.maxTokens, Math.max(1, Math.floor(model.contextWindow * 0.2)));
 	return Math.max(1, model.contextWindow - outputReserveTokens);
 }
 
-function setApproximateUsage(partial: AssistantMessage, promptInputTokens: number, outputText: string): void {
-	partial.usage.input = promptInputTokens;
-	partial.usage.output = estimateTextTokens(outputText);
+function getCursorPromptOptions(model: Model<Api>) {
+	return {
+		maxInputTokens: getPromptInputTokenBudget(model),
+		charsPerToken: CURSOR_APPROX_CHARS_PER_TOKEN,
+		imageTokenEstimate: CURSOR_IMAGE_TOKEN_ESTIMATE,
+	};
+}
+
+function stringifyUsageValue(value: unknown): string {
+	try {
+		return JSON.stringify(value) ?? "";
+	} catch {
+		return String(value);
+	}
+}
+
+function estimateAssistantActivityOutputTokens(message: AssistantMessage): number {
+	const parts = message.content
+		.map((block) => {
+			if (block.type === "text") return block.text;
+			if (block.type === "thinking") return block.thinking;
+			if (block.type === "toolCall") {
+				return `Tool call (${block.name}, call ${block.id}): ${stringifyUsageValue(block.arguments)}`;
+			}
+			return "";
+		})
+		.filter(Boolean);
+	return estimateCursorTextTokens(parts.join("\n"), { charsPerToken: CURSOR_APPROX_CHARS_PER_TOKEN });
+}
+
+function withAssistantMessage(context: Context, partial: AssistantMessage): Context {
+	return { ...context, messages: [...context.messages, partial] };
+}
+
+function setCursorApproximateUsage(partial: AssistantMessage, model: Model<Api>, context: Context, sessionInputTokens: number): void {
+	partial.usage.input = sessionInputTokens;
+	partial.usage.output = estimateAssistantActivityOutputTokens(partial);
 	partial.usage.cacheRead = 0;
 	partial.usage.cacheWrite = 0;
-	partial.usage.totalTokens = partial.usage.input + partial.usage.output;
+	partial.usage.totalTokens = estimateCursorContextTokens(withAssistantMessage(context, partial), getCursorPromptOptions(model));
 }
 
 function sanitizeSingleLine(value: string): string {
@@ -390,6 +426,26 @@ function getPendingCursorLiveRun(context: Context): CursorLiveRun | undefined {
 		}
 	}
 	return undefined;
+}
+
+function asToolResultMessage(message: Message): ToolResultMessage | undefined {
+	return message.role === "toolResult" ? message : undefined;
+}
+
+function isCursorLiveRunToolResult(run: CursorLiveRun, message: ToolResultMessage): boolean {
+	const replayId = getCursorNativeReplayIdFromToolCallId(message.toolCallId);
+	if (replayId) return replayId === run.id;
+	return run.bridgeRun?.hasPendingPiToolCallId(message.toolCallId) ?? false;
+}
+
+function accumulateCursorLiveToolResultInputTokens(run: CursorLiveRun, context: Context): void {
+	for (const message of context.messages) {
+		const toolResult = asToolResultMessage(message);
+		if (!toolResult || run.countedToolResultIds.has(toolResult.toolCallId)) continue;
+		if (!isCursorLiveRunToolResult(run, toolResult)) continue;
+		run.countedToolResultIds.add(toolResult.toolCallId);
+		run.pendingSessionInputTokens += estimateCursorPromptMessageTokens(toolResult, { charsPerToken: CURSOR_APPROX_CHARS_PER_TOKEN });
+	}
 }
 
 function splitTextIntoReplayDeltas(text: string): string[] {
@@ -640,12 +696,19 @@ function takeCursorNativePromptInputTokens(run: CursorLiveRun): number {
 	return run.promptInputTokens;
 }
 
+function takeCursorLiveSessionInputTokens(run: CursorLiveRun): number {
+	const tokens = takeCursorNativePromptInputTokens(run) + run.pendingSessionInputTokens;
+	run.pendingSessionInputTokens = 0;
+	return tokens;
+}
+
 function emitCursorNativeToolUseTurn(
 	stream: AssistantMessageEventStream,
 	partial: AssistantMessage,
+	model: Model<Api>,
+	context: Context,
 	run: CursorLiveRun,
 	tools: CursorNativeToolDisplayItem[],
-	outputText: string,
 ): void {
 	const shouldTerminate = run.done && !run.finalText?.trim() && run.pendingEvents.length === 0;
 	for (const tool of tools) {
@@ -664,7 +727,7 @@ function emitCursorNativeToolUseTurn(
 			run.recordedToolDisplayIds.push(tool.id);
 		}
 	}
-	setApproximateUsage(partial, takeCursorNativePromptInputTokens(run), outputText);
+	setCursorApproximateUsage(partial, model, context, takeCursorLiveSessionInputTokens(run));
 	partial.stopReason = "toolUse";
 	stream.push({ type: "done", reason: "toolUse", message: partial });
 	scheduleCursorNativeRunIdleDispose(run);
@@ -673,9 +736,10 @@ function emitCursorNativeToolUseTurn(
 function emitCursorBridgeToolUseTurn(
 	stream: AssistantMessageEventStream,
 	partial: AssistantMessage,
+	model: Model<Api>,
+	context: Context,
 	run: CursorLiveRun,
 	requests: CursorPiBridgeToolRequest[],
-	outputText: string,
 ): void {
 	for (const request of requests) {
 		const contentIndex = partial.content.length;
@@ -690,7 +754,7 @@ function emitCursorBridgeToolUseTurn(
 		const block = partial.content[contentIndex];
 		if (block.type === "toolCall") stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial });
 	}
-	setApproximateUsage(partial, takeCursorNativePromptInputTokens(run), outputText);
+	setCursorApproximateUsage(partial, model, context, takeCursorLiveSessionInputTokens(run));
 	partial.stopReason = "toolUse";
 	stream.push({ type: "done", reason: "toolUse", message: partial });
 	scheduleCursorNativeRunIdleDispose(run);
@@ -720,6 +784,8 @@ async function disposeCursorNativeRun(run: CursorLiveRun): Promise<void> {
 async function emitCursorNativeRunNextTurn(
 	stream: AssistantMessageEventStream,
 	partial: AssistantMessage,
+	model: Model<Api>,
+	context: Context,
 	run: CursorLiveRun,
 	signal?: AbortSignal,
 ): Promise<void> {
@@ -737,17 +803,17 @@ async function emitCursorNativeRunNextTurn(
 			if (event.type === "tool") {
 				await settleCursorLiveToolBatch(run);
 				if (signal?.aborted) throw new CursorAbortError();
-				const outputText = closeCursorNativeTurnBlocks(turn);
+				closeCursorNativeTurnBlocks(turn);
 				const tools = collectCursorNativeToolBatch(run);
-				emitCursorNativeToolUseTurn(stream, partial, run, tools, outputText);
+				emitCursorNativeToolUseTurn(stream, partial, model, context, run, tools);
 				return;
 			}
 			if (event.type === "bridge-tool") {
 				await settleCursorLiveToolBatch(run);
 				if (signal?.aborted) throw new CursorAbortError();
-				const outputText = closeCursorNativeTurnBlocks(turn);
+				closeCursorNativeTurnBlocks(turn);
 				const requests = collectCursorBridgeToolBatch(run);
-				emitCursorBridgeToolUseTurn(stream, partial, run, requests, outputText);
+				emitCursorBridgeToolUseTurn(stream, partial, model, context, run, requests);
 				return;
 			}
 			run.pendingEvents.shift();
@@ -768,12 +834,12 @@ async function emitCursorNativeRunNextTurn(
 			return;
 		}
 		if (run.done) {
-			let outputText = closeCursorNativeTurnBlocks(turn);
+			closeCursorNativeTurnBlocks(turn);
 			const finalText = trimCurrentTurnAlreadyEmittedCursorText(run.finalText ?? run.textDeltas.join(""), turn.emittedText, run.emittedText);
 			if (finalText) {
-				outputText += await emitTextDeltas(stream, partial, splitTextIntoReplayDeltas(finalText));
+				await emitTextDeltas(stream, partial, splitTextIntoReplayDeltas(finalText));
 			}
-			setApproximateUsage(partial, takeCursorNativePromptInputTokens(run), outputText);
+			setCursorApproximateUsage(partial, model, context, takeCursorLiveSessionInputTokens(run));
 			partial.stopReason = "stop";
 			stream.push({ type: "done", reason: "stop", message: partial });
 			await disposeCursorNativeRun(run);
@@ -787,15 +853,17 @@ async function emitCursorNativeRunNextTurn(
 async function replayPendingCursorLiveRun(
 	stream: AssistantMessageEventStream,
 	partial: AssistantMessage,
+	model: Model<Api>,
 	context: Context,
 	signal?: AbortSignal,
 ): Promise<boolean> {
 	const run = getPendingCursorLiveRun(context);
 	if (!run) return false;
 	clearCursorNativeRunIdleDispose(run);
+	accumulateCursorLiveToolResultInputTokens(run, context);
 	run.bridgeRun?.resolveToolResultsFromContext(context);
 	try {
-		await emitCursorNativeRunNextTurn(stream, partial, run, signal);
+		await emitCursorNativeRunNextTurn(stream, partial, model, context, run, signal);
 	} catch (error) {
 		if (error instanceof CursorAbortError) await disposeCursorNativeRun(run);
 		throw error;
@@ -831,7 +899,7 @@ export function streamCursor(
 			stream.push({ type: "start", partial });
 			throwIfAborted();
 
-			if (await replayPendingCursorLiveRun(stream, partial, context, options?.signal)) {
+			if (await replayPendingCursorLiveRun(stream, partial, model, context, options?.signal)) {
 				stream.end();
 				return;
 			}
@@ -876,12 +944,9 @@ export function streamCursor(
 			);
 			throwIfAborted();
 
-			const prompt = buildCursorPrompt(context, {
-				maxInputTokens: getPromptInputTokenBudget(model),
-				charsPerToken: APPROX_CHARS_PER_TOKEN,
-				imageTokenEstimate: IMAGE_TOKEN_ESTIMATE,
-			});
-			const promptInputTokens = estimatePromptInputTokens(prompt);
+			const promptOptions = getCursorPromptOptions(model);
+			const prompt = buildCursorPrompt(context, promptOptions);
+			const promptInputTokens = estimateCursorPromptTokens(prompt, promptOptions);
 			let thinkingContentIndex = -1;
 			let activityTraceChars = 0;
 			let activityTraceTruncated = false;
@@ -899,6 +964,8 @@ export function streamCursor(
 						bridgeRun,
 						promptInputTokens,
 						promptInputTokensReported: false,
+						pendingSessionInputTokens: 0,
+						countedToolResultIds: new Set(),
 						pendingEvents: [],
 						textDeltas,
 						emittedText: "",
@@ -1277,7 +1344,7 @@ export function streamCursor(
 					await waitForCursorNativeRunProgress(liveRun, options?.signal);
 					await settleCursorLiveToolBatch(liveRun);
 					closeTraceBlock();
-					await emitCursorNativeRunNextTurn(stream, partial, liveRun, options?.signal);
+					await emitCursorNativeRunNextTurn(stream, partial, model, context, liveRun, options?.signal);
 				} catch (error) {
 					if (error instanceof CursorAbortError) await disposeCursorNativeRun(liveRun);
 					throw error;
@@ -1301,8 +1368,8 @@ export function streamCursor(
 				const finalCursorText = selectCursorFinalText(result.result, textDeltas, textDeltas.join(""), cursorPlanTextCandidate, {
 					allowPartialPrefix: true,
 				});
-				const finalText = flushText(hasUsableText(finalCursorText) ? [finalCursorText] : []);
-				setApproximateUsage(partial, promptInputTokens, finalText);
+				flushText(hasUsableText(finalCursorText) ? [finalCursorText] : []);
+				setCursorApproximateUsage(partial, model, context, promptInputTokens);
 				stream.push({ type: "done", reason: "stop", message: partial });
 			}
 		} catch (error) {

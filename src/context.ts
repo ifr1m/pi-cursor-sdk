@@ -14,7 +14,8 @@ export interface CursorPromptOptions {
 	imageTokenEstimate?: number;
 }
 
-const DEFAULT_CHARS_PER_TOKEN = 4;
+export const CURSOR_APPROX_CHARS_PER_TOKEN = 4;
+export const CURSOR_IMAGE_TOKEN_ESTIMATE = 1200;
 const SECTION_SEPARATOR = "\n\n";
 
 function isTextBlock(block: { type: string }): block is { type: "text"; text: string } {
@@ -132,7 +133,7 @@ function applyPromptBudget(
 		return [...sectionsBeforeMessages, ...messageSections.map((section) => section.text), ...sectionsAfterMessages];
 	}
 
-	const charsPerToken = options.charsPerToken ?? DEFAULT_CHARS_PER_TOKEN;
+	const charsPerToken = options.charsPerToken ?? CURSOR_APPROX_CHARS_PER_TOKEN;
 	const maxChars = Math.max(1, Math.floor(maxInputTokens * charsPerToken));
 	const requiredMessageSections = messageSections.filter((section) => section.index === latestUserMessageIndex);
 	const requiredCost = [...sectionsBeforeMessages, ...requiredMessageSections.map((section) => section.text), ...sectionsAfterMessages].reduce(
@@ -166,6 +167,24 @@ function applyPromptBudget(
 		.filter((section) => includedMessageIndexes.has(section.index))
 		.map((section) => section.text);
 	return [...sectionsBeforeMessages, ...budgetNotice, ...includedMessages, ...sectionsAfterMessages];
+}
+
+export function estimateCursorTextTokens(text: string, options: Pick<CursorPromptOptions, "charsPerToken"> = {}): number {
+	const charsPerToken = options.charsPerToken ?? CURSOR_APPROX_CHARS_PER_TOKEN;
+	return Math.ceil(text.length / charsPerToken);
+}
+
+export function estimateCursorPromptTokens(prompt: CursorPrompt, options: Pick<CursorPromptOptions, "charsPerToken" | "imageTokenEstimate"> = {}): number {
+	return estimateCursorTextTokens(prompt.text, options) + prompt.images.length * (options.imageTokenEstimate ?? CURSOR_IMAGE_TOKEN_ESTIMATE);
+}
+
+export function estimateCursorPromptMessageTokens(message: Message, options: Pick<CursorPromptOptions, "charsPerToken"> = {}): number {
+	const text = formatMessage(message);
+	return text ? estimateCursorTextTokens(text, options) : 0;
+}
+
+export function estimateCursorContextTokens(context: Context, options: CursorPromptOptions = {}): number {
+	return estimateCursorPromptTokens(buildCursorPrompt(context, options), options);
 }
 
 export function buildCursorPrompt(context: Context, options: CursorPromptOptions = {}): CursorPrompt {
