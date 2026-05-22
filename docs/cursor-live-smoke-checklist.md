@@ -79,7 +79,7 @@ Observe with `tmux capture-pane -pt "$SESSION"` or attach manually.
 
 Pass criteria:
 
-- Footer shows `(cursor) composer-2.5` and `codex-fast:off`.
+- Footer shows `(cursor) composer-2.5`. With `--cursor-no-fast`, Cursor fast mode is off and the Cursor extension status should not show `cursor fast`; ignore unrelated status text from other extensions.
 - Assistant answer appears correctly.
 - `/session` shows one user and one assistant message for the simple run.
 - Persisted JSONL has one assistant message. If the screen appears duplicated, inspect JSONL before deciding whether it is a rendering bug.
@@ -184,8 +184,6 @@ Pass criteria:
 - Interrupting the run does not leave `sleep 30`, `SHOULD_NOT_PRINT`, `pi`, or bridge-related child processes running.
 - Diagnostics either show clean cancellation/disposal or the process exits cleanly without orphaning children.
 - Persisted JSONL does not contain a false successful final answer.
-
-Current branch verification, 2026-05-22: this check was re-run against `pi -e . --cursor-no-fast --model cursor/composer-2.5` with `sleep 300 && echo SHOULD_NOT_PRINT`. Before interruption, the real `/bin/bash -c sleep 300 && echo SHOULD_NOT_PRINT` and `sleep 300` child processes were observed. After Ctrl-C, no matching child processes remained, stdout stayed empty, diagnostics showed the bridge request rejected as `cancelled`, and the tmux session ended.
 
 ## 8. Final structural session scan
 

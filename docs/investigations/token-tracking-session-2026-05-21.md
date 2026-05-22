@@ -345,4 +345,3 @@ Rejected alternatives:
 - The existing huge Cursor SDK usage test remains in place to prevent accidental reintroduction of raw cumulative counters into pi usage or compaction.
 - Docs now distinguish approximate session activity, context estimate, and raw Cursor internal usage.
 - Tool-result image accounting is covered as prompt placeholder text, matching `buildCursorPrompt()`.
-
