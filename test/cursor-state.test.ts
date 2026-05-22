@@ -47,7 +47,7 @@ const modelItems: ModelListItem[] = [
 	},
 ];
 
-type CursorFastTestModel = Pick<NonNullable<ExtensionContext["model"]>, "id" | "provider">;
+type CursorFastTestModel = Pick<NonNullable<ExtensionContext["model"]>, "id" | "provider" | "api">;
 type CursorFastTestContext = {
 	model: CursorFastTestModel | undefined;
 	ui: {
@@ -86,6 +86,7 @@ function createHarness(options: { modelId?: string; provider?: string; branch?: 
 			? {
 					provider: options.provider ?? "cursor",
 					id: options.modelId,
+					api: "cursor-sdk",
 				}
 			: undefined,
 		ui: {
@@ -330,5 +331,28 @@ describe("Cursor fast state", () => {
 		await handlers.get("session_start")({}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
+	});
+
+	it("refreshes Cursor fast status on turn_start after session_start without a model", async () => {
+		const { ctx, handlers } = createHarness();
+		await handlers.get("session_start")({}, ctx);
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
+
+		ctx.model = { provider: "cursor", id: "composer-2", api: "cursor-sdk" };
+		await handlers.get("turn_start")({}, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor fast");
+	});
+
+	it("recognizes cursor-sdk api models when updating footer status", async () => {
+		const { ctx, handlers } = createHarness({
+			modelId: "composer-2",
+			provider: "other-provider",
+		});
+		ctx.model = { provider: "other-provider", id: "composer-2", api: "cursor-sdk" };
+
+		await handlers.get("turn_start")({}, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor fast");
 	});
 });

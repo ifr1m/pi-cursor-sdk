@@ -5,6 +5,7 @@ import { registerCursorNativeToolDisplay } from "./cursor-native-tool-display.js
 import { registerCursorPiToolBridge } from "./cursor-pi-tool-bridge.js";
 import { registerCursorQuestionTool } from "./cursor-question-tool.js";
 import { registerCursorSessionCwd } from "./cursor-session-cwd.js";
+import { registerCursorSessionAgent } from "./cursor-session-agent.js";
 import { streamCursor } from "./cursor-provider.js";
 
 type CursorExtensionApi =
@@ -16,6 +17,7 @@ type CursorExtensionApi =
 		}): void;
 	}
 	& Parameters<typeof registerCursorSessionCwd>[0]
+	& Parameters<typeof registerCursorSessionAgent>[0]
 	& Parameters<typeof registerCursorFastControls>[0]
 	& Parameters<typeof registerCursorNativeToolDisplay>[0]
 	& Parameters<typeof registerCursorQuestionTool>[0]
@@ -39,6 +41,7 @@ function registerCursorProvider(pi: Pick<ExtensionAPI, "registerProvider">, mode
 export default async function (pi: CursorExtensionApi) {
 	// Session cwd must register before other session_start listeners that depend on it.
 	registerCursorSessionCwd(pi);
+	registerCursorSessionAgent(pi);
 	registerCursorFastControls(pi);
 	registerCursorNativeToolDisplay(pi);
 	registerCursorQuestionTool(pi);

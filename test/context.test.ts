@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
 	buildCursorPrompt,
+	buildCursorSendPrompt,
+	buildCursorIncrementalPrompt,
+	computeCursorContextFingerprint,
+	shouldBootstrapCursorSend,
 	CURSOR_IMAGE_TOKEN_ESTIMATE,
 	estimateCursorContextTokens,
 	estimateCursorPromptMessageTokens,
@@ -471,5 +475,84 @@ describe("buildCursorPrompt", () => {
 		expect(result.text).not.toContain("do not execute every Cursor tool");
 		expect(result.text).toContain("replay is display-only and not a capability to invoke");
 		expect(result.text).toContain("use Cursor web/search/browser/MCP or say web search is not configured");
+	});
+});
+
+describe("buildCursorSendPrompt", () => {
+	it("bootstraps the first send with the full Cursor prompt", () => {
+		const context: Context = {
+			systemPrompt: "Be helpful.",
+			messages: [{ role: "user", content: "Hello", timestamp: 1 }],
+		};
+		const sendState = { bootstrapped: false, contextFingerprint: "" };
+
+		const { prompt, bootstrap } = buildCursorSendPrompt(context, {}, sendState);
+
+		expect(bootstrap).toBe(true);
+		expect(prompt.text).toContain("Cursor SDK tool boundary:");
+		expect(prompt.text).toContain("User: Hello");
+	});
+
+	it("sends an incremental prompt after a bootstrapped session agent send", () => {
+		const priorContext: Context = {
+			systemPrompt: "Be helpful.",
+			messages: [
+				{ role: "user", content: "Hello", timestamp: 1 },
+				{ role: "assistant", content: [{ type: "text", text: "Hi" }], api: "cursor-sdk", provider: "cursor", model: "test", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
+			],
+		};
+		const context: Context = {
+			systemPrompt: "Be helpful.",
+			messages: [...priorContext.messages, { role: "user", content: "Follow up", timestamp: 3 }],
+		};
+		const sendState = { bootstrapped: true, contextFingerprint: computeCursorContextFingerprint(priorContext) };
+
+		const { prompt, bootstrap } = buildCursorSendPrompt(context, {}, sendState);
+
+		expect(bootstrap).toBe(false);
+		expect(prompt.text).toContain("Continue the conversation using Cursor SDK capabilities only");
+		expect(prompt.text).toContain("User: Follow up");
+		expect(prompt.text).not.toContain("Cursor SDK tool boundary:");
+		expect(prompt.text).not.toContain("User: Hello");
+	});
+
+	it("rebootstraps after branch shrink using shouldBootstrapCursorSend", () => {
+		const context: Context = {
+			messages: [{ role: "user", content: "Hello", timestamp: 1 }],
+		};
+		const sendState = {
+			bootstrapped: true,
+			contextFingerprint: computeCursorContextFingerprint({
+				messages: [
+					{ role: "user", content: "Hello", timestamp: 1 },
+					{ role: "assistant", content: [{ type: "text", text: "Hi" }], api: "cursor-sdk", provider: "cursor", model: "test", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
+				],
+			}),
+		};
+
+		expect(shouldBootstrapCursorSend(sendState, context)).toBe(true);
+		expect(buildCursorSendPrompt(context, {}, sendState).bootstrap).toBe(true);
+	});
+
+	it("rebootstraps when same-length history diverges", () => {
+		const priorContext: Context = {
+			messages: [{ role: "user", content: "Hello", timestamp: 1 }],
+		};
+		const editedContext: Context = {
+			messages: [{ role: "user", content: "Hello edited", timestamp: 1 }],
+		};
+		const sendState = { bootstrapped: true, contextFingerprint: computeCursorContextFingerprint(priorContext) };
+
+		expect(shouldBootstrapCursorSend(sendState, editedContext)).toBe(true);
+		expect(buildCursorSendPrompt(editedContext, {}, sendState).bootstrap).toBe(true);
+	});
+
+	it("omits the full tool boundary block from incremental prompts", () => {
+		const incremental = buildCursorIncrementalPrompt({
+			systemPrompt: "Be helpful.",
+			messages: [{ role: "user", content: "Follow up", timestamp: 3 }],
+		});
+		expect(incremental.text).not.toContain("Cursor SDK tool boundary:");
+		expect(incremental.text).toContain("Continue the conversation using Cursor SDK capabilities only");
 	});
 });

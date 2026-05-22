@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Context, Message, ToolCall } from "@earendil-works/pi-ai";
 import type { SDKImage } from "@cursor/sdk";
 import { getCursorPiBridgeContractText } from "./cursor-bridge-contract.js";
@@ -185,6 +186,112 @@ export function estimateCursorPromptMessageTokens(message: Message, options: Pic
 
 export function estimateCursorContextTokens(context: Context, options: CursorPromptOptions = {}): number {
 	return estimateCursorPromptTokens(buildCursorPrompt(context, options), options);
+}
+
+interface CursorContextFingerprintPayload {
+	systemHash: string;
+	messageHashes: string[];
+}
+
+function hashCursorContextValue(value: string): string {
+	return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function serializeMessageForFingerprint(message: Message, index: number): string {
+	switch (message.role) {
+		case "user": {
+			const text =
+				typeof message.content === "string"
+					? message.content
+					: JSON.stringify(message.content);
+			return hashCursorContextValue(`user:${message.timestamp ?? index}:${text}`);
+		}
+		case "assistant":
+			return hashCursorContextValue(`assistant:${message.timestamp ?? index}:${JSON.stringify(message.content)}`);
+		case "toolResult":
+			return hashCursorContextValue(
+				`toolResult:${message.timestamp ?? index}:${message.toolCallId}:${message.toolName}:${JSON.stringify(message.content)}:${message.isError === true}`,
+			);
+	}
+}
+
+function parseCursorContextFingerprint(fingerprint: string): CursorContextFingerprintPayload | undefined {
+	try {
+		const parsed = JSON.parse(fingerprint) as CursorContextFingerprintPayload;
+		if (!parsed || typeof parsed.systemHash !== "string" || !Array.isArray(parsed.messageHashes)) return undefined;
+		if (!parsed.messageHashes.every((entry) => typeof entry === "string")) return undefined;
+		return parsed;
+	} catch {
+		return undefined;
+	}
+}
+
+export function computeCursorContextFingerprint(context: Context): string {
+	const payload: CursorContextFingerprintPayload = {
+		systemHash: hashCursorContextValue(context.systemPrompt ?? ""),
+		messageHashes: context.messages.map((message, index) => serializeMessageForFingerprint(message, index)),
+	};
+	return JSON.stringify(payload);
+}
+
+export function shouldBootstrapCursorSend(
+	sendState: { bootstrapped: boolean; contextFingerprint: string },
+	context: Context,
+): boolean {
+	if (!sendState.bootstrapped) return true;
+	const previous = parseCursorContextFingerprint(sendState.contextFingerprint);
+	if (!previous) return true;
+	const current = parseCursorContextFingerprint(computeCursorContextFingerprint(context));
+	if (!current) return true;
+	if (current.systemHash !== previous.systemHash) return true;
+	if (current.messageHashes.length < previous.messageHashes.length) return true;
+	for (let index = 0; index < previous.messageHashes.length; index += 1) {
+		if (current.messageHashes[index] !== previous.messageHashes[index]) return true;
+	}
+	return false;
+}
+
+export function buildCursorIncrementalPrompt(context: Context, options: CursorPromptOptions = {}): CursorPrompt {
+	// Incremental sends omit the full Cursor SDK tool boundary block; the session agent retains prior bootstrap context.
+	const latestUserMessageIndex = getLatestUserMessageIndex(context.messages);
+	const latestUserMessage = latestUserMessageIndex >= 0 ? context.messages[latestUserMessageIndex] : undefined;
+	const latestUserText = latestUserMessage ? formatMessage(latestUserMessage) : undefined;
+	const sections = [
+		"Continue the conversation using Cursor SDK capabilities only. Do not list, promise, or call pi-only tools from earlier context as if they were available.",
+	];
+	if (context.systemPrompt) {
+		sections.push(`System instructions from pi:\n${sanitizeSystemPromptForCursor(context.systemPrompt)}`);
+	}
+	if (latestUserText) sections.push(latestUserText);
+	const images = extractLatestImages(context.messages);
+	const imageTokenReserve = images.length * (options.imageTokenEstimate ?? 0);
+	const budgetOptions =
+		options.maxInputTokens === undefined
+			? options
+			: { ...options, maxInputTokens: Math.max(1, options.maxInputTokens - imageTokenReserve) };
+	const maxInputTokens = budgetOptions.maxInputTokens;
+	if (maxInputTokens !== undefined && Number.isFinite(maxInputTokens) && maxInputTokens > 0) {
+		const charsPerToken = budgetOptions.charsPerToken ?? CURSOR_APPROX_CHARS_PER_TOKEN;
+		const maxChars = Math.max(1, Math.floor(maxInputTokens * charsPerToken));
+		let text = sections.join(SECTION_SEPARATOR);
+		if (text.length > maxChars) {
+			text = `${text.slice(0, Math.max(0, maxChars - 1))}…`;
+		}
+		return { text, images };
+	}
+	return { text: sections.join(SECTION_SEPARATOR), images };
+}
+
+export function buildCursorSendPrompt(
+	context: Context,
+	options: CursorPromptOptions,
+	sendState: { bootstrapped: boolean; contextFingerprint: string },
+): { prompt: CursorPrompt; bootstrap: boolean } {
+	const bootstrap = shouldBootstrapCursorSend(sendState, context);
+	if (bootstrap) {
+		return { prompt: buildCursorPrompt(context, options), bootstrap: true };
+	}
+	return { prompt: buildCursorIncrementalPrompt(context, options), bootstrap: false };
 }
 
 export function buildCursorPrompt(context: Context, options: CursorPromptOptions = {}): CursorPrompt {

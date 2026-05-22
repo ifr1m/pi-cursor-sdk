@@ -7,6 +7,7 @@ import { Type } from "typebox";
 import {
 	__testUtils,
 	buildCursorPiToolBridgeSnapshot,
+	buildCursorPiToolBridgeSurfaceSignature,
 	registerCursorPiToolBridge,
 	resolveCursorPiToolBridgeBuiltinsEnabled,
 	resolveCursorPiToolBridgeDebugEnabled,
@@ -790,6 +791,26 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 		}
 	});
 
+	it("rejects MCP calls when no live run handler is bound", async () => {
+		const registry = __testUtils.createRegistry(
+			createMockPi({ active: ["read"], tools: [createToolInfo("read")] }),
+			{ PI_CURSOR_EXPOSE_BUILTIN_TOOLS: "1" },
+		);
+		const run = await registry.createRun({ onToolRequest: () => {} });
+		run.setOnToolRequest(undefined);
+		const { client, transport } = await connectClient(run.mcpServers!.pi_tools.url);
+		try {
+			const callPromise = client.callTool({ name: "pi__read", arguments: { path: "README.md" } });
+			const error = await callPromise.catch((callError: unknown) => callError);
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toMatch(/no active live run|MCP error/i);
+		} finally {
+			await client.close().catch(() => undefined);
+			await transport.close().catch(() => undefined);
+			await run.dispose();
+		}
+	});
+
 	it("rejects pending MCP waits on abort/dispose", async () => {
 		const registry = __testUtils.createRegistry(
 			createMockPi({ active: ["read"], tools: [createToolInfo("read")] }),
@@ -812,5 +833,14 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			await transport.close().catch(() => undefined);
 			await run.dispose();
 		}
+	});
+
+	it("changes the bridge surface signature when tool schema changes but the MCP name stays the same", () => {
+		const schema = Type.Object({ target: Type.String() });
+		const schemaV2 = Type.Object({ target: Type.String(), force: Type.Optional(Type.Boolean()) });
+		const snapshotA = buildCursorPiToolBridgeSnapshot(createMockPi({ active: ["sem_reindex"], tools: [createToolInfo("sem_reindex", "Reindex", schema)] }));
+		const snapshotB = buildCursorPiToolBridgeSnapshot(createMockPi({ active: ["sem_reindex"], tools: [createToolInfo("sem_reindex", "Reindex", schemaV2)] }));
+
+		expect(buildCursorPiToolBridgeSurfaceSignature(snapshotA)).not.toBe(buildCursorPiToolBridgeSurfaceSignature(snapshotB));
 	});
 });

@@ -17,7 +17,9 @@ interface CursorGlobalConfig {
 	fastDefaults?: Record<string, boolean>;
 }
 
-type CursorFastControlsModel = Pick<NonNullable<ExtensionContext["model"]>, "id" | "provider"> | undefined;
+type CursorFastControlsModel =
+	| Pick<NonNullable<ExtensionContext["model"]>, "id" | "provider" | "api">
+	| undefined;
 
 type CursorFastControlsContext = {
 	model: CursorFastControlsModel;
@@ -32,6 +34,7 @@ interface CursorFastControlsExtensionApi extends Pick<ExtensionAPI, "appendEntry
 	}): void;
 	on(event: "session_start", handler: (event: SessionStartEvent, ctx: CursorFastControlsContext) => Promise<void> | void): void;
 	on(event: "model_select", handler: (event: { model: ExtensionContext["model"] }, ctx: CursorFastControlsContext) => Promise<void> | void): void;
+	on(event: "turn_start", handler: (event: unknown, ctx: CursorFastControlsContext) => Promise<void> | void): void;
 }
 
 const sessionFastPreferences = new Map<string, boolean>();
@@ -91,23 +94,27 @@ function getEffectiveFast(baseModelId: string, modelId: string): boolean | undef
 	return sessionFastPreferences.get(baseModelId) ?? globalFastPreferences.get(baseModelId) ?? metadata.defaultFast;
 }
 
+function isCursorModel(model: CursorFastControlsModel): boolean {
+	return model?.provider === CURSOR_PROVIDER || model?.api === "cursor-sdk";
+}
+
 function updateCursorStatus(ctx: { model: CursorFastControlsModel; ui: Pick<ExtensionContext["ui"], "setStatus"> }, model = ctx.model): void {
-	if (model?.provider !== CURSOR_PROVIDER) {
+	if (!model || !isCursorModel(model)) {
 		ctx.ui.setStatus("cursor", undefined);
 		return;
 	}
 	const metadata = getCursorModelMetadata(model.id);
-	if (!metadata) {
+	if (!metadata?.supportsFast) {
 		ctx.ui.setStatus("cursor", undefined);
 		return;
 	}
 	const fast = getEffectiveFast(metadata.baseModelId, model.id);
-	ctx.ui.setStatus("cursor", fast ? "cursor fast" : undefined);
+	ctx.ui.setStatus("cursor", fast === true ? "cursor fast" : undefined);
 }
 
 function getCurrentCursorMetadata(ctx: { model: CursorFastControlsModel }) {
 	const model = ctx.model;
-	if (model?.provider !== CURSOR_PROVIDER) return undefined;
+	if (!model || !isCursorModel(model)) return undefined;
 	return getCursorModelMetadata(model.id);
 }
 
@@ -204,6 +211,10 @@ export function registerCursorFastControls(pi: CursorFastControlsExtensionApi): 
 
 	pi.on("model_select", async (event, ctx) => {
 		updateCursorStatus(ctx, event.model);
+	});
+
+	pi.on("turn_start", async (_event, ctx) => {
+		updateCursorStatus(ctx);
 	});
 }
 
