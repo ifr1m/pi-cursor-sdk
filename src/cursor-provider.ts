@@ -12,9 +12,14 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { Agent, createAgentPlatform } from "@cursor/sdk";
 import type { InteractionUpdate, SDKAgent, SettingSource } from "@cursor/sdk";
 import { installCursorMcpToolTimeoutOverride } from "./cursor-mcp-timeout-override.js";
-import { buildCursorPrompt } from "./context.js";
+import { buildCursorSendPrompt } from "./context.js";
 import {
-	getRegisteredCursorPiToolBridge,
+	acquireSessionCursorAgent,
+	commitSessionAgentSend,
+	disposeAllSessionCursorAgents,
+	resetSessionCursorAgent,
+} from "./cursor-session-agent.js";
+import {
 	type CursorPiBridgeToolRequest,
 	type CursorPiToolBridgeRun,
 } from "./cursor-pi-tool-bridge.js";
@@ -89,10 +94,17 @@ type CursorLiveQueuedEvent =
 	| { type: "tool"; tool: CursorNativeToolDisplayItem }
 	| { type: "bridge-tool"; request: CursorPiBridgeToolRequest };
 
+interface CursorLiveSdkRun {
+	cancel(): Promise<void>;
+}
+
 interface CursorLiveRun {
 	id: string;
 	agent: SDKAgent;
 	bridgeRun?: CursorPiToolBridgeRun;
+	sessionBridgeRun?: CursorPiToolBridgeRun;
+	sessionAgentScopeKey?: string;
+	sdkRun?: CursorLiveSdkRun;
 	accounting: CursorLiveRunAccountingState;
 	pendingEvents: CursorLiveQueuedEvent[];
 	textDeltas: string[];
@@ -447,7 +459,7 @@ function scheduleCursorNativeRunIdleDispose(run: CursorLiveRun): void {
 	if (run.disposed) return;
 	clearCursorNativeRunIdleDispose(run);
 	run.idleDisposeTimer = setTimeout(() => {
-		void disposeCursorNativeRun(run);
+		void releaseCursorLiveRun(run);
 	}, cursorNativeReplayIdleDisposeMs);
 	run.idleDisposeTimer.unref?.();
 }
@@ -700,24 +712,42 @@ function emitCursorBridgeToolUseTurn(
 	scheduleCursorNativeRunIdleDispose(run);
 }
 
-async function disposeCursorNativeRun(run: CursorLiveRun): Promise<void> {
+function isSuccessfulCursorLiveRun(run: CursorLiveRun): boolean {
+	return run.done && !run.cancelled && !run.errorMessage;
+}
+
+async function abandonSessionCursorAgent(scopeKey: string | undefined): Promise<void> {
+	if (!scopeKey) return;
+	await resetSessionCursorAgent(scopeKey);
+}
+
+async function releaseCursorLiveRun(run: CursorLiveRun): Promise<void> {
 	if (run.disposed) return;
+	const abandoned = !isSuccessfulCursorLiveRun(run);
 	run.disposed = true;
 	pendingCursorLiveRuns.delete(run.id);
 	clearCursorNativeRunIdleDispose(run);
-	run.bridgeRun?.cancel("Cursor live run disposed");
+	run.bridgeRun?.cancel("Cursor live run released");
 	for (const toolDisplayId of run.recordedToolDisplayIds) deleteCursorNativeToolDisplay(toolDisplayId);
 	run.recordedToolDisplayIds = [];
 	run.waiters.clear();
-	try {
-		await run.bridgeRun?.dispose();
-	} catch {
-		// bridge disposal failure should not mask the provider result
+	if (run.sessionBridgeRun) {
+		run.sessionBridgeRun.setOnToolRequest(undefined);
 	}
-	try {
-		await run.agent[Symbol.asyncDispose]();
-	} catch {
-		// disposal failure should not mask the provider result
+	if (run.bridgeRun && run.bridgeRun !== run.sessionBridgeRun) {
+		try {
+			await run.bridgeRun.dispose();
+		} catch {
+			// bridge disposal failure should not mask the provider result
+		}
+	}
+	if (abandoned) {
+		try {
+			await run.sdkRun?.cancel();
+		} catch {
+			// cancellation failure should not block session-agent abandonment
+		}
+		await abandonSessionCursorAgent(run.sessionAgentScopeKey);
 	}
 }
 
@@ -764,14 +794,14 @@ async function emitCursorNativeRunNextTurn(
 		if (run.cancelled) {
 			partial.stopReason = "aborted";
 			stream.push({ type: "error", reason: "aborted", error: partial });
-			await disposeCursorNativeRun(run);
+			await releaseCursorLiveRun(run);
 			return;
 		}
 		if (run.errorMessage) {
 			partial.stopReason = "error";
 			partial.errorMessage = run.errorMessage;
 			stream.push({ type: "error", reason: "error", error: partial });
-			await disposeCursorNativeRun(run);
+			await releaseCursorLiveRun(run);
 			return;
 		}
 		if (run.done) {
@@ -783,7 +813,7 @@ async function emitCursorNativeRunNextTurn(
 			applyCursorApproximateUsage(partial, model, context, takeCursorLiveSessionInputTokens(run, toolResultInputTokens));
 			partial.stopReason = "stop";
 			stream.push({ type: "done", reason: "stop", message: partial });
-			await disposeCursorNativeRun(run);
+			await releaseCursorLiveRun(run);
 			return;
 		}
 
@@ -806,7 +836,7 @@ async function replayPendingCursorLiveRun(
 	try {
 		await emitCursorNativeRunNextTurn(stream, partial, model, context, run, consumed.toolResultInputTokens, signal);
 	} catch (error) {
-		if (error instanceof CursorAbortError) await disposeCursorNativeRun(run);
+		if (error instanceof CursorAbortError) await releaseCursorLiveRun(run);
 		throw error;
 	}
 	return true;
@@ -824,10 +854,10 @@ export function streamCursor(
 		let agent: SDKAgent | null = null;
 		let activeLiveRun: CursorLiveRun | undefined;
 		let bridgeRun: CursorPiToolBridgeRun | undefined;
-		let bridgeRunOwnedByLiveRun = false;
 		let liveRunForBridgeQueue: CursorLiveRun | undefined;
 		const queuedBridgeRequestsBeforeLiveRun: CursorPiBridgeToolRequest[] = [];
 		let resolvedApiKey: string | undefined;
+		let sessionAgentScopeKey = "";
 		let abortSignal: AbortSignal | undefined;
 		let abortListener: (() => void) | undefined;
 		let restoreCursorSdkOutputFilter: (() => void) | undefined;
@@ -856,37 +886,40 @@ export function streamCursor(
 			const selection = buildCursorModelSelection(model.id, options?.reasoning ?? "off", fastEnabled);
 			const settingSources = resolveCursorSettingSources();
 
-			const registeredBridge = getRegisteredCursorPiToolBridge();
-			bridgeRun = registeredBridge
-				? await registeredBridge.createRun({
-						onToolRequest: (request) => {
-							if (liveRunForBridgeQueue && !liveRunForBridgeQueue.disposed) {
-								queueCursorNativeEvent(liveRunForBridgeQueue, { type: "bridge-tool", request });
-							} else {
-								queuedBridgeRequestsBeforeLiveRun.push(request);
-							}
-						},
-					})
-				: undefined;
-			if (!bridgeRun?.enabled || !bridgeRun.mcpServers) {
-				await bridgeRun?.dispose();
-				bridgeRun = undefined;
-			}
-
 			installCursorMcpToolTimeoutOverride();
 			restoreCursorSdkOutputFilter = installCursorSdkOutputFilter();
-			agent = await suppressCursorSdkOutput(() =>
-				Agent.create({
-					apiKey,
-					model: selection,
-					local: settingSources ? { cwd, settingSources } : { cwd },
-					...(bridgeRun?.mcpServers ? { mcpServers: bridgeRun.mcpServers } : {}),
-				}),
-			);
+			const sessionAgentAcquireParams = {
+				apiKey,
+				cwd,
+				modelSelection: selection,
+				settingSources,
+				onBridgeToolRequest: (request: CursorPiBridgeToolRequest) => {
+					if (liveRunForBridgeQueue && !liveRunForBridgeQueue.disposed) {
+						queueCursorNativeEvent(liveRunForBridgeQueue, { type: "bridge-tool", request });
+					} else {
+						queuedBridgeRequestsBeforeLiveRun.push(request);
+					}
+				},
+				createAgent: (createOptions: Parameters<typeof Agent.create>[0]) =>
+					suppressCursorSdkOutput(() => Agent.create(createOptions)),
+			};
+			let sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
+			sessionAgentScopeKey = sessionAgentLease.scopeKey;
+			agent = sessionAgentLease.agent;
+			bridgeRun = sessionAgentLease.bridgeRun;
 			throwIfAborted();
 
 			const promptOptions = getCursorPromptOptions(model);
-			const prompt = buildCursorPrompt(context, promptOptions);
+			let { prompt, bootstrap } = buildCursorSendPrompt(context, promptOptions, sessionAgentLease.sendState);
+			if (sessionAgentLease.sendState.bootstrapped && bootstrap) {
+				await resetSessionCursorAgent(sessionAgentLease.scopeKey);
+				sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
+				sessionAgentScopeKey = sessionAgentLease.scopeKey;
+				agent = sessionAgentLease.agent;
+				bridgeRun = sessionAgentLease.bridgeRun;
+				({ prompt, bootstrap } = buildCursorSendPrompt(context, promptOptions, sessionAgentLease.sendState));
+			}
+			const sessionBridgeRun = sessionAgentLease.bridgeRun;
 			const promptInputTokens = estimateCursorPromptInputTokens(prompt, promptOptions);
 			let thinkingContentIndex = -1;
 			let activityTraceChars = 0;
@@ -903,6 +936,8 @@ export function streamCursor(
 						id: useNativeToolReplay ? nativeReplayId : bridgeRun!.id,
 						agent,
 						bridgeRun,
+						sessionBridgeRun,
+						sessionAgentScopeKey,
 						accounting: createCursorLiveRunAccountingState(promptInputTokens),
 						pendingEvents: [],
 						textDeltas,
@@ -918,7 +953,6 @@ export function streamCursor(
 				pendingCursorLiveRuns.set(liveRun.id, liveRun);
 				activeLiveRun = liveRun;
 				liveRunForBridgeQueue = liveRun;
-				bridgeRunOwnedByLiveRun = bridgeRun !== undefined;
 				for (const request of queuedBridgeRequestsBeforeLiveRun.splice(0)) {
 					queueCursorNativeEvent(liveRun, { type: "bridge-tool", request });
 				}
@@ -1252,6 +1286,7 @@ export function streamCursor(
 				{ text: prompt.text, images: prompt.images.length > 0 ? prompt.images : undefined },
 				{ onDelta, onStep },
 			);
+			if (liveRun) liveRun.sdkRun = run;
 			if (options?.signal?.aborted) {
 				await run.cancel().catch(() => {});
 				throw new CursorAbortError();
@@ -1265,14 +1300,24 @@ export function streamCursor(
 						discardIncompleteStartedToolCalls();
 						await cacheSdkContextWindow(liveRun.agent.agentId, model.id);
 						if (liveRun.disposed) return;
+						if (result.status === "finished" && !options?.signal?.aborted) {
+							commitSessionAgentSend(sessionAgentScopeKey, context, bootstrap);
+						} else {
+							await abandonSessionCursorAgent(sessionAgentScopeKey);
+						}
 						liveRun.cancelled = result.status === "cancelled";
-						liveRun.finalText = selectCursorFinalText(result.result, liveRun.textDeltas, liveRun.emittedText, cursorPlanTextCandidate);
+						if (result.status === "error") {
+							liveRun.errorMessage = sanitizeError(result.result ?? "Cursor SDK run failed", resolvedApiKey ?? options?.apiKey);
+						} else {
+							liveRun.finalText = selectCursorFinalText(result.result, liveRun.textDeltas, liveRun.emittedText, cursorPlanTextCandidate);
+						}
 						liveRun.done = true;
 						notifyCursorNativeRun(liveRun);
 						scheduleCursorNativeRunIdleDispose(liveRun);
 					})
-					.catch((error: unknown) => {
+					.catch(async (error: unknown) => {
 						if (liveRun.disposed) return;
+						await abandonSessionCursorAgent(sessionAgentScopeKey);
 						liveRun.errorMessage = sanitizeError(error, resolvedApiKey ?? options?.apiKey);
 						notifyCursorNativeRun(liveRun);
 						scheduleCursorNativeRunIdleDispose(liveRun);
@@ -1284,7 +1329,7 @@ export function streamCursor(
 					closeTraceBlock();
 					await emitCursorNativeRunNextTurn(stream, partial, model, context, liveRun, 0, options?.signal);
 				} catch (error) {
-					if (error instanceof CursorAbortError) await disposeCursorNativeRun(liveRun);
+					if (error instanceof CursorAbortError) await releaseCursorLiveRun(liveRun);
 					throw error;
 				}
 				agent = null;
@@ -1300,9 +1345,16 @@ export function streamCursor(
 			closeTraceBlock();
 
 			if (result.status === "cancelled") {
+				await abandonSessionCursorAgent(sessionAgentScopeKey);
 				partial.stopReason = "aborted";
 				stream.push({ type: "error", reason: "aborted", error: partial });
+			} else if (result.status === "error") {
+				await abandonSessionCursorAgent(sessionAgentScopeKey);
+				partial.stopReason = "error";
+				partial.errorMessage = sanitizeError(result.result ?? "Cursor SDK run failed", resolvedApiKey ?? options?.apiKey);
+				stream.push({ type: "error", reason: "error", error: partial });
 			} else {
+				commitSessionAgentSend(sessionAgentScopeKey, context, bootstrap);
 				const finalCursorText = selectCursorFinalText(result.result, textDeltas, textDeltas.join(""), cursorPlanTextCandidate, {
 					allowPartialPrefix: true,
 				});
@@ -1311,7 +1363,8 @@ export function streamCursor(
 				stream.push({ type: "done", reason: "stop", message: partial });
 			}
 		} catch (error) {
-			if (activeLiveRun && !activeLiveRun.disposed) await disposeCursorNativeRun(activeLiveRun);
+			if (activeLiveRun && !activeLiveRun.disposed) await releaseCursorLiveRun(activeLiveRun);
+			else await abandonSessionCursorAgent(sessionAgentScopeKey);
 			if (error instanceof CursorAbortError) {
 				partial.stopReason = "aborted";
 				stream.push({ type: "error", reason: "aborted", error: partial });
@@ -1322,27 +1375,9 @@ export function streamCursor(
 			}
 		} finally {
 			restoreCursorSdkOutputFilter?.();
-			if (activeLiveRun?.disposed) agent = null;
 
 			if (abortSignal && abortListener) {
 				abortSignal.removeEventListener("abort", abortListener);
-			}
-
-			if (bridgeRun && !bridgeRunOwnedByLiveRun) {
-				try {
-					await bridgeRun.dispose();
-				} catch {
-					// bridge disposal failure should not mask original error
-				}
-			}
-
-			if (agent) {
-				try {
-					await agent[Symbol.asyncDispose]();
-				} catch {
-					// disposal failure should not mask original error
-				}
-				agent = null;
 			}
 		}
 
@@ -1361,4 +1396,5 @@ export const __testUtils = {
 	resetCursorNativeReplayIdleDisposeMs: () => {
 		cursorNativeReplayIdleDisposeMs = DEFAULT_CURSOR_NATIVE_REPLAY_IDLE_DISPOSE_MS;
 	},
+	resetSessionCursorAgents: () => disposeAllSessionCursorAgents(),
 };

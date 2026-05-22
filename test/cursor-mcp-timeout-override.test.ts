@@ -79,17 +79,17 @@ describe("Cursor MCP timeout override", () => {
 		expect(isCursorSdkMcpToolTimeoutStack(stack.replace(/node_modules\/\@cursor\/sdk/g, "src"))).toBe(false);
 	});
 
-	it("wires the override before Cursor provider Agent.create", () => {
+	it("wires the override before Cursor session agent creation", () => {
 		const providerSource = readFileSync(join(process.cwd(), "src/cursor-provider.ts"), "utf8");
 		const installIndex = providerSource.indexOf("installCursorMcpToolTimeoutOverride();");
-		const createIndex = providerSource.indexOf("Agent.create({");
+		const acquireIndex = providerSource.indexOf("acquireSessionCursorAgent(sessionAgentAcquireParams)");
 
 		expect(providerSource).toContain(
 			'import { installCursorMcpToolTimeoutOverride } from "./cursor-mcp-timeout-override.js";',
 		);
 		expect(installIndex).toBeGreaterThanOrEqual(0);
-		expect(createIndex).toBeGreaterThanOrEqual(0);
-		expect(installIndex).toBeLessThan(createIndex);
+		expect(acquireIndex).toBeGreaterThanOrEqual(0);
+		expect(installIndex).toBeLessThan(acquireIndex);
 	});
 
 	it("extends only the Cursor SDK MCP tool-call default timeout", () => {

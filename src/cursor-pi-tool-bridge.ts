@@ -149,18 +149,20 @@ export interface CursorPiToolBridgeRun {
 	resolveToolResultsFromContext(context: Context): void;
 	hasPendingPiToolCallId(piToolCallId: string): boolean;
 	isBridgeMcpToolCall(toolCall: unknown): boolean;
+	setOnToolRequest(handler?: (request: CursorPiBridgeToolRequest) => void): void;
 	cancel(reason: string): void;
 	dispose(): Promise<void>;
 }
 
-export interface CursorPiToolBridgeRunOptions {
-	onToolRequest?: (request: CursorPiBridgeToolRequest) => void;
-}
-
 export interface CursorPiToolBridge {
 	isEnabled(): boolean;
+	getToolSurfaceSignature(): string;
 	createRun(options?: CursorPiToolBridgeRunOptions): Promise<CursorPiToolBridgeRun>;
 	disposeAll(reason?: string): Promise<void>;
+}
+
+export interface CursorPiToolBridgeRunOptions {
+	onToolRequest?: (request: CursorPiBridgeToolRequest) => void;
 }
 
 type CursorPiToolBridgeSnapshotApi = Pick<ExtensionAPI, "getActiveTools" | "getAllTools">;
@@ -504,6 +506,25 @@ function isOverlappingCursorNativePiToolName(toolName: string): boolean {
 	return OVERLAPPING_CURSOR_NATIVE_PI_BUILTIN_TOOL_NAMES.has(toolName);
 }
 
+export function buildCursorPiToolBridgeSurfaceSignature(snapshot: CursorPiToolBridgeSnapshot): string {
+	if (snapshot.tools.length === 0) return "bridge:empty";
+	const serializedTools = snapshot.tools
+		.map((tool) =>
+			JSON.stringify({
+				piToolName: tool.piToolName,
+				mcpToolName: tool.mcpToolName,
+				description: tool.description,
+				inputSchema: tool.inputSchema,
+				source: tool.sourceInfo?.source,
+				path: tool.sourceInfo?.path,
+				scope: tool.sourceInfo?.scope,
+			}),
+		)
+		.sort()
+		.join("\0");
+	return `bridge:on:${stableNameHash(serializedTools)}`;
+}
+
 export function buildCursorPiToolBridgeSnapshot(
 	pi: CursorPiToolBridgeSnapshotApi,
 	options: CursorPiToolBridgeSnapshotOptions = {},
@@ -617,7 +638,8 @@ class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 	private readonly pendingByPiToolCallId = new Map<string, PendingBridgeCall>();
 	private readonly pendingByBridgeCallId = new Map<string, PendingBridgeCall>();
 	private readonly pendingByCursorMcpCallId = new Map<string, PendingBridgeCall>();
-	private readonly onToolRequest?: (request: CursorPiBridgeToolRequest) => void;
+	private onToolRequest?: (request: CursorPiBridgeToolRequest) => void;
+	private liveRunHandlerDetached = false;
 	private mcpServer?: McpProtocolServer;
 	private mcpTransport?: StreamableHTTPServerTransport;
 	private toolCallCounter = 0;
@@ -678,6 +700,21 @@ class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 
 	takeQueuedToolRequests(): CursorPiBridgeToolRequest[] {
 		return this.queuedRequests.splice(0);
+	}
+
+	setOnToolRequest(handler?: (request: CursorPiBridgeToolRequest) => void): void {
+		if (!handler) {
+			this.liveRunHandlerDetached = true;
+			this.rejectQueuedToolRequestsWithoutHandler("Cursor pi tool bridge has no active live run");
+		} else {
+			this.liveRunHandlerDetached = false;
+		}
+		this.onToolRequest = handler;
+		if (handler) {
+			for (const request of this.queuedRequests.splice(0)) {
+				handler(request);
+			}
+		}
 	}
 
 	resolveToolResults(toolResults: readonly ToolResultMessage[]): void {
@@ -816,10 +853,26 @@ class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 			this.pendingByBridgeCallId.set(request.bridgeCallId, pending);
 			this.pendingByCursorMcpCallId.set(cursorMcpCallId, pending);
 			this.knownCursorMcpCallIds.add(cursorMcpCallId);
-			if (!this.onToolRequest) this.queuedRequests.push(request);
+			if (!this.onToolRequest) {
+				if (this.liveRunHandlerDetached) {
+					this.rejectPending(pending, new Error("Cursor pi tool bridge has no active live run"), "cancelled");
+					return;
+				}
+				this.queuedRequests.push(request);
+				this.emitRequestQueuedDiagnostic(request);
+				return;
+			}
 			this.emitRequestQueuedDiagnostic(request);
-			this.onToolRequest?.(request);
+			this.onToolRequest(request);
 		});
+	}
+
+	private rejectQueuedToolRequestsWithoutHandler(reason: string): void {
+		while (this.queuedRequests.length > 0) {
+			const request = this.queuedRequests.shift()!;
+			const pending = this.pendingByPiToolCallId.get(request.piToolCallId);
+			if (pending) this.rejectPending(pending, new Error(reason), "cancelled");
+		}
 	}
 
 	private resolvePending(pending: PendingBridgeCall, result: CallToolResult): void {
@@ -907,6 +960,14 @@ class CursorPiToolBridgeRegistry implements CursorPiToolBridge {
 
 	isEnabled(): boolean {
 		return resolveCursorPiToolBridgeEnabled(this.env);
+	}
+
+	getToolSurfaceSignature(): string {
+		if (!this.isEnabled()) return "bridge:off";
+		const snapshot = buildCursorPiToolBridgeSnapshot(this.pi, {
+			exposeOverlappingBuiltins: resolveCursorPiToolBridgeBuiltinsEnabled(this.env),
+		});
+		return buildCursorPiToolBridgeSurfaceSignature(snapshot);
 	}
 
 	async createRun(options: CursorPiToolBridgeRunOptions = {}): Promise<CursorPiToolBridgeRun> {
