@@ -39,10 +39,10 @@ Prerequisites:
 
 Coverage:
   - prereq model listing
-  - basic non-interactive prompt, with one bounded retry for empty timeout exits
-  - default ambient settings prompt
-  - simple non-interactive math prompt
-  - interactive TUI output/footer polling with cleanup
+  - basic non-interactive prompt (retry-empty-timeout; strict output assertion)
+  - default ambient settings prompt (strict; no retry)
+  - simple non-interactive math prompt (strict; no retry)
+  - interactive TUI math/footer polling with cleanup
   - RPC steering after native replay tool execution (tmux-isolated)
   - diagnostics safety scan
   - JSONL assistant usage validation
@@ -159,14 +159,21 @@ run_direct_attempt() {
 	return $?
 }
 
+run_direct_fail() {
+	local name="$1"
+	local code="$2"
+	local stderr="$3"
+	cat "$stderr" >&2 || true
+	fail "$name exited $code"
+}
+
 run_direct() {
 	local name="$1"
 	local timeout_secs="$2"
-	shift 2
+	local policy="$3"
+	shift 3
 	local stdout="$SMOKE_DIR/${name}.stdout.txt"
 	local stderr="$SMOKE_DIR/${name}.stderr.txt"
-	local first_stdout="$SMOKE_DIR/${name}.attempt1.stdout.txt"
-	local first_stderr="$SMOKE_DIR/${name}.attempt1.stderr.txt"
 	local code=0
 
 	if run_direct_attempt "$name" "$timeout_secs" "$stdout" "$stderr" "$@"; then
@@ -175,25 +182,35 @@ run_direct() {
 	fi
 	code=$?
 
-	if is_empty_timeout_exit "$code" "$stdout"; then
-		mv "$stdout" "$first_stdout" 2>/dev/null || true
-		mv "$stderr" "$first_stderr" 2>/dev/null || true
-		log "$name retrying once after empty timeout-like exit $code"
-		if run_direct_attempt "$name" "$timeout_secs" "$stdout" "$stderr" "$@"; then
-			log "$name PASS after retry (first exit $code; first stderr: $first_stderr)"
-			return 0
-		fi
-		local retry_code=$?
-		printf '[smoke] %s first attempt exited %s with empty stdout; retry exited %s\n' "$name" "$code" "$retry_code" >&2
-		printf '[smoke] %s first stderr tail:\n' "$name" >&2
-		tail_file "$first_stderr" 80 >&2
-		printf '[smoke] %s retry stderr tail:\n' "$name" >&2
-		tail_file "$stderr" 80 >&2
-		fail "$name retry failed after empty timeout-like exit"
-	fi
-
-	cat "$stderr" >&2 || true
-	fail "$name exited $code"
+	case "$policy" in
+		strict)
+			run_direct_fail "$name" "$code" "$stderr"
+			;;
+		retry-empty-timeout)
+			local first_stdout="$SMOKE_DIR/${name}.attempt1.stdout.txt"
+			local first_stderr="$SMOKE_DIR/${name}.attempt1.stderr.txt"
+			if ! is_empty_timeout_exit "$code" "$stdout"; then
+				run_direct_fail "$name" "$code" "$stderr"
+			fi
+			mv "$stdout" "$first_stdout" 2>/dev/null || true
+			mv "$stderr" "$first_stderr" 2>/dev/null || true
+			log "$name retrying once after empty timeout-like exit $code"
+			if run_direct_attempt "$name" "$timeout_secs" "$stdout" "$stderr" "$@"; then
+				log "$name PASS after retry (first exit $code; first stderr: $first_stderr)"
+				return 0
+			fi
+			local retry_code=$?
+			printf '[smoke] %s first attempt exited %s with empty stdout; retry exited %s\n' "$name" "$code" "$retry_code" >&2
+			printf '[smoke] %s first stderr tail:\n' "$name" >&2
+			tail_file "$first_stderr" 80 >&2
+			printf '[smoke] %s retry stderr tail:\n' "$name" >&2
+			tail_file "$stderr" 80 >&2
+			fail "$name retry failed after empty timeout-like exit"
+			;;
+		*)
+			fail "$name unknown run_direct policy: $policy (expected strict or retry-empty-timeout)"
+			;;
+	esac
 }
 
 quote_command() {
@@ -206,7 +223,7 @@ quote_command() {
 	printf '%s ' "${quoted[@]}"
 }
 
-run_tui_poll() {
+run_tui_math_footer_poll() {
 	local name="$1"
 	local timeout_secs="$2"
 	shift 2
@@ -325,28 +342,28 @@ if ! PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" --list-models cursor 2>"$SMO
 fi
 log "prereq PASS"
 
-run_direct basic 600 \
+run_direct basic 600 retry-empty-timeout \
 	env PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/basic" \
 	--no-tools \
 	-p 'Live smoke. Reply exactly: PI_CURSOR_SMOKE_OK'
 assert_file_contains basic "$SMOKE_DIR/basic.stdout.txt" "PI_CURSOR_SMOKE_OK" "PI_CURSOR_SMOKE_OK"
 
-run_direct default-settings 300 \
+run_direct default-settings 300 strict \
 	"${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/default-settings" \
 	--no-tools \
 	-p 'Default settings smoke. Include PRODUCT=42 in the final answer.'
 assert_file_contains default-settings "$SMOKE_DIR/default-settings.stdout.txt" "PRODUCT=42" "PRODUCT=42"
 
-run_direct noninteractive-math 300 \
+run_direct noninteractive-math 300 strict \
 	env PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/noninteractive-math" \
 	--no-tools \
 	-p 'Noninteractive math smoke. Compute 19 + 23. Reply only with SUM=42.'
 assert_file_contains noninteractive-math "$SMOKE_DIR/noninteractive-math.stdout.txt" "SUM=42" "SUM=42"
 
-run_tui_poll tui 420 \
+run_tui_math_footer_poll tui 420 \
 	env PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/tui" \
 	--no-tools \
