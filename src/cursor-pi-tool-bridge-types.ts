@@ -1,6 +1,22 @@
 import type { McpServerConfig } from "@cursor/sdk";
 import type { Context, ToolResultMessage } from "@earendil-works/pi-ai";
-import type { ToolInfo } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionHandler,
+	SessionShutdownEvent,
+	ToolCallEvent,
+	ToolCallEventResult,
+	ToolInfo,
+	ToolResultEvent,
+} from "@earendil-works/pi-coding-agent";
+
+export type CursorPiToolBridgeSnapshotApi = Pick<ExtensionAPI, "getActiveTools" | "getAllTools">;
+
+export type CursorPiToolBridgeExtensionApi = CursorPiToolBridgeSnapshotApi & {
+	on(event: "tool_call", handler: ExtensionHandler<ToolCallEvent, ToolCallEventResult>): void;
+	on(event: "tool_result", handler: ExtensionHandler<ToolResultEvent>): void;
+	on(event: "session_shutdown", handler: ExtensionHandler<SessionShutdownEvent>): void;
+};
 
 export interface CursorPiMcpInputSchema {
 	type: "object";
