@@ -37,8 +37,8 @@ Split by ownership boundary (behavior-preserving moves):
 
 | Before | After |
 |--------|-------|
-| `cursor-provider.ts` (~1276) | `cursor-provider.ts` (~389) + `cursor-provider-live-run-drain.ts` (~449) + `cursor-provider-turn-coordinator.ts` (~520) + `cursor-sdk-output-filter.ts` (~78) |
-| `cursor-tool-transcript.ts` (~1264) | orchestrator (~63) + `cursor-transcript-tool-specs.ts` (~262) + `cursor-transcript-utils.ts` + `cursor-transcript-tool-formatters.ts` + `cursor-transcript-activity-display.ts` |
+| `cursor-provider.ts` (~1276) | `cursor-provider.ts` (~369) + `cursor-provider-live-run-drain.ts` (~374) + `cursor-provider-turn-coordinator.ts` (~402) + `cursor-partial-content-emitter.ts` (~121) + `cursor-sdk-output-filter.ts` (~78) |
+| `cursor-tool-transcript.ts` (~1264) | orchestrator (~28) + `cursor-transcript-tool-specs.ts` (~441) + `cursor-transcript-utils.ts` + `cursor-transcript-tool-formatters.ts` + `cursor-sensitive-text.ts` |
 | `cursor-pi-tool-bridge.ts` (~1174) | main (~852) + `cursor-pi-tool-bridge-diagnostics.ts` + `cursor-pi-tool-bridge-mcp.ts` + `cursor-pi-tool-bridge-types.ts` + `cursor-record-utils.ts` |
 | `test/cursor-provider.test.ts` (~5151) | scenario-focused test files + `test/helpers/cursor-provider-harness.ts` (stream/bridge/replay splits, each ≤800 lines) |
 
