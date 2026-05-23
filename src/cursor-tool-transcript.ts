@@ -2,9 +2,8 @@ import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME, getCursorReplayDisplayLabel } from ".
 import {
 	asRecord,
 	formatDisplayPath,
-	formatDiffString,
 	formatError,
-	firstNonEmptyLine,
+	formatDiffString,
 	getNumber,
 	getString,
 	getToolArgs,
@@ -14,10 +13,16 @@ import {
 	normalizeResult,
 	normalizeToolName,
 	stringifyUnknown,
-	truncateArg,
+	type CursorPiToolDisplay,
 	type NormalizedResult,
 	type TranscriptOptions,
 } from "./cursor-transcript-utils.js";
+import {
+	buildCursorActivityDisplayArgs,
+	buildReplaySummaryDisplay,
+	buildStandardActivityReplayDisplay,
+	textToolResult,
+} from "./cursor-transcript-activity-display.js";
 import {
 	buildCursorEditActivityDisplayArgs,
 	buildFindDisplayArgs,
@@ -26,53 +31,31 @@ import {
 	buildReadDisplayArgs,
 	buildShellDisplayArgs,
 	buildWriteDisplayArgs,
-	collectTaskText,
 	formatDelete,
 	formatEdit,
-	formatGenerateImage,
-	formatMcp,
-	formatPlan,
-	formatReadLints,
-	formatTask,
-	formatTodos,
 	formatFallback,
+	formatGenerateImage,
 	formatGlob,
 	formatGrep,
 	formatLs,
+	formatMcp,
+	formatPlan,
 	formatRead,
+	formatReadLints,
 	formatShell,
+	formatTask,
+	formatTodos,
 	formatWrite,
 	formatNativeReadDisplayContent,
-	getGenerateImageDisplayPath,
-	getGenerateImagePath,
+	getCursorWriteArgContent,
 	getGlobBody,
 	getGrepBody,
 	getLsBody,
-	getReadLintDiagnostics,
-	getReadLintPaths,
 	getShellOutput,
-	getTaskDescription,
-	getTodoItems,
-	getTodoTotalCount,
-	getCursorWriteArgContent,
-	inferImageMimeType,
-	summarizePlan,
-	summarizeTask,
-	summarizeTodos,
 } from "./cursor-transcript-tool-formatters.js";
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
 
-interface PiToolDisplayResult {
-	content: Array<{ type: "text"; text: string }>;
-	details?: unknown;
-}
-
-export interface CursorPiToolDisplay {
-	toolName: string;
-	args: Record<string, unknown>;
-	result: PiToolDisplayResult;
-	isError: boolean;
-}
+export type { CursorPiToolDisplay } from "./cursor-transcript-utils.js";
 
 export function getCursorCreatePlanText(toolCall: unknown): string | undefined {
 	const name = normalizeToolName(getToolName(toolCall));
@@ -83,7 +66,6 @@ export function getCursorCreatePlanText(toolCall: unknown): string | undefined {
 	const trimmed = plan?.trim();
 	return trimmed || undefined;
 }
-
 
 export function formatCursorToolTranscript(toolCall: unknown, options: TranscriptOptions = {}): string {
 	const name = normalizeToolName(getToolName(toolCall));
@@ -124,11 +106,6 @@ export function formatCursorToolTranscript(toolCall: unknown, options: Transcrip
 	}
 }
 
-
-function textToolResult(text: string, details?: unknown): PiToolDisplayResult {
-	return { content: [{ type: "text", text }], details };
-}
-
 function buildGenericPiToolDisplay(name: string, args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): CursorPiToolDisplay {
 	const isError = result.status === "error";
 	return {
@@ -139,45 +116,12 @@ function buildGenericPiToolDisplay(name: string, args: Record<string, unknown>, 
 	};
 }
 
-function buildReplaySummaryDisplay(
-	toolName: string,
-	args: Record<string, unknown>,
-	result: NormalizedResult,
-	contentText: string,
-	details: Record<string, unknown>,
-): CursorPiToolDisplay {
-	const isError = result.status === "error";
-	const summary = isError ? formatError(result.error) : firstNonEmptyLine(contentText);
-	return {
-		toolName,
-		args,
-		result: textToolResult(contentText, {
-			...details,
-			summary: details.summary ?? summary,
-			expandedText: details.expandedText ?? contentText,
-		}),
-		isError,
-	};
-}
-
-function buildCursorActivityDisplayArgs(
-	args: Record<string, unknown>,
-	activityTitle: string,
-	activitySummary: string | undefined,
-): Record<string, unknown> {
-	const trimmedSummary = activitySummary?.trim();
-	return {
-		...args,
-		activityTitle,
-		...(trimmedSummary ? { activitySummary: trimmedSummary } : {}),
-	};
-}
-
 export function buildCursorPiToolDisplay(toolCall: unknown, options: TranscriptOptions = {}): CursorPiToolDisplay {
 	const rawName = getToolName(toolCall);
 	const name = normalizeToolName(rawName);
 	const args = getToolArgs(toolCall);
 	const result = normalizeResult(getToolResult(toolCall));
+	const context = { args, result, options };
 
 	if (name === "read") {
 		const isError = result.status === "error";
@@ -306,144 +250,11 @@ export function buildCursorPiToolDisplay(toolCall: unknown, options: TranscriptO
 		};
 	}
 
-	if (name === "delete") {
-		const value = asRecord(result.value);
-		const displayPath = typeof args.path === "string" ? formatDisplayPath(args.path, options.cwd) : undefined;
-		const activityTitle = getCursorReplayDisplayLabel("cursor_delete");
-		const contentText = formatDelete(args, result, options).trimEnd();
-		return buildReplaySummaryDisplay(
-			CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-			buildCursorActivityDisplayArgs(displayPath ? { path: displayPath } : {}, activityTitle, displayPath ?? "file"),
-			result,
-			contentText,
-			{
-				cursorToolName: "delete",
-				title: activityTitle,
-				path: displayPath,
-				summary: result.status === "error" ? undefined : displayPath ? `deleted ${displayPath}` : "deleted file",
-				fileSize: getNumber(value, "fileSize"),
-			},
-		);
-	}
-
-	if (name === "readLints") {
-		const paths = getReadLintPaths(args, result, options);
-		const diagnosticCount = getReadLintDiagnostics(result, options).length;
-		const activityTitle = getCursorReplayDisplayLabel("cursor_read_lints");
-		const diagnosticSummary = `${diagnosticCount} diagnostic${diagnosticCount === 1 ? "" : "s"}${paths.length > 0 ? ` in ${paths.join(", ")}` : ""}`;
-		const contentText = formatReadLints(args, result, options).trimEnd();
-		return buildReplaySummaryDisplay(
-			CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-			buildCursorActivityDisplayArgs({ paths, diagnosticCount }, activityTitle, diagnosticSummary),
-			result,
-			contentText,
-			{
-				cursorToolName: "readLints",
-				title: activityTitle,
-				summary: result.status === "error" ? undefined : diagnosticSummary,
-			},
-		);
-	}
-
-	if (name === "updateTodos") {
-		const todos = getTodoItems(args, result);
-		const totalCount = getTodoTotalCount(args, result, todos);
-		const activityTitle = getCursorReplayDisplayLabel("cursor_update_todos");
-		const todoSummary = summarizeTodos(args, result);
-		const contentText = formatTodos(args, result, options, "updateTodos").trimEnd();
-		return buildReplaySummaryDisplay(
-			CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-			buildCursorActivityDisplayArgs({ totalCount }, activityTitle, todoSummary),
-			result,
-			contentText,
-			{
-				cursorToolName: "updateTodos",
-				title: activityTitle,
-				summary: result.status === "error" ? undefined : todoSummary,
-			},
-		);
-	}
-
-	if (name === "createPlan") {
-		const todos = getTodoItems(args, result);
-		const totalCount = getTodoTotalCount(args, result, todos);
-		const activityTitle = getCursorReplayDisplayLabel("cursor_create_plan");
-		const planSummary = summarizePlan(args, result);
-		const contentText = formatPlan(args, result, options).trimEnd();
-		return buildReplaySummaryDisplay(
-			CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-			buildCursorActivityDisplayArgs({ totalCount }, activityTitle, planSummary),
-			result,
-			contentText,
-			{
-				cursorToolName: "createPlan",
-				title: activityTitle,
-				summary: result.status === "error" ? undefined : planSummary,
-			},
-		);
-	}
-
-	if (name === "task") {
-		const description = getTaskDescription(args, result);
-		const contentText = formatTask(args, result, options).trimEnd();
-		const taskText = collectTaskText(result);
-		const activityTitle = getCursorReplayDisplayLabel("cursor_task");
-		const taskSummary = summarizeTask(description, taskText);
-		return buildReplaySummaryDisplay(
-			CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-			buildCursorActivityDisplayArgs({ description: truncateArg(description) }, activityTitle, taskSummary),
-			result,
-			contentText,
-			{
-				cursorToolName: "task",
-				title: activityTitle,
-				summary: result.status === "error" ? undefined : taskSummary,
-			},
-		);
-	}
-
-	if (name === "generateImage") {
-		const prompt = getString(args, "prompt") ?? getString(args, "description") ?? "image";
-		const contentText = formatGenerateImage(args, result, options).trimEnd();
-		const imagePath = getGenerateImagePath(args, result);
-		const imageDisplayPath = getGenerateImageDisplayPath(args, result, options);
-		const activityTitle = getCursorReplayDisplayLabel("cursor_generate_image");
-		return buildReplaySummaryDisplay(
-			CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-			buildCursorActivityDisplayArgs({ prompt: truncateArg(prompt) }, activityTitle, imageDisplayPath ?? truncateArg(prompt)),
-			result,
-			contentText,
-			{
-				cursorToolName: "generateImage",
-				title: activityTitle,
-				summary: result.status === "error" ? undefined : imageDisplayPath ? `saved ${imageDisplayPath}` : "image generated",
-				imagePath,
-				imageDisplayPath,
-				imageMimeType: inferImageMimeType(imagePath),
-			},
-		);
-	}
-
-	if (name === "mcp") {
-		const toolName = getString(args, "toolName") ?? "mcp";
-		const activityTitle = getCursorReplayDisplayLabel("cursor_mcp");
-		const contentText = formatMcp(args, result, options).trimEnd();
-		return buildReplaySummaryDisplay(
-			CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-			buildCursorActivityDisplayArgs({ toolName: truncateArg(toolName) }, activityTitle, truncateArg(toolName)),
-			result,
-			contentText,
-			{
-				cursorToolName: "mcp",
-				title: activityTitle,
-				summary: result.status === "error" ? undefined : firstNonEmptyLine(contentText) ?? "MCP result captured",
-			},
-		);
-	}
+	const activityDisplay = buildStandardActivityReplayDisplay(name, context);
+	if (activityDisplay) return activityDisplay;
 
 	return buildGenericPiToolDisplay(name, args, result, options);
 }
-
 
 export function mergeCursorToolCalls(startedToolCall: unknown, completedToolCall: unknown): unknown {
 	const started = asRecord(startedToolCall);
@@ -460,4 +271,3 @@ export function mergeCursorToolCalls(startedToolCall: unknown, completedToolCall
 		result: completed.result ?? started.result,
 	};
 }
-

@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { Context, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { buildCursorPiBridgeMcpToolDescription, CURSOR_PI_BRIDGE_MCP_TOOL_PREFIX } from "./cursor-bridge-contract.js";
-import type { CursorPiBridgeToolDefinition, CursorPiMcpInputSchema } from "./cursor-pi-tool-bridge.js";
+import type { CursorPiBridgeToolDefinition, CursorPiMcpInputSchema } from "./cursor-pi-tool-bridge-types.js";
+import { getFirstStringByKeys } from "./cursor-transcript-utils.js";
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
@@ -96,11 +97,7 @@ export function asToolResultMessage(value: Context["messages"][number]): ToolRes
 }
 
 export function getStringField(record: Record<string, unknown>, fields: string[]): string | undefined {
-	for (const field of fields) {
-		const value = record[field];
-		if (typeof value === "string" && value) return value;
-	}
-	return undefined;
+	return getFirstStringByKeys(record, fields, { nonEmpty: true });
 }
 
 export function containsKnownMcpToolName(value: unknown, knownMcpToolNames: ReadonlySet<string>, depth = 0): boolean {

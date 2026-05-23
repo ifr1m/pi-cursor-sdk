@@ -14,6 +14,23 @@ export interface NormalizedResult {
 	error: unknown;
 }
 
+interface PiToolDisplayContent {
+	type: "text";
+	text: string;
+}
+
+export interface PiToolDisplayResult {
+	content: PiToolDisplayContent[];
+	details?: unknown;
+}
+
+export interface CursorPiToolDisplay {
+	toolName: string;
+	args: Record<string, unknown>;
+	result: PiToolDisplayResult;
+	isError: boolean;
+}
+
 export const DEFAULT_MAX_TRANSCRIPT_CHARS = 24000;
 export const DEFAULT_MAX_TRANSCRIPT_LINES = 800;
 export const DEFAULT_MAX_LIST_ITEMS = 200;
@@ -30,6 +47,21 @@ export function asRecord(value: unknown): Record<string, unknown> | undefined {
 export function getString(record: Record<string, unknown> | undefined, key: string): string | undefined {
 	const value = record?.[key];
 	return typeof value === "string" ? value : undefined;
+}
+
+export function getFirstStringByKeys(
+	record: Record<string, unknown> | undefined,
+	keys: readonly string[],
+	options?: { nonEmpty?: boolean },
+): string | undefined {
+	if (!record) return undefined;
+	for (const key of keys) {
+		const value = record[key];
+		if (typeof value !== "string") continue;
+		if (options?.nonEmpty && !value) continue;
+		return value;
+	}
+	return undefined;
 }
 
 export function getNumber(record: Record<string, unknown> | undefined, key: string): number | undefined {

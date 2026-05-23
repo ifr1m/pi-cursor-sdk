@@ -8,6 +8,7 @@ import {
 	formatPathArg,
 	getArray,
 	getBoolean,
+	getFirstStringByKeys,
 	getNumber,
 	getRecord,
 	getString,
@@ -79,14 +80,6 @@ const CURSOR_EDIT_PATH_KEYS = ["path", "filePath", "file_path"] as const;
 const CURSOR_EDIT_OLD_TEXT_KEYS = ["oldText", "old_text", "oldString", "old_string", "oldStr", "old_str"] as const;
 const CURSOR_EDIT_NEW_TEXT_KEYS = ["newText", "new_text", "newString", "new_string", "newStr", "new_str"] as const;
 const CURSOR_NOTEBOOK_EDIT_ARG_KEYS = ["cellId", "cell_id", "cellIndex", "cell_index", "cellType", "cell_type", "notebookPath", "notebook_path"] as const;
-
-function getFirstStringByKeys(record: Record<string, unknown>, keys: readonly string[]): string | undefined {
-	for (const key of keys) {
-		const value = record[key];
-		if (typeof value === "string") return value;
-	}
-	return undefined;
-}
 
 function getCursorEditPathArg(args: Record<string, unknown>): string | undefined {
 	const path = getFirstStringByKeys(args, CURSOR_EDIT_PATH_KEYS);

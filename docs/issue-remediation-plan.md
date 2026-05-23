@@ -40,7 +40,7 @@ Split by ownership boundary (behavior-preserving moves):
 | `cursor-provider.ts` (~1276) | `cursor-provider.ts` (~788) + `cursor-provider-live-run-drain.ts` (~449) + `cursor-sdk-output-filter.ts` (~78) |
 | `cursor-tool-transcript.ts` (~1264) | orchestrator (~463) + `cursor-transcript-utils.ts` (~261) + `cursor-transcript-tool-formatters.ts` (~636) |
 | `cursor-pi-tool-bridge.ts` (~1174) | main (~902) + `cursor-pi-tool-bridge-diagnostics.ts` (~185) + `cursor-pi-tool-bridge-mcp.ts` (~121) |
-| `test/cursor-provider.test.ts` (~5151) | scenario-focused test files + `test/helpers/cursor-provider-harness.ts` |
+| `test/cursor-provider.test.ts` (~5151) | scenario-focused test files + `test/helpers/cursor-provider-harness.ts` (replay split into live-run/shell/text/tool-display/idle-dispose/post-tool files, each ≤800 lines) |
 
 ## Validation
 

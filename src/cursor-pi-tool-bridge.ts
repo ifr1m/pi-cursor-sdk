@@ -29,6 +29,17 @@ import {
 	serializeCursorPiToolBridgeDiagnostic,
 	writeCursorPiToolBridgeDiagnostic,
 } from "./cursor-pi-tool-bridge-diagnostics.js";
+import { parseEnvBoolean } from "./cursor-env-boolean.js";
+import type {
+	CursorPiBridgeToolDefinition,
+	CursorPiBridgeToolRequest,
+	CursorPiMcpInputSchema,
+	CursorPiToolBridge,
+	CursorPiToolBridgeRun,
+	CursorPiToolBridgeRunOptions,
+	CursorPiToolBridgeSnapshot,
+	CursorPiToolBridgeSnapshotOptions,
+} from "./cursor-pi-tool-bridge-types.js";
 import {
 	asToolResultMessage,
 	containsKnownMcpToolName,
@@ -44,6 +55,19 @@ import {
 } from "./cursor-pi-tool-bridge-mcp.js";
 import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-names.js";
 
+export type {
+	CursorPiBridgeToolDefinition,
+	CursorPiBridgeToolRequest,
+	CursorPiMcpInputSchema,
+	CursorPiToolBridge,
+	CursorPiToolBridgeRun,
+	CursorPiToolBridgeRunOptions,
+	CursorPiToolBridgeSnapshot,
+	CursorPiToolBridgeSnapshotOptions,
+} from "./cursor-pi-tool-bridge-types.js";
+export type { CursorPiToolBridgeDiagnosticEvent } from "./cursor-pi-tool-bridge-diagnostics.js";
+export { resolveCursorPiToolBridgeDebugEnabled } from "./cursor-pi-tool-bridge-diagnostics.js";
+
 const CURSOR_PI_TOOL_BRIDGE_ENV = "PI_CURSOR_PI_TOOL_BRIDGE";
 const CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV = "PI_CURSOR_EXPOSE_BUILTIN_TOOLS";
 const LOOPBACK_HOST = "127.0.0.1";
@@ -51,73 +75,7 @@ const MCP_SERVER_NAME = "pi_tools";
 const MCP_ENDPOINT_ROOT = "/cursor-pi-tool-bridge";
 const MCP_SERVER_VERSION = "0.1.0";
 const HTTP_SERVER_CLOSE_GRACE_MS = 250;
-const DISABLED_ENV_VALUES = new Set(["0", "false", "off", "none", "no", "disabled"]);
-const ENABLED_ENV_VALUES = new Set(["1", "true", "on", "yes", "enabled"]);
 const OVERLAPPING_CURSOR_NATIVE_PI_BUILTIN_TOOL_NAMES = new Set(["read", "bash", "write", "edit", "grep", "find", "ls"]);
-
-export type { CursorPiToolBridgeDiagnosticEvent } from "./cursor-pi-tool-bridge-diagnostics.js";
-export { resolveCursorPiToolBridgeDebugEnabled } from "./cursor-pi-tool-bridge-diagnostics.js";
-
-export interface CursorPiMcpInputSchema {
-	type: "object";
-	properties?: Record<string, object>;
-	required?: string[];
-	[key: string]: unknown;
-}
-
-export interface CursorPiBridgeToolDefinition {
-	piToolName: string;
-	mcpToolName: string;
-	description: string;
-	inputSchema: CursorPiMcpInputSchema;
-	sourceInfo: ToolInfo["sourceInfo"];
-}
-
-export interface CursorPiToolBridgeSnapshot {
-	tools: CursorPiBridgeToolDefinition[];
-	mcpToolNameToPiToolName: ReadonlyMap<string, string>;
-	piToolNameToMcpToolName: ReadonlyMap<string, string>;
-}
-
-export interface CursorPiToolBridgeSnapshotOptions {
-	exposeOverlappingBuiltins?: boolean;
-}
-
-export interface CursorPiBridgeToolRequest {
-	runId: string;
-	bridgeCallId: string;
-	cursorMcpCallId?: string;
-	piToolCallId: string;
-	piToolName: string;
-	mcpToolName: string;
-	args: Record<string, unknown>;
-}
-
-export interface CursorPiToolBridgeRun {
-	id: string;
-	enabled: boolean;
-	mcpServers?: Record<string, McpServerConfig>;
-	snapshot: CursorPiToolBridgeSnapshot;
-	takeQueuedToolRequests(): CursorPiBridgeToolRequest[];
-	resolveToolResults(toolResults: readonly ToolResultMessage[]): void;
-	resolveToolResultsFromContext(context: Context): void;
-	hasPendingPiToolCallId(piToolCallId: string): boolean;
-	isBridgeMcpToolCall(toolCall: unknown): boolean;
-	setOnToolRequest(handler?: (request: CursorPiBridgeToolRequest) => void): void;
-	cancel(reason: string): void;
-	dispose(): Promise<void>;
-}
-
-export interface CursorPiToolBridge {
-	isEnabled(): boolean;
-	getToolSurfaceSignature(): string;
-	createRun(options?: CursorPiToolBridgeRunOptions): Promise<CursorPiToolBridgeRun>;
-	disposeAll(reason?: string): Promise<void>;
-}
-
-export interface CursorPiToolBridgeRunOptions {
-	onToolRequest?: (request: CursorPiBridgeToolRequest) => void;
-}
 
 type CursorPiToolBridgeSnapshotApi = Pick<ExtensionAPI, "getActiveTools" | "getAllTools">;
 
@@ -279,19 +237,11 @@ function createEmptySnapshot(): CursorPiToolBridgeSnapshot {
 }
 
 export function resolveCursorPiToolBridgeEnabled(env: Record<string, string | undefined> = process.env): boolean {
-	const raw = env[CURSOR_PI_TOOL_BRIDGE_ENV]?.trim().toLowerCase();
-	if (!raw) return true;
-	if (DISABLED_ENV_VALUES.has(raw)) return false;
-	if (ENABLED_ENV_VALUES.has(raw)) return true;
-	return true;
+	return parseEnvBoolean(env[CURSOR_PI_TOOL_BRIDGE_ENV], true);
 }
 
 export function resolveCursorPiToolBridgeBuiltinsEnabled(env: Record<string, string | undefined> = process.env): boolean {
-	const raw = env[CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV]?.trim().toLowerCase();
-	if (!raw) return false;
-	if (ENABLED_ENV_VALUES.has(raw)) return true;
-	if (DISABLED_ENV_VALUES.has(raw)) return false;
-	return false;
+	return parseEnvBoolean(env[CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV], false);
 }
 
 function isOverlappingCursorNativePiToolName(toolName: string): boolean {

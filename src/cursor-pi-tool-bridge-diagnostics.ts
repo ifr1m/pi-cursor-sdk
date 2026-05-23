@@ -1,17 +1,11 @@
 import { stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
+import { parseEnvBoolean } from "./cursor-env-boolean.js";
 
 export const CURSOR_PI_TOOL_BRIDGE_DEBUG_ENV = "PI_CURSOR_PI_TOOL_BRIDGE_DEBUG";
 export const CURSOR_PI_TOOL_BRIDGE_DIAGNOSTIC_PREFIX = "[pi-cursor-sdk:bridge]";
 
-const DISABLED_ENV_VALUES = new Set(["0", "false", "off", "none", "no", "disabled"]);
-const ENABLED_ENV_VALUES = new Set(["1", "true", "on", "yes", "enabled"]);
-
 export function resolveCursorPiToolBridgeDebugEnabled(env: Record<string, string | undefined> = process.env): boolean {
-	const raw = env[CURSOR_PI_TOOL_BRIDGE_DEBUG_ENV]?.trim().toLowerCase();
-	if (!raw) return false;
-	if (ENABLED_ENV_VALUES.has(raw)) return true;
-	if (DISABLED_ENV_VALUES.has(raw)) return false;
-	return false;
+	return parseEnvBoolean(env[CURSOR_PI_TOOL_BRIDGE_DEBUG_ENV], false);
 }
 
 function createCursorMcpCallDiagnosticId(cursorMcpCallId: string | undefined): string | undefined {
