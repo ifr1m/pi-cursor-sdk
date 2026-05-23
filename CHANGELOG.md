@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Bump pi dev dependency baseline to `0.75.5` for read-tool collapsed-card rendering, package update fixes, and other upstream pi changes. Cursor edit replay remains display-only via `diffString`; pi's new SDK `details.patch` field is not required because Cursor agents do not execute pi's edit tool.
+
 ### Added
 
 - Add packaged smoke-script entrypoints for the partial live smoke helper, steering RPC smoke, and smoke JSONL validator.
