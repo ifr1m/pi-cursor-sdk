@@ -2,9 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- Add packaged smoke-script entrypoints for the partial live smoke helper, steering RPC smoke, and smoke JSONL validator.
+
 ### Fixed
 
 - Suppress late Cursor SDK hook-load compatibility warnings (`[hooks] …`) during first-send workspace bootstrap so they do not corrupt pi's TUI when ambient setting sources load Claude/Cursor hook configs.
+- Handle pi steering/follow-up user messages that arrive while a live Cursor SDK run is still active across split replay or bridge tool-use turns. Resume the pending live run instead of issuing a second `Agent.send()` on the same pooled agent, and chain an incremental send for steering text after tool results when the in-flight run completes.
 
 ## 0.1.16 - 2026-05-22
 

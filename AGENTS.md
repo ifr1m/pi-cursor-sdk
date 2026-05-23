@@ -9,6 +9,7 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/index.ts` registers the pi extension, provider, fallback warnings, Cursor fast controls, native replay wrappers, question tool, and pi tool bridge hooks.
 - `src/model-discovery.ts` discovers Cursor models, builds pi model metadata, stores per-model metadata, and defines fallback models.
 - `src/cursor-provider.ts` streams through local `@cursor/sdk` agents, injects local MCP bridge config, resumes live bridge runs, and sanitizes Cursor SDK errors.
+- `src/cursor-live-run-coordinator.ts` owns live Cursor run registry/scope matching, queued events, drain leases, idle disposal timers, and release cleanup.
 - `src/cursor-pi-tool-bridge.ts` exposes active pi tools to local Cursor agents through a per-run loopback MCP bridge.
 - `src/cursor-question-tool.ts` owns the bridge-exposed `cursor_ask_question` pi UI tool.
 - `src/cursor-native-tool-display.ts`, `src/cursor-tool-transcript.ts`, and `src/cursor-tool-names.ts` handle display-only Cursor native tool replay and transcript labels.

@@ -24,6 +24,9 @@
 	"files": [
 		"src",
 		"scripts/refresh-cursor-model-snapshots.mjs",
+		"scripts/steering-rpc-smoke.mjs",
+		"scripts/tmux-live-smoke.sh",
+		"scripts/validate-smoke-jsonl.mjs",
 		"README.md",
 		"docs/cursor-model-ux-spec.md",
 		"docs/cursor-live-smoke-checklist.md",
@@ -40,7 +43,10 @@
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"refresh:cursor-snapshots": "node scripts/refresh-cursor-model-snapshots.mjs"
+		"refresh:cursor-snapshots": "node scripts/refresh-cursor-model-snapshots.mjs",
+		"smoke:live": "scripts/tmux-live-smoke.sh",
+		"smoke:steering": "node scripts/steering-rpc-smoke.mjs",
+		"smoke:jsonl": "node scripts/validate-smoke-jsonl.mjs"
 	},
 	"dependencies": {
 		"@cursor/sdk": "^1.0.13",

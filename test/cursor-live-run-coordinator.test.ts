@@ -1,0 +1,230 @@
+import type { Context } from "@earendil-works/pi-ai";
+import type { SDKAgent } from "@cursor/sdk";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+	createCursorLiveRunCoordinator,
+	hasTrailingUserMessagesAfterToolResults,
+	type CursorLiveRun,
+} from "../src/cursor-live-run-coordinator.js";
+import type { CursorNativeToolDisplayItem } from "../src/cursor-native-tool-display.js";
+import type { CursorPiToolBridgeRun } from "../src/cursor-pi-tool-bridge.js";
+
+function makeContext(messages: Context["messages"]): Context {
+	return { systemPrompt: "Be helpful.", messages };
+}
+
+function makeAgent(agentId = "agent-1"): SDKAgent {
+	return { agentId } as SDKAgent;
+}
+
+function makeToolDisplay(id: string): CursorNativeToolDisplayItem {
+	return {
+		id,
+		toolName: "read",
+		args: { path: "README.md" },
+		result: { content: [{ type: "text", text: "ok" }] },
+		isError: false,
+	};
+}
+
+function makeBridgeRun(id: string, pendingPiToolCallIds: string[] = []): CursorPiToolBridgeRun {
+	const pending = new Set(pendingPiToolCallIds);
+	return {
+		id,
+		enabled: true,
+		snapshot: { tools: [], mcpToolNameToPiToolName: new Map(), piToolNameToMcpToolName: new Map() },
+		takeQueuedToolRequests: vi.fn(() => []),
+		resolveToolResults: vi.fn(),
+		resolveToolResultsFromContext: vi.fn(),
+		hasPendingPiToolCallId: vi.fn((piToolCallId: string) => pending.has(piToolCallId)),
+		isBridgeMcpToolCall: vi.fn(() => false),
+		setOnToolRequest: vi.fn(),
+		cancel: vi.fn(),
+		dispose: vi.fn().mockResolvedValue(undefined),
+	};
+}
+
+function makeCoordinator(options: { scopeKey?: string; idleDisposeMs?: number } = {}) {
+	const deleteNativeToolDisplay = vi.fn();
+	const abandonSessionAgent = vi.fn().mockResolvedValue(undefined);
+	const coordinator = createCursorLiveRunCoordinator({
+		getScopeKey: () => options.scopeKey ?? "scope-1",
+		getIdleDisposeMs: () => options.idleDisposeMs ?? 10,
+		deleteNativeToolDisplay,
+		abandonSessionAgent,
+	});
+	return { coordinator, deleteNativeToolDisplay, abandonSessionAgent };
+}
+
+function startRun(coordinator: ReturnType<typeof makeCoordinator>["coordinator"], options: { id?: string; scopeKey?: string; bridgeRun?: CursorPiToolBridgeRun; sessionBridgeRun?: CursorPiToolBridgeRun } = {}): CursorLiveRun {
+	return coordinator.start({
+		id: options.id ?? "cursor-replay-1",
+		agent: makeAgent(),
+		bridgeRun: options.bridgeRun,
+		sessionBridgeRun: options.sessionBridgeRun,
+		sessionAgentScopeKey: options.scopeKey,
+		promptInputTokens: 12,
+	});
+}
+
+function replayIdFromToolCallId(toolCallId: string): string | undefined {
+	return /^(cursor-replay-\d+)-tool-\d+$/.exec(toolCallId)?.[1];
+}
+
+describe("cursor live run coordinator", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("matches context tool results after trailing user messages and ignores disposed runs", async () => {
+		const { coordinator } = makeCoordinator();
+		const run = startRun(coordinator, { id: "cursor-replay-1" });
+		const context = makeContext([
+			{ role: "user", content: "run a tool", timestamp: 1 },
+			{ role: "toolResult", toolCallId: "cursor-replay-1-tool-1", toolName: "read", content: [], isError: false, timestamp: 2 },
+			{ role: "user", content: "and summarize it", timestamp: 3 },
+		]);
+
+		expect(hasTrailingUserMessagesAfterToolResults(context)).toBe(true);
+		expect(coordinator.getPendingFromContext(context, replayIdFromToolCallId)).toBe(run);
+
+		await coordinator.release(run);
+
+		expect(coordinator.getPendingFromContext(context, replayIdFromToolCallId)).toBeUndefined();
+	});
+
+	it("indexes active runs per scope without letting an older release clear a newer run", async () => {
+		const { coordinator } = makeCoordinator();
+		const older = startRun(coordinator, { id: "older", scopeKey: "scope-a" });
+		const newer = startRun(coordinator, { id: "newer", scopeKey: "scope-a" });
+		const otherScope = startRun(coordinator, { id: "other", scopeKey: "scope-b" });
+
+		expect(coordinator.getActiveForScope("scope-a")).toBe(newer);
+		expect(coordinator.getActiveForScope("scope-b")).toBe(otherScope);
+
+		await coordinator.release(older);
+
+		expect(coordinator.getActiveForScope("scope-a")).toBe(newer);
+		expect(coordinator.getActiveForScope("scope-b")).toBe(otherScope);
+	});
+
+	it("serializes run leases", async () => {
+		const { coordinator } = makeCoordinator();
+		const run = startRun(coordinator);
+		const order: string[] = [];
+		let releaseFirst: () => void = () => {};
+
+		const firstLease = coordinator.withRunLease(run, undefined, async () => {
+			order.push("first-enter");
+			await new Promise<void>((resolve) => {
+				releaseFirst = resolve;
+			});
+			order.push("first-exit");
+		});
+		const secondLease = coordinator.withRunLease(run, undefined, async () => {
+			order.push("second-enter");
+		});
+
+		await vi.waitFor(() => expect(order).toEqual(["first-enter"]));
+		releaseFirst();
+		await Promise.all([firstLease, secondLease]);
+
+		expect(order).toEqual(["first-enter", "first-exit", "second-enter"]);
+	});
+
+	it("defers idle disposal while a run is leased", async () => {
+		vi.useFakeTimers();
+		const { coordinator, abandonSessionAgent } = makeCoordinator({ idleDisposeMs: 5 });
+		const run = startRun(coordinator);
+		const sdkCancel = vi.fn().mockResolvedValue(undefined);
+		coordinator.attachSdkRun(run, { cancel: sdkCancel });
+		let releaseLease: () => void = () => {};
+		let leaseWaiting = false;
+
+		const lease = coordinator.withRunLease(run, undefined, async () => {
+			coordinator.requestIdleDispose(run);
+			await vi.advanceTimersByTimeAsync(20);
+			expect(coordinator.count()).toBe(1);
+			expect(sdkCancel).not.toHaveBeenCalled();
+			leaseWaiting = true;
+			await new Promise<void>((resolve) => {
+				releaseLease = resolve;
+			});
+		});
+
+		await vi.waitFor(() => expect(leaseWaiting).toBe(true));
+		releaseLease();
+		await lease;
+		await vi.advanceTimersByTimeAsync(4);
+		expect(coordinator.count()).toBe(1);
+		await vi.advanceTimersByTimeAsync(1);
+		await vi.waitFor(() => expect(coordinator.count()).toBe(0));
+		expect(sdkCancel).toHaveBeenCalledTimes(1);
+		expect(abandonSessionAgent).toHaveBeenCalledWith("scope-1");
+	});
+
+	it("releases successful runs idempotently without abandoning pooled session resources", async () => {
+		vi.useFakeTimers();
+		const { coordinator, deleteNativeToolDisplay, abandonSessionAgent } = makeCoordinator({ idleDisposeMs: 5 });
+		const bridgeRun = makeBridgeRun("non-session-bridge");
+		const sessionBridgeRun = makeBridgeRun("session-bridge");
+		const run = startRun(coordinator, { bridgeRun, sessionBridgeRun });
+		const sdkCancel = vi.fn().mockResolvedValue(undefined);
+		coordinator.attachSdkRun(run, { cancel: sdkCancel });
+		run.recordedToolDisplayIds.push("tool-1", "tool-2");
+		const waitForProgress = coordinator.waitForProgress(run);
+
+		coordinator.markFinished(run, "done");
+		await waitForProgress;
+		await coordinator.release(run);
+		await coordinator.release(run);
+		await vi.advanceTimersByTimeAsync(10);
+
+		expect(coordinator.count()).toBe(0);
+		expect(deleteNativeToolDisplay).toHaveBeenCalledTimes(2);
+		expect(deleteNativeToolDisplay).toHaveBeenCalledWith("tool-1");
+		expect(deleteNativeToolDisplay).toHaveBeenCalledWith("tool-2");
+		expect(bridgeRun.cancel).toHaveBeenCalledTimes(1);
+		expect(bridgeRun.dispose).toHaveBeenCalledTimes(1);
+		expect(sessionBridgeRun.setOnToolRequest).toHaveBeenCalledTimes(1);
+		expect(sessionBridgeRun.setOnToolRequest).toHaveBeenCalledWith(undefined);
+		expect(sessionBridgeRun.dispose).not.toHaveBeenCalled();
+		expect(sdkCancel).not.toHaveBeenCalled();
+		expect(abandonSessionAgent).not.toHaveBeenCalled();
+	});
+
+	it("releases unsuccessful session-bridge runs idempotently and abandons the session agent", async () => {
+		const { coordinator, deleteNativeToolDisplay, abandonSessionAgent } = makeCoordinator();
+		const sessionBridgeRun = makeBridgeRun("session-bridge");
+		const run = startRun(coordinator, { bridgeRun: sessionBridgeRun, sessionBridgeRun, scopeKey: "scope-error" });
+		const sdkCancel = vi.fn().mockResolvedValue(undefined);
+		coordinator.attachSdkRun(run, { cancel: sdkCancel });
+		run.recordedToolDisplayIds.push("tool-1");
+		const waitForProgress = coordinator.waitForProgress(run);
+
+		await coordinator.release(run);
+		await waitForProgress;
+		await coordinator.release(run);
+
+		expect(coordinator.count()).toBe(0);
+		expect(deleteNativeToolDisplay).toHaveBeenCalledOnce();
+		expect(sessionBridgeRun.cancel).toHaveBeenCalledTimes(1);
+		expect(sessionBridgeRun.setOnToolRequest).toHaveBeenCalledWith(undefined);
+		expect(sessionBridgeRun.dispose).not.toHaveBeenCalled();
+		expect(sdkCancel).toHaveBeenCalledTimes(1);
+		expect(abandonSessionAgent).toHaveBeenCalledOnce();
+		expect(abandonSessionAgent).toHaveBeenCalledWith("scope-error");
+	});
+
+	it("matches bridge tool results when no native replay id is present", () => {
+		const { coordinator } = makeCoordinator();
+		const bridgeRun = makeBridgeRun("bridge-1", ["pi-call-1"]);
+		const run = startRun(coordinator, { id: "bridge-1", bridgeRun });
+		const context = makeContext([
+			{ role: "user", content: "run bridge", timestamp: 1 },
+			{ role: "toolResult", toolCallId: "pi-call-1", toolName: "read", content: [], isError: false, timestamp: 2 },
+		]);
+
+		expect(coordinator.getPendingFromContext(context, replayIdFromToolCallId)).toBe(run);
+	});
+});
