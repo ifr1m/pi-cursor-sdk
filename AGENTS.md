@@ -10,8 +10,11 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/model-discovery.ts` discovers Cursor models, builds pi model metadata, stores per-model metadata, and defines fallback models.
 - `src/cursor-provider.ts` streams through local `@cursor/sdk` agents, injects local MCP bridge config, resumes live bridge runs, and sanitizes Cursor SDK errors.
 - `src/cursor-provider-live-run-drain.ts` owns live-run drain/replay mirroring, pre-send continuation, and native replay turn emission.
+- `src/cursor-provider-turn-coordinator.ts` owns SDK delta/step handling, tool completion routing, and trace/native-replay emission during a turn.
 - `src/cursor-sdk-output-filter.ts` suppresses Cursor SDK integrator bootstrap noise from pi's TUI.
 - `src/cursor-edit-diff.ts` owns canonical edit diff fallback resolution for replay/display paths.
+- `src/cursor-record-utils.ts` owns shared record/string-key parsing helpers used across bridge and transcript layers.
+- `src/cursor-transcript-tool-specs.ts` owns the unified per-tool transcript and replay display spec registry.
 - `src/cursor-transcript-activity-display.ts` owns table-driven Cursor activity replay display builders.
 - `src/cursor-pi-tool-bridge-types.ts` owns shared bridge/MCP type contracts.
 - `src/cursor-env-boolean.ts` owns canonical env boolean parsing for bridge diagnostics and flags.

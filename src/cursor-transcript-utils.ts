@@ -1,5 +1,8 @@
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
+import { asRecord, getFirstStringByKeys } from "./cursor-record-utils.js";
+
+export { asRecord, getFirstStringByKeys } from "./cursor-record-utils.js";
 
 export interface TranscriptOptions {
 	maxChars?: number;
@@ -40,28 +43,9 @@ export const DEFAULT_NATIVE_READ_DISPLAY_LINES = 20;
 export const LOCAL_READ_PREVIEW_NOTICE =
 	"[local file preview at transcript time; Cursor read result content was unavailable]";
 
-export function asRecord(value: unknown): Record<string, unknown> | undefined {
-	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
-}
-
 export function getString(record: Record<string, unknown> | undefined, key: string): string | undefined {
 	const value = record?.[key];
 	return typeof value === "string" ? value : undefined;
-}
-
-export function getFirstStringByKeys(
-	record: Record<string, unknown> | undefined,
-	keys: readonly string[],
-	options?: { nonEmpty?: boolean },
-): string | undefined {
-	if (!record) return undefined;
-	for (const key of keys) {
-		const value = record[key];
-		if (typeof value !== "string") continue;
-		if (options?.nonEmpty && !value) continue;
-		return value;
-	}
-	return undefined;
 }
 
 export function getNumber(record: Record<string, unknown> | undefined, key: string): number | undefined {

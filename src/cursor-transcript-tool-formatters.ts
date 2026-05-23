@@ -1,4 +1,5 @@
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
+import { getFirstStringByKeys } from "./cursor-record-utils.js";
 import {
 	asRecord,
 	formatDisplayPath,
@@ -8,7 +9,6 @@ import {
 	formatPathArg,
 	getArray,
 	getBoolean,
-	getFirstStringByKeys,
 	getNumber,
 	getRecord,
 	getString,

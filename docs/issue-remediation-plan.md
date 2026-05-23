@@ -37,10 +37,10 @@ Split by ownership boundary (behavior-preserving moves):
 
 | Before | After |
 |--------|-------|
-| `cursor-provider.ts` (~1276) | `cursor-provider.ts` (~788) + `cursor-provider-live-run-drain.ts` (~449) + `cursor-sdk-output-filter.ts` (~78) |
-| `cursor-tool-transcript.ts` (~1264) | orchestrator (~463) + `cursor-transcript-utils.ts` (~261) + `cursor-transcript-tool-formatters.ts` (~636) |
-| `cursor-pi-tool-bridge.ts` (~1174) | main (~902) + `cursor-pi-tool-bridge-diagnostics.ts` (~185) + `cursor-pi-tool-bridge-mcp.ts` (~121) |
-| `test/cursor-provider.test.ts` (~5151) | scenario-focused test files + `test/helpers/cursor-provider-harness.ts` (replay split into live-run/shell/text/tool-display/idle-dispose/post-tool files, each ≤800 lines) |
+| `cursor-provider.ts` (~1276) | `cursor-provider.ts` (~389) + `cursor-provider-live-run-drain.ts` (~449) + `cursor-provider-turn-coordinator.ts` (~520) + `cursor-sdk-output-filter.ts` (~78) |
+| `cursor-tool-transcript.ts` (~1264) | orchestrator (~63) + `cursor-transcript-tool-specs.ts` (~262) + `cursor-transcript-utils.ts` + `cursor-transcript-tool-formatters.ts` + `cursor-transcript-activity-display.ts` |
+| `cursor-pi-tool-bridge.ts` (~1174) | main (~852) + `cursor-pi-tool-bridge-diagnostics.ts` + `cursor-pi-tool-bridge-mcp.ts` + `cursor-pi-tool-bridge-types.ts` + `cursor-record-utils.ts` |
+| `test/cursor-provider.test.ts` (~5151) | scenario-focused test files + `test/helpers/cursor-provider-harness.ts` (stream/bridge/replay splits, each ≤800 lines) |
 
 ## Validation
 
