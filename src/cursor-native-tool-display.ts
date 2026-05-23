@@ -18,6 +18,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Image, Text, type Component } from "@earendil-works/pi-tui";
 import { Type, type TSchema } from "typebox";
+import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
 import { getCursorSessionCwd } from "./cursor-session-cwd.js";
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
@@ -427,7 +428,7 @@ function pluralize(count: number, noun: string): string {
 }
 
 function getCursorEditDiff(details: CursorReplayToolDetails): string | undefined {
-	return details.diffString ?? details.diff;
+	return resolveCursorEditDiff(details);
 }
 
 function hasCursorEditChanges(details: CursorReplayToolDetails): boolean {

@@ -1,5 +1,7 @@
 # Investigation: Cursor SDK `/session` Token Tracking
 
+> **Point-in-time record:** This investigation was captured on 2026-05-21 (MDT) against pi dev baseline `@earendil-works/*` **0.75.3**. The repo dev baseline is now **0.75.5**; package-version references below describe the environment at investigation time unless noted otherwise.
+
 ## Summary
 
 The supplied session's persisted assistant `usage` fields sum exactly to `/session` totals: 3,086 input, 319 output, 3,405 total. The problem is not JSONL loss or `/session` math; it is an accounting-contract gap in `pi-cursor-sdk`: split Cursor SDK live runs persist narrow text/prompt estimates, leaving tool-call/thinking/tool-result-heavy turns undercounted and often all-zero.
@@ -110,7 +112,7 @@ Conclusion: the supplied session is consistent with current code, docs, and test
 
 #### Finding 3: Installed pi `/session` does not compute independent token estimates
 
-Installed package versions from `package.json` / `node_modules` are `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` at 0.75.3.
+At investigation time, installed package versions from `package.json` / `node_modules` were `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` at **0.75.3**.
 
 `/session` is implemented in `@earendil-works/pi-coding-agent`, not in `pi-agent-core`:
 

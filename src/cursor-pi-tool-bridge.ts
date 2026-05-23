@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { McpServerConfig } from "@cursor/sdk";
@@ -18,15 +18,34 @@ import {
 	CallToolRequestSchema,
 	ListToolsRequestSchema,
 	type CallToolResult,
-	type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { buildCursorPiBridgeMcpToolDescription, CURSOR_PI_BRIDGE_MCP_TOOL_PREFIX } from "./cursor-bridge-contract.js";
+import {
+	CURSOR_PI_TOOL_BRIDGE_DEBUG_ENV,
+	CURSOR_PI_TOOL_BRIDGE_DIAGNOSTIC_PREFIX,
+	type CursorPiToolBridgeDiagnosticEvent,
+	type CursorPiToolBridgeLifecycleDiagnosticFields,
+	type CursorPiToolBridgeRejectionKind,
+	type CursorPiToolBridgeRequestDiagnosticFields,
+	serializeCursorPiToolBridgeDiagnostic,
+	writeCursorPiToolBridgeDiagnostic,
+} from "./cursor-pi-tool-bridge-diagnostics.js";
+import {
+	asToolResultMessage,
+	containsKnownMcpToolName,
+	convertPiContentToMcpContent,
+	createMcpToolName,
+	getStringField,
+	isRecord,
+	normalizeMcpArgs,
+	normalizeMcpInputSchema,
+	snapshotToolToMcpTool,
+	stableNameHash,
+	waitForProtocolFlush,
+} from "./cursor-pi-tool-bridge-mcp.js";
 import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-names.js";
 
 const CURSOR_PI_TOOL_BRIDGE_ENV = "PI_CURSOR_PI_TOOL_BRIDGE";
 const CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV = "PI_CURSOR_EXPOSE_BUILTIN_TOOLS";
-const CURSOR_PI_TOOL_BRIDGE_DEBUG_ENV = "PI_CURSOR_PI_TOOL_BRIDGE_DEBUG";
-const CURSOR_PI_TOOL_BRIDGE_DIAGNOSTIC_PREFIX = "[pi-cursor-sdk:bridge]";
 const LOOPBACK_HOST = "127.0.0.1";
 const MCP_SERVER_NAME = "pi_tools";
 const MCP_ENDPOINT_ROOT = "/cursor-pi-tool-bridge";
@@ -36,73 +55,8 @@ const DISABLED_ENV_VALUES = new Set(["0", "false", "off", "none", "no", "disable
 const ENABLED_ENV_VALUES = new Set(["1", "true", "on", "yes", "enabled"]);
 const OVERLAPPING_CURSOR_NATIVE_PI_BUILTIN_TOOL_NAMES = new Set(["read", "bash", "write", "edit", "grep", "find", "ls"]);
 
-type CursorPiToolBridgeSkippedReason = "disabled" | "no_exposed_tools";
-type CursorPiToolBridgeRejectionKind = "cancelled" | "error";
-
-interface CursorPiToolBridgeLifecycleDiagnosticFields {
-	runId: string;
-	enabled: boolean;
-	exposedToolCount: number;
-	pendingCount: number;
-}
-
-interface CursorPiToolBridgeRunCreatedDiagnostic extends CursorPiToolBridgeLifecycleDiagnosticFields {
-	event: "run_created";
-}
-
-interface CursorPiToolBridgeRunSkippedDiagnostic extends CursorPiToolBridgeLifecycleDiagnosticFields {
-	event: "run_skipped";
-	reason: CursorPiToolBridgeSkippedReason;
-}
-
-interface CursorPiToolBridgeToolsExposedDiagnostic extends CursorPiToolBridgeLifecycleDiagnosticFields {
-	event: "tools_exposed";
-	pairs: Array<{ piToolName: string; mcpToolName: string }>;
-}
-
-interface CursorPiToolBridgeRunCancelledDiagnostic extends CursorPiToolBridgeLifecycleDiagnosticFields {
-	event: "run_cancelled";
-	queuedCount: number;
-	cancelledRequestCount: number;
-}
-
-interface CursorPiToolBridgeRunDisposedDiagnostic extends CursorPiToolBridgeLifecycleDiagnosticFields {
-	event: "run_disposed";
-}
-
-interface CursorPiToolBridgeRequestDiagnosticFields {
-	runId: string;
-	bridgeCallId: string;
-	cursorMcpCallId?: string;
-	piToolCallId: string;
-	mcpToolName: string;
-	piToolName: string;
-	pendingCount: number;
-}
-
-interface CursorPiToolBridgeRequestQueuedDiagnostic extends CursorPiToolBridgeRequestDiagnosticFields {
-	event: "request_queued";
-}
-
-interface CursorPiToolBridgeRequestResolvedDiagnostic extends CursorPiToolBridgeRequestDiagnosticFields {
-	event: "request_resolved";
-	isError: boolean;
-}
-
-interface CursorPiToolBridgeRequestRejectedDiagnostic extends CursorPiToolBridgeRequestDiagnosticFields {
-	event: "request_rejected";
-	rejectionKind: CursorPiToolBridgeRejectionKind;
-}
-
-export type CursorPiToolBridgeDiagnosticEvent =
-	| CursorPiToolBridgeRunCreatedDiagnostic
-	| CursorPiToolBridgeRunSkippedDiagnostic
-	| CursorPiToolBridgeToolsExposedDiagnostic
-	| CursorPiToolBridgeRunCancelledDiagnostic
-	| CursorPiToolBridgeRunDisposedDiagnostic
-	| CursorPiToolBridgeRequestQueuedDiagnostic
-	| CursorPiToolBridgeRequestResolvedDiagnostic
-	| CursorPiToolBridgeRequestRejectedDiagnostic;
+export type { CursorPiToolBridgeDiagnosticEvent } from "./cursor-pi-tool-bridge-diagnostics.js";
+export { resolveCursorPiToolBridgeDebugEnabled } from "./cursor-pi-tool-bridge-diagnostics.js";
 
 export interface CursorPiMcpInputSchema {
 	type: "object";
@@ -316,62 +270,6 @@ class CursorPiToolBridgeToolExecutionAbortTracker {
 
 const bridgeToolExecutionAbortTracker = new CursorPiToolBridgeToolExecutionAbortTracker();
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
-
-function normalizeMcpInputSchema(schema: unknown): CursorPiMcpInputSchema {
-	if (isRecord(schema) && schema.type === "object") return schema as CursorPiMcpInputSchema;
-	return { type: "object", properties: {} };
-}
-
-function normalizeMcpArgs(args: unknown): Record<string, unknown> {
-	return isRecord(args) ? { ...args } : {};
-}
-
-function waitForProtocolFlush(): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-function sanitizeMcpToolNameStem(toolName: string): string {
-	const stem = toolName
-		.trim()
-		.replace(/[^A-Za-z0-9_-]+/g, "_")
-		.replace(/^_+|_+$/g, "");
-	return stem || "tool";
-}
-
-function stableNameHash(value: string): string {
-	return createHash("sha256").update(value).digest("hex").slice(0, 8);
-}
-
-function createCursorMcpCallDiagnosticId(cursorMcpCallId: string | undefined): string | undefined {
-	return cursorMcpCallId ? `cursor-mcp-call-${stableNameHash(cursorMcpCallId)}` : undefined;
-}
-
-function createMcpToolName(piToolName: string, usedMcpToolNames: Set<string>): string {
-	const baseName = `${CURSOR_PI_BRIDGE_MCP_TOOL_PREFIX}${sanitizeMcpToolNameStem(piToolName)}`;
-	if (!usedMcpToolNames.has(baseName)) {
-		usedMcpToolNames.add(baseName);
-		return baseName;
-	}
-
-	const hashedName = `${baseName}__${stableNameHash(piToolName)}`;
-	if (!usedMcpToolNames.has(hashedName)) {
-		usedMcpToolNames.add(hashedName);
-		return hashedName;
-	}
-
-	let counter = 2;
-	let candidate = `${hashedName}_${counter}`;
-	while (usedMcpToolNames.has(candidate)) {
-		counter += 1;
-		candidate = `${hashedName}_${counter}`;
-	}
-	usedMcpToolNames.add(candidate);
-	return candidate;
-}
-
 function createEmptySnapshot(): CursorPiToolBridgeSnapshot {
 	return {
 		tools: [],
@@ -394,112 +292,6 @@ export function resolveCursorPiToolBridgeBuiltinsEnabled(env: Record<string, str
 	if (ENABLED_ENV_VALUES.has(raw)) return true;
 	if (DISABLED_ENV_VALUES.has(raw)) return false;
 	return false;
-}
-
-export function resolveCursorPiToolBridgeDebugEnabled(env: Record<string, string | undefined> = process.env): boolean {
-	const raw = env[CURSOR_PI_TOOL_BRIDGE_DEBUG_ENV]?.trim().toLowerCase();
-	if (!raw) return false;
-	if (ENABLED_ENV_VALUES.has(raw)) return true;
-	if (DISABLED_ENV_VALUES.has(raw)) return false;
-	return false;
-}
-
-function assertNeverDiagnosticEvent(_event: never): never {
-	throw new Error("Unhandled Cursor pi tool bridge diagnostic event");
-}
-
-function serializeCursorPiToolBridgeDiagnostic(event: CursorPiToolBridgeDiagnosticEvent): Record<string, unknown> {
-	switch (event.event) {
-		case "run_created":
-			return {
-				event: event.event,
-				runId: event.runId,
-				enabled: event.enabled,
-				exposedToolCount: event.exposedToolCount,
-				pendingCount: event.pendingCount,
-			};
-		case "run_skipped":
-			return {
-				event: event.event,
-				runId: event.runId,
-				enabled: event.enabled,
-				exposedToolCount: event.exposedToolCount,
-				pendingCount: event.pendingCount,
-				reason: event.reason,
-			};
-		case "tools_exposed":
-			return {
-				event: event.event,
-				runId: event.runId,
-				enabled: event.enabled,
-				exposedToolCount: event.exposedToolCount,
-				pendingCount: event.pendingCount,
-				pairs: event.pairs.map((pair) => ({ piToolName: pair.piToolName, mcpToolName: pair.mcpToolName })),
-			};
-		case "run_cancelled":
-			return {
-				event: event.event,
-				runId: event.runId,
-				enabled: event.enabled,
-				exposedToolCount: event.exposedToolCount,
-				pendingCount: event.pendingCount,
-				queuedCount: event.queuedCount,
-				cancelledRequestCount: event.cancelledRequestCount,
-			};
-		case "run_disposed":
-			return {
-				event: event.event,
-				runId: event.runId,
-				enabled: event.enabled,
-				exposedToolCount: event.exposedToolCount,
-				pendingCount: event.pendingCount,
-			};
-		case "request_queued":
-			return {
-				event: event.event,
-				runId: event.runId,
-				bridgeCallId: event.bridgeCallId,
-				cursorMcpCallId: createCursorMcpCallDiagnosticId(event.cursorMcpCallId),
-				piToolCallId: event.piToolCallId,
-				mcpToolName: event.mcpToolName,
-				piToolName: event.piToolName,
-				pendingCount: event.pendingCount,
-			};
-		case "request_resolved":
-			return {
-				event: event.event,
-				runId: event.runId,
-				bridgeCallId: event.bridgeCallId,
-				cursorMcpCallId: createCursorMcpCallDiagnosticId(event.cursorMcpCallId),
-				piToolCallId: event.piToolCallId,
-				mcpToolName: event.mcpToolName,
-				piToolName: event.piToolName,
-				pendingCount: event.pendingCount,
-				isError: event.isError,
-			};
-		case "request_rejected":
-			return {
-				event: event.event,
-				runId: event.runId,
-				bridgeCallId: event.bridgeCallId,
-				cursorMcpCallId: createCursorMcpCallDiagnosticId(event.cursorMcpCallId),
-				piToolCallId: event.piToolCallId,
-				mcpToolName: event.mcpToolName,
-				piToolName: event.piToolName,
-				pendingCount: event.pendingCount,
-				rejectionKind: event.rejectionKind,
-			};
-	}
-	return assertNeverDiagnosticEvent(event);
-}
-
-function writeCursorPiToolBridgeDiagnostic(env: Record<string, string | undefined>, event: CursorPiToolBridgeDiagnosticEvent): void {
-	if (!resolveCursorPiToolBridgeDebugEnabled(env)) return;
-	try {
-		process.stderr.write(`${CURSOR_PI_TOOL_BRIDGE_DIAGNOSTIC_PREFIX} ${JSON.stringify(serializeCursorPiToolBridgeDiagnostic(event))}\n`);
-	} catch {
-		// Diagnostics must never affect bridge execution.
-	}
 }
 
 function isOverlappingCursorNativePiToolName(toolName: string): boolean {
@@ -557,70 +349,6 @@ export function buildCursorPiToolBridgeSnapshot(
 	}
 
 	return { tools, mcpToolNameToPiToolName, piToolNameToMcpToolName };
-}
-
-function snapshotToolToMcpTool(tool: CursorPiBridgeToolDefinition): Tool {
-	return {
-		name: tool.mcpToolName,
-		description: buildCursorPiBridgeMcpToolDescription({
-			piToolName: tool.piToolName,
-			mcpToolName: tool.mcpToolName,
-			piToolDescription: tool.description,
-		}),
-		inputSchema: tool.inputSchema,
-		_meta: { piToolName: tool.piToolName },
-	};
-}
-
-function convertPiContentToMcpContent(content: unknown): CallToolResult["content"] {
-	if (!Array.isArray(content)) {
-		return [{ type: "text", text: typeof content === "string" ? content : JSON.stringify(content) }];
-	}
-
-	const mcpContent: CallToolResult["content"] = [];
-	for (const block of content) {
-		if (!isRecord(block)) continue;
-		if (block.type === "text" && typeof block.text === "string") {
-			mcpContent.push({ type: "text", text: block.text });
-			continue;
-		}
-		if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") {
-			mcpContent.push({ type: "image", data: block.data, mimeType: block.mimeType });
-			continue;
-		}
-		mcpContent.push({ type: "text", text: JSON.stringify(block) });
-	}
-
-	return mcpContent.length > 0 ? mcpContent : [{ type: "text", text: "" }];
-}
-
-function asToolResultMessage(value: Context["messages"][number]): ToolResultMessage | undefined {
-	return value.role === "toolResult" ? value : undefined;
-}
-
-function getStringField(record: Record<string, unknown>, fields: string[]): string | undefined {
-	for (const field of fields) {
-		const value = record[field];
-		if (typeof value === "string" && value) return value;
-	}
-	return undefined;
-}
-
-function containsKnownMcpToolName(value: unknown, knownMcpToolNames: ReadonlySet<string>, depth = 0): boolean {
-	if (depth > 4) return false;
-	if (Array.isArray(value)) return value.some((entry) => containsKnownMcpToolName(entry, knownMcpToolNames, depth + 1));
-	if (!isRecord(value)) return false;
-
-	for (const field of ["tool", "toolName", "name", "mcpToolName", "serverToolName"]) {
-		const fieldValue = value[field];
-		if (typeof fieldValue === "string" && knownMcpToolNames.has(fieldValue)) return true;
-	}
-
-	for (const nestedField of ["args", "arguments", "input"]) {
-		if (containsKnownMcpToolName(value[nestedField], knownMcpToolNames, depth + 1)) return true;
-	}
-
-	return false;
 }
 
 class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
