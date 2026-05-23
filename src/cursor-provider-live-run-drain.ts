@@ -268,6 +268,11 @@ export async function drainCursorLiveRunTurn(
 	};
 
 	while (true) {
+		if (options.mode === "chain_user_input" && cursorLiveRuns.isReady(run)) {
+			await cursorLiveRuns.release(run);
+			return "chain_user_input";
+		}
+
 		while (cursorLiveRuns.peekEvent(run)) {
 			const toolUse = await emitCursorLiveRunPendingToolUseTurn(
 				stream,

@@ -605,6 +605,18 @@ function getMcpContentText(entry: unknown): string | undefined {
 	return getString(nestedText, "text");
 }
 
+function describeNonTextMcpContent(entry: unknown): string {
+	const record = asRecord(entry);
+	const type = getString(record, "type") ?? "content";
+	if (type === "image") {
+		const mimeType = getString(record, "mimeType") ?? getString(record, "mime") ?? getString(record, "mediaType");
+		return `[image${mimeType ? ` ${mimeType}` : ""} omitted]`;
+	}
+	if (type === "audio") return "[audio omitted]";
+	if (type === "resource") return "[resource omitted]";
+	return `[${type} omitted]`;
+}
+
 export function formatMcp(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
 	const toolName = typeof args.toolName === "string" ? args.toolName : "mcp";
 	if (result.status === "error") return joinSections(toolName, formatError(result.error));
@@ -616,7 +628,8 @@ export function formatMcp(args: Record<string, unknown>, result: NormalizedResul
 		.map((entry) => getMcpContentText(entry))
 		.filter((entry): entry is string => Boolean(entry))
 		.join("\n");
-	const body = `${isError ? "[tool error]\n" : ""}${text || stringifyUnknown(result.value)}`;
+	const contentSummary = content.length > 0 ? content.map(describeNonTextMcpContent).join("\n") : stringifyUnknown(result.value);
+	const body = `${isError ? "[tool error]\n" : ""}${text || contentSummary}`;
 	return joinSections(toolName, limitText(body, options));
 }
 

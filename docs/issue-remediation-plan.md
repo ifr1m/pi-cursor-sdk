@@ -42,20 +42,21 @@ Split by ownership boundary (behavior-preserving moves):
 | `cursor-pi-tool-bridge.ts` (~1174) | main (~852) + `cursor-pi-tool-bridge-diagnostics.ts` + `cursor-pi-tool-bridge-mcp.ts` + `cursor-pi-tool-bridge-types.ts` + `cursor-record-utils.ts` |
 | `test/cursor-provider.test.ts` (~5151) | scenario-focused test files + `test/helpers/cursor-provider-harness.ts` (stream/bridge/replay splits, each ≤800 lines) |
 
-## Phase 2 follow-up (tracked as GitHub issues)
+## Phase 2 completion
 
-- #23 — Split `cursor-pi-tool-bridge.ts` server from run orchestration
-- #24 — Decompose `cursor-native-tool-display.ts`
-- #25 — Unify tool completion resolution in `CursorSdkTurnCoordinator`
+Follow-up issues #23/#24/#25 were completed after the phase-1 remediation PR:
+
+- #23 — `cursor-pi-tool-bridge.ts` was split into bridge snapshot/server/run/abort/diagnostics/MCP/types modules.
+- #24 — `cursor-native-tool-display.ts` was split into state/registration/replay/tools modules.
+- #25 — Cursor SDK tool completion routing was centralized through `CursorSdkTurnCoordinator.resolveToolCompletion`.
 
 ## Validation
 
 - `npm test`
 - `npm run typecheck`
 - `npm pack --dry-run`
-
-Live smoke (`docs/cursor-live-smoke-checklist.md`) remains recommended before release; not required for this maintainability/docs PR.
+- Before any Cursor provider/runtime release, follow the full live smoke gate in `docs/cursor-live-smoke-checklist.md`.
 
 ## Issue closure mapping
 
-This PR closes #17, #19, #20, and #21 when merged.
+The phase-1 remediation PR closed #17, #19, #20, and #21. The phase-2 follow-up PRs closed #23, #24, and #25.

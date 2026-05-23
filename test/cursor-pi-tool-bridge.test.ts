@@ -4,6 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { Context } from "@earendil-works/pi-ai";
 import type { ToolInfo } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display.js";
 import {
 	__testUtils,
 	buildCursorPiToolBridgeSnapshot,
@@ -113,6 +114,7 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 		delete process.env.PI_CURSOR_PI_TOOL_BRIDGE;
 		delete process.env.PI_CURSOR_EXPOSE_BUILTIN_TOOLS;
 		delete process.env.PI_CURSOR_PI_TOOL_BRIDGE_DEBUG;
+		nativeToolDisplayTestUtils.reset();
 		await __testUtils.resetRegisteredBridgeForTests();
 	});
 
@@ -140,7 +142,7 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 		expect(resolveCursorPiToolBridgeDebugEnabled({ PI_CURSOR_PI_TOOL_BRIDGE_DEBUG: "true" })).toBe(true);
 	});
 
-	it("maps only active pi tools, includes dynamic tools, and excludes internal Cursor replay names", () => {
+	it("maps only active pi tools, includes dynamic tools, and excludes only registered internal Cursor replay names", () => {
 		const readParameters = Type.Object({ path: Type.String({ description: "Path to read" }) });
 		const dynamicParameters = Type.Object({ target: Type.String() });
 		const tools = [
@@ -156,6 +158,12 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 			tools,
 		});
 
+		const externalSnapshot = buildCursorPiToolBridgeSnapshot(pi);
+		expect(externalSnapshot.tools.map((tool) => tool.piToolName)).toEqual(["custom_read", "sem_reindex", "cursor", "cursor_edit", "cursor_mcp"]);
+
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor");
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor_edit");
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor_mcp");
 		const snapshot = buildCursorPiToolBridgeSnapshot(pi);
 
 		expect(snapshot.tools.map((tool) => tool.piToolName)).toEqual(["custom_read", "sem_reindex"]);
@@ -226,6 +234,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 		delete process.env.PI_CURSOR_PI_TOOL_BRIDGE;
 		delete process.env.PI_CURSOR_EXPOSE_BUILTIN_TOOLS;
 		delete process.env.PI_CURSOR_PI_TOOL_BRIDGE_DEBUG;
+		nativeToolDisplayTestUtils.reset();
 		await __testUtils.resetRegisteredBridgeForTests();
 	});
 
@@ -296,6 +305,8 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 		expect(disabledRun.mcpServers).toBeUndefined();
 		expect(disabledRegistry.getEndpointCount()).toBe(0);
 
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor");
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor_edit");
 		const emptyRegistry = __testUtils.createRegistry(
 			createMockPi({ active: ["cursor", "cursor_edit"], tools }),
 			{},
@@ -583,6 +594,8 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			expect(run.isBridgeMcpToolCall({ name: "mcp", result: { toolName: "pi__read" } })).toBe(false);
 			expect(run.isBridgeMcpToolCall({ name: "mcp", value: "pi__read", details: { toolName: "pi__read" } })).toBe(false);
 			expect(run.isBridgeMcpToolCall({ name: "mcp", result: { text: "mentions pi__read here" } })).toBe(false);
+			expect(run.isBridgeMcpToolCall({ name: "external_search", id: request.cursorMcpCallId })).toBe(false);
+			expect(run.isBridgeMcpToolCall({ name: "mcp", id: request.cursorMcpCallId })).toBe(true);
 
 			const context: Context = {
 				systemPrompt: "",
@@ -788,6 +801,66 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 		} finally {
 			await client.close().catch(() => undefined);
 			await transport.close().catch(() => undefined);
+		}
+	});
+
+	it("rejects MCP calls and clears pending state when immediate tool dispatch throws", async () => {
+		const diagnostics = collectBridgeDiagnosticOutput();
+		const registry = __testUtils.createRegistry(
+			createMockPi({ active: ["read"], tools: [createToolInfo("read")] }),
+			{ PI_CURSOR_EXPOSE_BUILTIN_TOOLS: "1", PI_CURSOR_PI_TOOL_BRIDGE_DEBUG: "1" },
+		);
+		const run = await registry.createRun({
+			onToolRequest: () => {
+				throw new Error("handler failed");
+			},
+		});
+		const { client, transport } = await connectClient(run.mcpServers!.pi_tools.url);
+		try {
+			const error = await client.callTool({ name: "pi__read", arguments: { path: "README.md" } }).catch((callError: unknown) => callError);
+			const queued = diagnostics.records().find((record) => record.event === "request_queued");
+			const rejected = diagnostics.records().find((record) => record.event === "request_rejected");
+
+			expect(error).toBeInstanceOf(Error);
+			expect(queued?.piToolCallId).toEqual(expect.any(String));
+			expect(rejected).toMatchObject({ piToolCallId: queued?.piToolCallId, pendingCount: 0, rejectionKind: "error" });
+			expect(run.hasPendingPiToolCallId(queued?.piToolCallId as string)).toBe(false);
+		} finally {
+			await client.close().catch(() => undefined);
+			await transport.close().catch(() => undefined);
+			await run.dispose();
+			diagnostics.restore();
+		}
+	});
+
+	it("rejects queued MCP calls and clears pending state when replayed tool dispatch throws", async () => {
+		const diagnostics = collectBridgeDiagnosticOutput();
+		const registry = __testUtils.createRegistry(
+			createMockPi({ active: ["read"], tools: [createToolInfo("read")] }),
+			{ PI_CURSOR_EXPOSE_BUILTIN_TOOLS: "1", PI_CURSOR_PI_TOOL_BRIDGE_DEBUG: "1" },
+		);
+		const run = await registry.createRun();
+		const { client, transport } = await connectClient(run.mcpServers!.pi_tools.url);
+		try {
+			const callPromise = client.callTool({ name: "pi__read", arguments: { path: "README.md" } }).catch((callError: unknown) => callError);
+			await vi.waitFor(() => expect(diagnostics.records().some((record) => record.event === "request_queued")).toBe(true));
+			const queued = diagnostics.records().find((record) => record.event === "request_queued");
+
+			run.setOnToolRequest(() => {
+				throw new Error("handler failed");
+			});
+
+			const error = await callPromise;
+			const rejected = diagnostics.records().find((record) => record.event === "request_rejected");
+			expect(error).toBeInstanceOf(Error);
+			expect(queued?.piToolCallId).toEqual(expect.any(String));
+			expect(rejected).toMatchObject({ piToolCallId: queued?.piToolCallId, pendingCount: 0, rejectionKind: "error" });
+			expect(run.hasPendingPiToolCallId(queued?.piToolCallId as string)).toBe(false);
+		} finally {
+			await client.close().catch(() => undefined);
+			await transport.close().catch(() => undefined);
+			await run.dispose();
+			diagnostics.restore();
 		}
 	});
 

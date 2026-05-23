@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.17 - 2026-05-23
 
 ### Changed
 
@@ -9,15 +9,20 @@
 - Complete phase-2 remediation for #23/#24/#25 by splitting bridge ownership across snapshot/server/run/abort/diagnostics/MCP/types modules, splitting native replay ownership across state/registration/replay/tools modules, and unifying tool completion routing through `resolveToolCompletion`.
 - Replace monolithic provider test coverage with focused stream/bridge/replay/live-run suites plus shared harness helpers.
 - Promote smoke automation into packaged entrypoints (`npm run smoke:live`, `npm run smoke:steering`, `npm run smoke:jsonl`) and make helper retry/polling behavior explicit (TUI answer/footer polling plus deterministic tmux cleanup).
+- Bump package metadata to `0.1.17` so the dry-run tarball no longer collides with the existing `v0.1.16` tag.
 
 ### Fixed
 
 - Resolve startup noise issue #17 by extending Cursor SDK bootstrap filtering to late hook compatibility warnings and ripgrep/ignore-mapping output while preserving non-startup logs.
-- Fix steering/follow-up delivery for active pooled Cursor runs by resuming/waiting on the in-flight run and sending incremental follow-up text after pending tool/result flow completes instead of issuing a second concurrent `Agent.send()`.
+- Fix steering/follow-up delivery for active pooled Cursor runs by resuming/waiting on the in-flight run and sending incremental follow-up text after pending tool/result flow completes instead of issuing a second concurrent `Agent.send()`; additional stale tool batches from the old run are cancelled so the new user input is not lost.
 - Resolve issue #19 with a canonical edit-diff fallback resolver (`diffString → diff → unifiedDiff → patch`) shared by replay and transcript formatting paths.
 - Resolve issue #20 by updating the token-tracking investigation note to mark the `0.75.3` observation as point-in-time and call out the current `0.75.5` development baseline.
 - Resolve issue #21 by decomposing prior 1k+ provider/transcript/bridge/test monoliths into ownership-scoped modules.
 - Harden bridge diagnostics and secret scrubbing so debug JSONL stays run-safe and allowlisted without endpoint path material, raw args/results, or credential payloads.
+- Make Cursor SDK output filtering safe for overlapping provider streams by restoring the global stdout/stderr/console patch only after the last active install.
+- Reject bridge MCP calls cleanly when tool-dispatch handlers throw, and avoid suppressing unrelated MCP replay solely because an external payload reuses a known bridge request ID.
+- Bound native replay diff/write previews by both lines and characters, summarize non-text MCP content without dumping raw payload JSON, and make expanded-diff truncation copy truthful.
+- Change smoke forbidden-material scans to report only matching file names, not secret-bearing matched lines.
 
 ## 0.1.16 - 2026-05-22
 

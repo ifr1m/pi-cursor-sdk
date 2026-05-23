@@ -412,6 +412,42 @@ describe("formatCursorToolTranscript", () => {
 		expect(deleteDisplay.result.content[0].text).toContain("Deleted 9 bytes");
 	});
 
+	it("summarizes Cursor MCP non-text content without dumping raw payloads", () => {
+		const display = buildCursorPiToolDisplay({
+			name: "mcp",
+			args: { toolName: "image_service" },
+			result: {
+				status: "success",
+				value: {
+					content: [
+						{ type: "image", mimeType: "image/png", data: "base64-image-data" },
+						{ type: "resource", uri: "file:///secret.txt", blob: "raw-resource-payload" },
+					],
+				},
+			},
+		});
+		const transcript = formatCursorToolTranscript({
+			name: "mcp",
+			args: { toolName: "image_service" },
+			result: {
+				status: "success",
+				value: {
+					content: [
+						{ type: "image", mimeType: "image/png", data: "base64-image-data" },
+						{ type: "resource", uri: "file:///secret.txt", blob: "raw-resource-payload" },
+					],
+				},
+			},
+		});
+
+		expect(display.result.content[0].text).toContain("[image image/png omitted]");
+		expect(display.result.content[0].text).toContain("[resource omitted]");
+		expect(display.result.content[0].text).not.toContain("base64-image-data");
+		expect(display.result.content[0].text).not.toContain("raw-resource-payload");
+		expect(transcript).toContain("[image image/png omitted]");
+		expect(transcript).not.toContain("base64-image-data");
+	});
+
 	it("shows Cursor generateImage output paths without dumping image data", () => {
 		const display = buildCursorPiToolDisplay(
 			{

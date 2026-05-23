@@ -375,9 +375,20 @@ rg -q '"steerOk":true' "$SMOKE_DIR/steering.stdout.txt" || fail "steering missin
 rg -q '"steerChain":true' "$SMOKE_DIR/steering.stdout.txt" || fail "steering missing steerChain"
 rg -q "already has active run|AgentBusyError" "$SMOKE_DIR/steering.stdout.txt" "$SMOKE_DIR/steering.stderr.txt" && fail "steering hit AgentBusyError" || true
 
-find "$SMOKE_DIR" -type f \( -name '*stderr.txt' -o -name '*capture*.txt' \) -print0 |
-	xargs -0 grep -E 'CURSOR_API_KEY|Bearer [A-Za-z0-9._-]+|/cursor-pi-tool-bridge/[^ ]+/mcp|127\.0\.0\.1:[0-9]+/cursor-pi-tool-bridge|apiKey|cookie|session-cookie|secret-token' &&
-	fail "diagnostics safety scan found forbidden material" || true
+forbidden_files="$(find "$SMOKE_DIR" -type f \( -name '*stderr.txt' -o -name '*capture*.txt' \) -print0 |
+	xargs -0 grep -IlE 'CURSOR_API_KEY|Bearer [A-Za-z0-9._-]+|/cursor-pi-tool-bridge/[^ ]+/mcp|127\.0\.0\.1:[0-9]+/cursor-pi-tool-bridge|apiKey|cookie|session-cookie|secret-token' || true)"
+if [[ -n "$forbidden_files" ]]; then
+	printf '[smoke] diagnostics safety scan found forbidden material in:\n' >&2
+	while IFS= read -r file; do
+		[[ -z "$file" ]] && continue
+		if [[ "$file" == "$SMOKE_DIR/"* ]]; then
+			printf '[smoke]   %s\n' "${file#"$SMOKE_DIR/"}" >&2
+		else
+			printf '[smoke]   %s\n' "$file" >&2
+		fi
+	done <<<"$forbidden_files"
+	fail "diagnostics safety scan found forbidden material"
+fi
 log "diagnostics safety PASS"
 
 node "$ROOT/scripts/validate-smoke-jsonl.mjs" "$SMOKE_DIR"

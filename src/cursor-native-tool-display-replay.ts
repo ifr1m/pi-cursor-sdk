@@ -12,6 +12,9 @@ import {
 } from "./cursor-tool-names.js";
 
 export const CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES = 8;
+export const CURSOR_REPLAY_PREVIEW_MAX_CHARS = 4000;
+export const CURSOR_REPLAY_PREVIEW_MAX_LINE_CHARS = 240;
+const CURSOR_REPLAY_HIGHLIGHT_MAX_CHARS = 12000;
 export const cursorReplayToolSchema = Type.Object({}, { additionalProperties: true });
 
 export interface CursorReplayToolDetails {
@@ -103,8 +106,57 @@ function replaceCursorReplayTabs(text: string): string {
 	return text.replace(/\t/g, "   ");
 }
 
+function truncateCursorReplayLine(text: string, maxChars = CURSOR_REPLAY_PREVIEW_MAX_LINE_CHARS): string {
+	return text.length > maxChars ? `${text.slice(0, Math.max(maxChars - 1, 0))}…` : text;
+}
+
+interface CursorReplayPreviewSlice {
+	text: string;
+	omittedLines: number;
+	omittedChars: number;
+}
+
+function sliceCursorReplayPreview(
+	text: string,
+	maxLines: number,
+	maxChars = CURSOR_REPLAY_PREVIEW_MAX_CHARS,
+): CursorReplayPreviewSlice {
+	const lines = text.split("\n");
+	const visible: string[] = [];
+	let usedChars = 0;
+	let omittedChars = 0;
+	for (const line of lines) {
+		if (visible.length >= maxLines) {
+			omittedChars += line.length + 1;
+			continue;
+		}
+		const normalizedLine = replaceCursorReplayTabs(line);
+		const lineBudget = Math.max(Math.min(CURSOR_REPLAY_PREVIEW_MAX_LINE_CHARS, maxChars - usedChars), 0);
+		if (lineBudget <= 0) {
+			omittedChars += normalizedLine.length + 1;
+			continue;
+		}
+		const truncatedLine = truncateCursorReplayLine(normalizedLine, lineBudget);
+		visible.push(truncatedLine);
+		usedChars += truncatedLine.length + 1;
+		omittedChars += Math.max(normalizedLine.length - truncatedLine.length, 0);
+	}
+	return {
+		text: visible.join("\n"),
+		omittedLines: Math.max(lines.length - visible.length, 0),
+		omittedChars,
+	};
+}
+
+function formatCursorReplayOmission(slice: CursorReplayPreviewSlice): string | undefined {
+	const parts = [];
+	if (slice.omittedLines > 0) parts.push(`${slice.omittedLines} more lines`);
+	if (slice.omittedChars > 0) parts.push(`${slice.omittedChars} more chars`);
+	return parts.length > 0 ? `... (${parts.join(", ")} truncated)` : undefined;
+}
+
 function formatCursorReplayDiffLine(prefix: string, lineNumber: number, content: string, theme: CursorReplayRenderTheme): string {
-	const rendered = `${prefix}${lineNumber} ${replaceCursorReplayTabs(content)}`;
+	const rendered = `${prefix}${lineNumber} ${truncateCursorReplayLine(replaceCursorReplayTabs(content))}`;
 	if (prefix === "+") return theme.fg("toolDiffAdded", rendered);
 	if (prefix === "-") return theme.fg("toolDiffRemoved", rendered);
 	return theme.fg("toolDiffContext", rendered);
@@ -145,7 +197,7 @@ export function formatCursorReplayDiff(diff: string, theme: CursorReplayRenderTh
 	}
 
 	const visible = rendered.slice(0, maxLines);
-	if (rendered.length > maxLines) visible.push(theme.fg("muted", `... (${rendered.length - maxLines} more diff lines; expand for full diff)`));
+	if (rendered.length > maxLines) visible.push(theme.fg("muted", `... (${rendered.length - maxLines} more diff lines hidden)`));
 	return visible.join("\n");
 }
 
@@ -166,10 +218,10 @@ export function formatCursorReplayPreview(
 ): string | undefined {
 	const body = (stripHeader ? stripCursorReplayHeader(text) : text).trimEnd();
 	if (!body) return undefined;
-	const lines = body.split("\n");
-	const visible = lines.slice(0, maxLines);
-	if (lines.length > maxLines) visible.push(`... (${lines.length - maxLines} more lines; expand for full details)`);
-	return formatMutedBlock(visible.join("\n"), theme);
+	const slice = sliceCursorReplayPreview(body, maxLines);
+	const omission = formatCursorReplayOmission(slice);
+	const preview = omission ? `${slice.text}\n${omission}` : slice.text;
+	return formatMutedBlock(preview, theme);
 }
 
 function safeHighlightCursorReplayCode(text: string, path: string | undefined): string[] | undefined {
@@ -191,12 +243,12 @@ export function formatCursorReplayFilePreview(
 ): string | undefined {
 	const body = (stripHeader ? stripCursorReplayHeader(text) : text).trimEnd();
 	if (!body) return undefined;
-	const rawLines = body.split("\n");
-	const highlightedLines = safeHighlightCursorReplayCode(body, path);
-	const renderedLines = highlightedLines ?? rawLines.map((line) => theme.fg("toolOutput", replaceCursorReplayTabs(line)));
-	const visible = renderedLines.slice(0, maxLines);
-	if (rawLines.length > maxLines) visible.push(theme.fg("muted", `... (${rawLines.length - maxLines} more lines; expand for full details)`));
-	return visible.join("\n");
+	const slice = sliceCursorReplayPreview(body, maxLines);
+	const highlightedLines = slice.text.length <= CURSOR_REPLAY_HIGHLIGHT_MAX_CHARS ? safeHighlightCursorReplayCode(slice.text, path) : undefined;
+	const renderedLines = highlightedLines ?? slice.text.split("\n").map((line) => theme.fg("toolOutput", line));
+	const omission = formatCursorReplayOmission(slice);
+	if (omission) renderedLines.push(theme.fg("muted", omission));
+	return renderedLines.join("\n");
 }
 
 function getCursorReplayActivityTitle(toolName: CursorReplayToolName, args: Record<string, unknown> | undefined): string {

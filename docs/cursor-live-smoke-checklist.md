@@ -163,13 +163,25 @@ Forbidden fields:
 Run a forbidden-material scan over smoke stderr/captures:
 
 ```bash
-find "$SMOKE_DIR" -type f \( -name '*stderr.txt' -o -name '*capture*.txt' \) -print0 |
-  xargs -0 grep -E 'CURSOR_API_KEY|Bearer [A-Za-z0-9._-]+|/cursor-pi-tool-bridge/[^ ]+/mcp|127\.0\.0\.1:[0-9]+/cursor-pi-tool-bridge|apiKey|cookie|session-cookie|secret-token'
+forbidden_files="$(find "$SMOKE_DIR" -type f \( -name '*stderr.txt' -o -name '*capture*.txt' \) -print0 |
+  xargs -0 grep -IlE 'CURSOR_API_KEY|Bearer [A-Za-z0-9._-]+|/cursor-pi-tool-bridge/[^ ]+/mcp|127\.0\.0\.1:[0-9]+/cursor-pi-tool-bridge|apiKey|cookie|session-cookie|secret-token' || true)"
+if [[ -n "$forbidden_files" ]]; then
+  printf 'Forbidden material matched in smoke files; inspect locally without pasting matched lines.\n' >&2
+  while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+    if [[ "$file" == "$SMOKE_DIR/"* ]]; then
+      printf '  %s\n' "${file#"$SMOKE_DIR/"}" >&2
+    else
+      printf '  %s\n' "$file" >&2
+    fi
+  done <<<"$forbidden_files"
+  exit 1
+fi
 ```
 
 Pass criteria:
 
-- The grep returns no matches except deliberately planted test strings that are asserted not to appear in serialized diagnostics.
+- The scan returns no matching files except deliberately planted test strings that are asserted not to appear in serialized diagnostics, and it does not print matched secret-bearing lines.
 - If tool names themselves are considered sensitive for a release target, do not enable `PI_CURSOR_PI_TOOL_BRIDGE_DEBUG=1` for shared logs. The diagnostics contract intentionally allows tool names.
 
 ## 7. Long-running bridge and abort/cancel

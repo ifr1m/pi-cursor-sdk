@@ -241,6 +241,8 @@ it("surfaces live-run wait error status as a provider error", async () => {
 		await cursorProviderTestUtils.resetSessionCursorAgents();
 		delete process.env.PI_CURSOR_PI_TOOL_BRIDGE;
 		delete process.env.PI_CURSOR_EXPOSE_BUILTIN_TOOLS;
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor");
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor_edit");
 		vi.clearAllMocks();
 		registerBridgeForProviderTest({
 			active: ["cursor", "cursor_edit"],

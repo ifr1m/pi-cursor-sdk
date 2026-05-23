@@ -221,7 +221,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 		const steerEvents = await steerEventsPromise;
 		expect(steerEvents.some((event) => event.type === "error")).toBe(false);
 		expect(mockSend).toHaveBeenCalledTimes(2);
-		expect(mockedCreate).toHaveBeenCalledTimes(1);
+		expect(mockedCreate).toHaveBeenCalledTimes(2);
 
 		const steerPrompt = mockSend.mock.calls[1]?.[0] as { text?: string };
 		expect(steerPrompt.text).toContain("User: and push");
@@ -354,18 +354,13 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
 	});
 
-	it("chains steering through an additional old-run native tool batch without leaking old text", async () => {
+	it("drops additional old-run tool batches when steering user input should start a fresh send", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: RegisteredTool[] = [];
 		await registerNativeToolDisplayForTest(registeredTools);
 
-		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
-		const runWait = vi.fn(
-			() =>
-				new Promise<{ id: string; status: "finished"; result: string }>((resolve) => {
-					resolveRun = resolve;
-				}),
-		);
+		const runWait = vi.fn(() => new Promise<{ id: string; status: "finished"; result: string }>(() => {}));
+		const cancelRun = vi.fn().mockResolvedValue(undefined);
 		let sendCallCount = 0;
 		let firstOnDelta: CursorDeltaHandler | undefined;
 		const mockSend = vi.fn().mockImplementation(async (_message: { text?: string }, opts: { onDelta: CursorDeltaHandler }) => {
@@ -388,7 +383,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 					agentId: "agent-1",
 					status: "running",
 					wait: runWait,
-					cancel: vi.fn(),
+					cancel: cancelRun,
 					supports: () => true,
 					unsupportedReason: () => undefined,
 				};
@@ -396,7 +391,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 
 			return {
 				id: "run-2",
-				agentId: "agent-1",
+				agentId: "agent-2",
 				status: "finished",
 				wait: vi.fn().mockResolvedValue({ id: "run-2", status: "finished", result: "Fresh chained answer." }),
 				cancel: vi.fn(),
@@ -429,10 +424,10 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				isError: false,
 				timestamp: 2,
 			},
-			{ role: "user", content: "and push after both tools", timestamp: 3 },
+			{ role: "user", content: "and push after the first tool", timestamp: 3 },
 		];
 
-		const secondToolTurnPromise = collectEvents(streamCursor(makeModel(), steerContext, { apiKey: "test-key" }));
+		const steerEventsPromise = collectEvents(streamCursor(makeModel(), steerContext, { apiKey: "test-key" }));
 		await Promise.resolve();
 		firstOnDelta?.({ update: { type: "text-delta", text: "Old run text that should not leak." } });
 		firstOnDelta?.({ update: { type: "tool-call-started", toolCall: { name: "bash", args: { command: "git log -1" } }, callId: "c2" } });
@@ -446,43 +441,16 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				callId: "c2",
 			},
 		});
-		const secondToolTurnEvents = await secondToolTurnPromise;
-		const secondToolTurnDone = getDoneEvent(secondToolTurnEvents);
-		const secondToolCall = secondToolTurnDone.message.content.find(isToolCallBlock);
+		const steerEvents = await steerEventsPromise;
 
-		expect(secondToolTurnDone.reason).toBe("toolUse");
-		expect(secondToolCall?.name).toBe("bash");
-		expect(collectTextDeltas(secondToolTurnEvents)).not.toContain("Old run text");
-		expect(mockSend).toHaveBeenCalledTimes(1);
-
-		const secondToolResult = await bashTool!.execute(secondToolCall!.id, secondToolCall!.arguments, undefined, undefined, {});
-		const finalContext = makeContext();
-		finalContext.messages = [
-			...steerContext.messages,
-			secondToolTurnDone.message,
-			{
-				role: "toolResult",
-				toolCallId: secondToolCall!.id,
-				toolName: "bash",
-				content: secondToolResult.content,
-				details: secondToolResult.details,
-				isError: false,
-				timestamp: 4,
-			},
-		];
-
-		const finalEventsPromise = collectEvents(streamCursor(makeModel(), finalContext, { apiKey: "test-key" }));
-		await Promise.resolve();
-		resolveRun({ id: "run-1", status: "finished", result: "Old final answer that should not leak." });
-		const finalEvents = await finalEventsPromise;
-
+		expect(cancelRun).toHaveBeenCalledTimes(1);
 		expect(mockSend).toHaveBeenCalledTimes(2);
-		expect(mockedCreate).toHaveBeenCalledTimes(1);
 		const freshPrompt = mockSend.mock.calls[1]?.[0] as { text?: string };
-		expect(freshPrompt.text).toContain("and push after both tools");
-		expect(collectTextDeltas(finalEvents)).toBe("Fresh chained answer.");
-		expect(collectTextDeltas(finalEvents)).not.toContain("Old final answer");
-		expect(getDoneEvent(finalEvents).reason).toBe("stop");
+		expect(freshPrompt.text).toContain("and push after the first tool");
+		expect(collectTextDeltas(steerEvents)).toBe("Fresh chained answer.");
+		expect(collectTextDeltas(steerEvents)).not.toContain("Old run text");
+		expect(getEventsOfType(steerEvents, "toolcall_start")).toHaveLength(0);
+		expect(getDoneEvent(steerEvents).reason).toBe("stop");
 	});
 
 	it("aborts while waiting for an active scoped live run and releases it once", async () => {

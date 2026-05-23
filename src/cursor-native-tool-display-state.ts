@@ -38,6 +38,10 @@ export function canRenderCursorToolNatively(toolName: string): boolean {
 	return registeredNativeToolNames.has(toolName);
 }
 
+export function isRegisteredCursorNativeToolName(toolName: string): boolean {
+	return registeredNativeToolNames.has(toolName);
+}
+
 export function recordCursorNativeToolDisplay(item: CursorNativeToolDisplayItem): boolean {
 	if (!canRenderCursorToolNatively(item.toolName)) return false;
 	nativeToolResults.set(item.id, item);
@@ -64,6 +68,9 @@ export function isCursorFileMutationToolName(toolName: string): toolName is "edi
 
 export const __testUtils = {
 	nativeToolResultCount: () => nativeToolResults.size,
+	registerNativeToolNameForTests(toolName: string): void {
+		registeredNativeToolNames.add(toolName);
+	},
 	reset(): void {
 		registeredNativeToolNames.clear();
 		nativeToolResults.clear();

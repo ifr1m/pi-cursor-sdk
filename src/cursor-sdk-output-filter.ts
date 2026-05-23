@@ -48,31 +48,53 @@ function createFilteredConsoleMethod<TMethod extends typeof console.log>(method:
 	}) as TMethod;
 }
 
+interface CursorSdkOutputFilterOriginals {
+	stdoutWrite: typeof process.stdout.write;
+	stderrWrite: typeof process.stderr.write;
+	consoleLog: typeof console.log;
+	consoleInfo: typeof console.info;
+	consoleWarn: typeof console.warn;
+	consoleError: typeof console.error;
+	consoleDebug: typeof console.debug;
+}
+
+let activeOutputFilterInstalls = 0;
+let outputFilterOriginals: CursorSdkOutputFilterOriginals | undefined;
+
 export function installCursorSdkOutputFilter(): () => void {
-	const stdoutWrite = process.stdout.write;
-	const stderrWrite = process.stderr.write;
-	const consoleLog = console.log;
-	const consoleInfo = console.info;
-	const consoleWarn = console.warn;
-	const consoleError = console.error;
-	const consoleDebug = console.debug;
-	process.stdout.write = createFilteredProcessWrite(stdoutWrite, process.stdout);
-	process.stderr.write = createFilteredProcessWrite(stderrWrite, process.stderr) as typeof process.stderr.write;
-	console.log = createFilteredConsoleMethod(consoleLog);
-	console.info = createFilteredConsoleMethod(consoleInfo);
-	console.warn = createFilteredConsoleMethod(consoleWarn);
-	console.error = createFilteredConsoleMethod(consoleError);
-	console.debug = createFilteredConsoleMethod(consoleDebug);
+	if (activeOutputFilterInstalls === 0) {
+		outputFilterOriginals = {
+			stdoutWrite: process.stdout.write,
+			stderrWrite: process.stderr.write,
+			consoleLog: console.log,
+			consoleInfo: console.info,
+			consoleWarn: console.warn,
+			consoleError: console.error,
+			consoleDebug: console.debug,
+		};
+		process.stdout.write = createFilteredProcessWrite(outputFilterOriginals.stdoutWrite, process.stdout);
+		process.stderr.write = createFilteredProcessWrite(outputFilterOriginals.stderrWrite, process.stderr) as typeof process.stderr.write;
+		console.log = createFilteredConsoleMethod(outputFilterOriginals.consoleLog);
+		console.info = createFilteredConsoleMethod(outputFilterOriginals.consoleInfo);
+		console.warn = createFilteredConsoleMethod(outputFilterOriginals.consoleWarn);
+		console.error = createFilteredConsoleMethod(outputFilterOriginals.consoleError);
+		console.debug = createFilteredConsoleMethod(outputFilterOriginals.consoleDebug);
+	}
+	activeOutputFilterInstalls += 1;
+
 	let restored = false;
 	return () => {
 		if (restored) return;
 		restored = true;
-		process.stdout.write = stdoutWrite;
-		process.stderr.write = stderrWrite;
-		console.log = consoleLog;
-		console.info = consoleInfo;
-		console.warn = consoleWarn;
-		console.error = consoleError;
-		console.debug = consoleDebug;
+		activeOutputFilterInstalls = Math.max(activeOutputFilterInstalls - 1, 0);
+		if (activeOutputFilterInstalls > 0 || !outputFilterOriginals) return;
+		process.stdout.write = outputFilterOriginals.stdoutWrite;
+		process.stderr.write = outputFilterOriginals.stderrWrite;
+		console.log = outputFilterOriginals.consoleLog;
+		console.info = outputFilterOriginals.consoleInfo;
+		console.warn = outputFilterOriginals.consoleWarn;
+		console.error = outputFilterOriginals.consoleError;
+		console.debug = outputFilterOriginals.consoleDebug;
+		outputFilterOriginals = undefined;
 	};
 }

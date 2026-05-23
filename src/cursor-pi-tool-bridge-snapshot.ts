@@ -6,6 +6,7 @@ import type {
 } from "./cursor-pi-tool-bridge-types.js";
 import { parseEnvBoolean } from "./cursor-env-boolean.js";
 import { createMcpToolName, normalizeMcpInputSchema, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
+import { isRegisteredCursorNativeToolName } from "./cursor-native-tool-display-state.js";
 import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-names.js";
 
 export const CURSOR_PI_TOOL_BRIDGE_ENV = "PI_CURSOR_PI_TOOL_BRIDGE";
@@ -67,7 +68,7 @@ export function buildCursorPiToolBridgeSnapshot(
 
 	for (const tool of allTools) {
 		if (!activeToolNames.has(tool.name)) continue;
-		if (isExcludedFromCursorBridgeExposure(tool.name)) continue;
+		if (isExcludedFromCursorBridgeExposure(tool.name) && isRegisteredCursorNativeToolName(tool.name)) continue;
 		if (!exposeOverlappingBuiltins && isOverlappingCursorNativePiToolName(tool.name)) continue;
 
 		const mcpToolName = createMcpToolName(tool.name, usedMcpToolNames);

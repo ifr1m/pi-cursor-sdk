@@ -140,7 +140,8 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 		this.onToolRequest = handler;
 		if (handler) {
 			for (const request of this.queuedRequests.splice(0)) {
-				handler(request);
+				const pending = this.pendingByPiToolCallId.get(request.piToolCallId);
+				if (pending) this.dispatchPendingToolRequest(pending, handler);
 			}
 		}
 	}
@@ -176,8 +177,9 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 		const toolName = getStringField(toolCall, ["name", "toolName", "mcpToolName"]);
 		if (toolName && this.knownMcpToolNames.has(toolName)) return true;
 
+		const isMcpEnvelope = toolName === "mcp" || toolName === MCP_SERVER_NAME;
 		const cursorMcpCallId = getStringField(toolCall, ["call_id", "callId", "id", "toolCallId", "requestId"]);
-		if (cursorMcpCallId && this.knownCursorMcpCallIds.has(cursorMcpCallId)) return true;
+		if (cursorMcpCallId && this.knownCursorMcpCallIds.has(cursorMcpCallId) && isMcpEnvelope) return true;
 
 		if (containsKnownMcpToolName(toolCall, this.knownMcpToolNames)) return true;
 
@@ -291,8 +293,19 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 				return;
 			}
 			this.emitRequestQueuedDiagnostic(request);
-			this.onToolRequest(request);
+			this.dispatchPendingToolRequest(pending, this.onToolRequest);
 		});
+	}
+
+	private dispatchPendingToolRequest(
+		pending: PendingBridgeCall,
+		handler: (request: CursorPiBridgeToolRequest) => void,
+	): void {
+		try {
+			handler(pending.request);
+		} catch (error) {
+			this.rejectPending(pending, error instanceof Error ? error : new Error(String(error)), "error");
+		}
 	}
 
 	private rejectQueuedToolRequestsWithoutHandler(reason: string): void {
