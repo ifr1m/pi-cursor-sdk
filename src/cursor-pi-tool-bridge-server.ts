@@ -1,10 +1,10 @@
 import { createServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type {
 	CursorPiToolBridge,
 	CursorPiToolBridgeRun,
 	CursorPiToolBridgeRunOptions,
+	CursorPiToolBridgeSnapshotApi,
 } from "./cursor-pi-tool-bridge-types.js";
 import { isRecord } from "./cursor-pi-tool-bridge-mcp.js";
 import { CursorPiToolBridgeRunImpl } from "./cursor-pi-tool-bridge-run.js";
@@ -18,8 +18,6 @@ import {
 
 export const LOOPBACK_HOST = "127.0.0.1";
 const HTTP_SERVER_CLOSE_GRACE_MS = 250;
-
-type CursorPiToolBridgeSnapshotApi = Pick<ExtensionAPI, "getActiveTools" | "getAllTools">;
 
 export class CursorPiToolBridgeRegistry implements CursorPiToolBridge {
 	private readonly pi: CursorPiToolBridgeSnapshotApi;

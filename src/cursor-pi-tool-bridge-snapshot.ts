@@ -1,10 +1,10 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { parseEnvBoolean } from "./cursor-env-boolean.js";
 import type {
 	CursorPiBridgeToolDefinition,
 	CursorPiToolBridgeSnapshot,
+	CursorPiToolBridgeSnapshotApi,
 	CursorPiToolBridgeSnapshotOptions,
 } from "./cursor-pi-tool-bridge-types.js";
+import { parseEnvBoolean } from "./cursor-env-boolean.js";
 import { createMcpToolName, normalizeMcpInputSchema, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
 import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-names.js";
 
@@ -12,8 +12,6 @@ export const CURSOR_PI_TOOL_BRIDGE_ENV = "PI_CURSOR_PI_TOOL_BRIDGE";
 export const CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV = "PI_CURSOR_EXPOSE_BUILTIN_TOOLS";
 
 const OVERLAPPING_CURSOR_NATIVE_PI_BUILTIN_TOOL_NAMES = new Set(["read", "bash", "write", "edit", "grep", "find", "ls"]);
-
-type CursorPiToolBridgeSnapshotApi = Pick<ExtensionAPI, "getActiveTools" | "getAllTools">;
 
 export function createEmptySnapshot(): CursorPiToolBridgeSnapshot {
 	return {

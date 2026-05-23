@@ -260,41 +260,47 @@ export class CursorSdkTurnCoordinator {
 		}
 
 		let matchedStartedCallId: string | undefined;
-		let resolvedToolCall = options.toolCall;
+		let resolvedToolCall: unknown;
+		let identity: string | undefined;
+		let source: "started" | "fallback" | undefined;
 
 		if (options.source === "delta") {
 			const callId = options.callId;
-			const identity = typeof callId === "string" ? `cursor-tool:${callId}` : undefined;
+			identity = typeof callId === "string" ? `cursor-tool:${callId}` : undefined;
 			resolvedToolCall = mergeCursorToolCalls(options.startedToolCall, options.toolCall);
 			if (typeof callId === "string") {
 				this.clearStartedToolCall(callId);
 			}
-			const toolCallWithShellOutput = mergeShellOutputDeltasIntoCursorToolCall(
+			resolvedToolCall = mergeShellOutputDeltasIntoCursorToolCall(
 				resolvedToolCall,
 				typeof callId === "string" ? this.takeShellOutputDeltas(callId) : undefined,
 			);
-			return {
-				action: "handle",
-				toolCall: toolCallWithShellOutput,
-				identity,
-				source: identity ? "started" : "fallback",
-			};
+			source = identity ? "started" : "fallback";
+		} else {
+			matchedStartedCallId = this.removeStartedToolCallForStep(options.toolCall, options.callId);
+			resolvedToolCall = mergeShellOutputDeltasIntoCursorToolCall(
+				options.toolCall,
+				matchedStartedCallId ? this.takeShellOutputDeltas(matchedStartedCallId) : undefined,
+			);
+			const identityId = typeof options.callId === "string" ? options.callId : matchedStartedCallId;
+			identity = identityId ? `cursor-tool:${identityId}` : undefined;
 		}
 
-		matchedStartedCallId = this.removeStartedToolCallForStep(options.toolCall, options.callId);
-		resolvedToolCall = mergeShellOutputDeltasIntoCursorToolCall(
-			options.toolCall,
-			matchedStartedCallId ? this.takeShellOutputDeltas(matchedStartedCallId) : undefined,
-		);
 		if (this.liveRun?.bridgeRun?.isBridgeMcpToolCall(resolvedToolCall)) {
-			if (matchedStartedCallId) this.completedToolIdentities.add(`cursor-tool:${matchedStartedCallId}`);
-			return { action: "ignore-bridge", identity: matchedStartedCallId ? `cursor-tool:${matchedStartedCallId}` : undefined };
+			const bridgeIdentity = options.source === "step" && matchedStartedCallId
+				? `cursor-tool:${matchedStartedCallId}`
+				: identity;
+			if (bridgeIdentity) this.completedToolIdentities.add(bridgeIdentity);
+			return { action: "ignore-bridge", identity: bridgeIdentity };
 		}
-		const identityId = typeof options.callId === "string" ? options.callId : matchedStartedCallId;
+
+		if (options.source === "delta") {
+			return { action: "handle", toolCall: resolvedToolCall, identity, source };
+		}
 		return {
 			action: "handle",
 			toolCall: resolvedToolCall,
-			identity: identityId ? `cursor-tool:${identityId}` : undefined,
+			identity,
 			matchedStartedCallId,
 		};
 	}
@@ -306,10 +312,6 @@ export class CursorSdkTurnCoordinator {
 		const planText = getCursorCreatePlanText(toolCall);
 		if (planText) this.cursorPlanTextCandidate = scrubSensitiveText(planText, this.resolvedApiKey);
 
-		if (this.liveRun?.bridgeRun?.isBridgeMcpToolCall(toolCall)) {
-			if (options.identity) this.completedToolIdentities.add(options.identity);
-			return;
-		}
 		const transcript = scrubSensitiveText(formatCursorToolTranscript(toolCall, { cwd: this.cwd }), this.resolvedApiKey);
 		const display = buildCursorPiToolDisplay(toolCall, { cwd: this.cwd });
 		const fingerprint = this.getToolFingerprint({ toolName: display.toolName, args: display.args, result: display.result });

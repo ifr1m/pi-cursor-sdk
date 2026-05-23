@@ -1,4 +1,3 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	CURSOR_PI_TOOL_BRIDGE_DEBUG_ENV,
 	CURSOR_PI_TOOL_BRIDGE_DIAGNOSTIC_PREFIX,
@@ -13,21 +12,25 @@ import {
 	resolveCursorPiToolBridgeBuiltinsEnabled,
 	resolveCursorPiToolBridgeEnabled,
 } from "./cursor-pi-tool-bridge-snapshot.js";
-import {
-	bridgeToolExecutionAbortTracker,
-	type CursorPiToolBridgeExtensionApi,
-} from "./cursor-pi-tool-bridge-run.js";
+import { bridgeToolExecutionAbortTracker } from "./cursor-pi-tool-bridge-abort.js";
 import { LOOPBACK_HOST, CursorPiToolBridgeRegistry } from "./cursor-pi-tool-bridge-server.js";
 import { MCP_SERVER_NAME } from "./cursor-pi-tool-bridge-run.js";
+import type {
+	CursorPiToolBridge,
+	CursorPiToolBridgeExtensionApi,
+	CursorPiToolBridgeSnapshotApi,
+} from "./cursor-pi-tool-bridge-types.js";
 
 export type {
 	CursorPiBridgeToolDefinition,
 	CursorPiBridgeToolRequest,
 	CursorPiMcpInputSchema,
 	CursorPiToolBridge,
+	CursorPiToolBridgeExtensionApi,
 	CursorPiToolBridgeRun,
 	CursorPiToolBridgeRunOptions,
 	CursorPiToolBridgeSnapshot,
+	CursorPiToolBridgeSnapshotApi,
 	CursorPiToolBridgeSnapshotOptions,
 } from "./cursor-pi-tool-bridge-types.js";
 export type { CursorPiToolBridgeDiagnosticEvent } from "./cursor-pi-tool-bridge-diagnostics.js";
@@ -41,7 +44,7 @@ export {
 
 let registeredCursorPiToolBridge: CursorPiToolBridgeRegistry | undefined;
 
-export function registerCursorPiToolBridge(pi: CursorPiToolBridgeExtensionApi): import("./cursor-pi-tool-bridge-types.js").CursorPiToolBridge {
+export function registerCursorPiToolBridge(pi: CursorPiToolBridgeExtensionApi): CursorPiToolBridge {
 	bridgeToolExecutionAbortTracker.abortAll("Cursor pi tool bridge extension reloaded");
 	void registeredCursorPiToolBridge?.disposeAll("Cursor pi tool bridge extension reloaded");
 	const bridge = new CursorPiToolBridgeRegistry(pi);
@@ -71,7 +74,7 @@ export function registerCursorPiToolBridge(pi: CursorPiToolBridgeExtensionApi): 
 	return bridge;
 }
 
-export function getRegisteredCursorPiToolBridge(): import("./cursor-pi-tool-bridge-types.js").CursorPiToolBridge | undefined {
+export function getRegisteredCursorPiToolBridge(): CursorPiToolBridge | undefined {
 	return registeredCursorPiToolBridge;
 }
 
@@ -83,7 +86,7 @@ export const __testUtils = {
 	LOOPBACK_HOST,
 	MCP_SERVER_NAME,
 	createRegistry(
-		pi: Pick<ExtensionAPI, "getActiveTools" | "getAllTools">,
+		pi: CursorPiToolBridgeSnapshotApi,
 		env: Record<string, string | undefined> = process.env,
 	) {
 		return new CursorPiToolBridgeRegistry(pi, env);

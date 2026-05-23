@@ -1,4 +1,5 @@
 import type { CursorPiToolDisplay } from "./cursor-tool-transcript.js";
+import { parseOptionalEnvBoolean } from "./cursor-env-boolean.js";
 
 export interface CursorNativeToolDisplayItem extends CursorPiToolDisplay {
 	id: string;
@@ -11,11 +12,8 @@ export const NATIVE_CURSOR_TOOL_REGISTRATION_ENV = "PI_CURSOR_REGISTER_NATIVE_TO
 export const registeredNativeToolNames = new Set<string>();
 export const nativeToolResults = new Map<string, CursorNativeToolDisplayItem>();
 
-export function readBooleanEnv(name: string): boolean | undefined {
-	const value = process.env[name]?.trim().toLowerCase();
-	if (value === "1" || value === "true" || value === "yes" || value === "on") return true;
-	if (value === "0" || value === "false" || value === "no" || value === "off") return false;
-	return undefined;
+export function readBooleanEnv(name: string, env: Record<string, string | undefined> = process.env): boolean | undefined {
+	return parseOptionalEnvBoolean(env[name]);
 }
 
 export function isCursorNativeToolDisplayRequested(): boolean {
