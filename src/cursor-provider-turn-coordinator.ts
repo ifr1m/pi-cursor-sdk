@@ -7,7 +7,7 @@ import { CursorPartialContentEmitter } from "./cursor-partial-content-emitter.js
 import { asRecord, getField, hasUsableText } from "./cursor-record-utils.js";
 import { scrubPiToolDisplay, scrubSensitiveText } from "./cursor-sensitive-text.js";
 import { buildCursorPiToolDisplay, formatCursorToolTranscript, getCursorCreatePlanText, mergeCursorToolCalls } from "./cursor-tool-transcript.js";
-import { getToolName } from "./cursor-transcript-utils.js";
+import { getString, getToolArgs, getToolName } from "./cursor-transcript-utils.js";
 
 function sanitizeSingleLine(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
@@ -35,6 +35,17 @@ interface CursorShellOutputDeltas {
 function isCursorShellToolCall(toolCall: unknown): boolean {
 	const normalizedName = getToolName(toolCall).replace(/\s+/g, " ").trim().toLowerCase();
 	return normalizedName === "shell" || normalizedName === "run_terminal_cmd" || normalizedName === "terminal" || normalizedName === "bash";
+}
+
+function isCursorTaskToolCall(toolCall: unknown): boolean {
+	return getToolName(toolCall).replace(/\s+/g, " ").trim().toLowerCase() === "task";
+}
+
+function extractCursorTaskProgressLabel(toolCall: unknown, apiKey?: string): string | undefined {
+	if (!isCursorTaskToolCall(toolCall)) return undefined;
+	const description = getString(getToolArgs(toolCall), "description");
+	if (!description?.trim()) return undefined;
+	return truncateSingleLine(scrubSensitiveText(description, apiKey));
 }
 
 function getCursorShellOutputDelta(update: InteractionUpdate): CursorShellOutputDelta | undefined {
@@ -122,6 +133,7 @@ export class CursorSdkTurnCoordinator {
 	private readonly completedToolIdentities = new Set<string>();
 	private readonly completedStartedToolFingerprints = new Set<string>();
 	private readonly completedFallbackToolFingerprints = new Set<string>();
+	private readonly emittedTaskProgressCallIds = new Set<string>();
 
 	constructor(options: CursorSdkTurnCoordinatorOptions) {
 		this.stream = options.stream;
@@ -149,6 +161,7 @@ export class CursorSdkTurnCoordinator {
 		this.activeShellCallIds.clear();
 		this.ambiguousShellOutputCallIds.clear();
 		this.shellOutputDeltasByCallId.clear();
+		this.emittedTaskProgressCallIds.clear();
 	}
 
 	closeTraceBlock(): void {
@@ -185,10 +198,15 @@ export class CursorSdkTurnCoordinator {
 			}
 			return;
 		}
+		if (update.type === "partial-tool-call") {
+			this.maybeEmitCursorTaskProgress(update.callId, update.toolCall);
+			return;
+		}
 		if (update.type === "tool-call-started") {
 			if (this.liveRun?.bridgeRun?.isBridgeMcpToolCall(update.toolCall)) {
 				if (typeof update.callId === "string") this.bridgeStartedToolCallIds.add(update.callId);
 			} else {
+				this.maybeEmitCursorTaskProgress(update.callId, update.toolCall);
 				this.startedToolCalls.set(update.callId, update.toolCall);
 				if (isCursorShellToolCall(update.toolCall)) this.activeShellCallIds.add(update.callId);
 			}
@@ -353,6 +371,24 @@ export class CursorSdkTurnCoordinator {
 			return;
 		}
 		this.contentEmitter.appendThinkingBlock(traceText);
+	}
+
+	private maybeEmitCursorTaskProgress(callId: unknown, toolCall: unknown): void {
+		if (typeof callId !== "string" || this.emittedTaskProgressCallIds.has(callId)) return;
+		if (this.liveRun?.bridgeRun?.isBridgeMcpToolCall(toolCall)) return;
+		const label = extractCursorTaskProgressLabel(toolCall, this.resolvedApiKey);
+		if (!label) return;
+		this.emittedTaskProgressCallIds.add(callId);
+		this.emitCursorTaskProgress(label);
+	}
+
+	private emitCursorTaskProgress(label: string): void {
+		const progressText = `Cursor task: ${label}\n`;
+		if (this.liveRun) {
+			cursorLiveRuns.queueEvent(this.liveRun, { type: "thinking-delta", text: progressText });
+			return;
+		}
+		this.contentEmitter.appendThinkingDelta(progressText);
 	}
 
 	private getToolFingerprint(value: unknown): string {

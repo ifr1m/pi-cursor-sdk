@@ -343,6 +343,7 @@ it("surfaces live-run wait error status as a provider error", async () => {
 			expect(toolCalls[1].arguments).toEqual({ command: "pwd" });
 			expect(trace).not.toContain("duplicate bridge replay");
 			expect(trace).not.toContain("duplicate bridge onStep");
+			expect(trace).not.toContain("Cursor task:");
 			expect(trace).not.toContain("Cursor tool started without a completion event");
 			expect(nativeToolDisplayTestUtils.nativeToolResultCount()).toBe(0);
 

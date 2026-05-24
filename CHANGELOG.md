@@ -2,6 +2,10 @@
 
 ## 0.1.17 - 2026-05-23
 
+### Added
+
+- Surface in-progress Cursor SDK `task` activity in the TUI from SDK-provided `args.description`, with one deduped line such as `Cursor task: Explore AI/automation projects` and no generic heartbeat or per-tool start spam.
+
 ### Changed
 
 - Bump pi dev dependency baseline to `0.75.5` for read-tool collapsed-card rendering, package update fixes, and other upstream pi changes. Cursor edit replay remains display-only via `diffString`; pi's new SDK `details.patch` field is not required because Cursor agents do not execute pi's edit tool.

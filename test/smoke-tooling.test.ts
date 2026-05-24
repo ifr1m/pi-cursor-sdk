@@ -16,7 +16,7 @@ describe("smoke tooling package checks", () => {
 		const jsonlHelp = run(process.execPath, ["scripts/validate-smoke-jsonl.mjs", "--help"]);
 
 		expect(liveHelp.status).toBe(0);
-		expect(liveHelp.stdout).toContain("retry-empty-timeout");
+		expect(liveHelp.stdout).toContain("retry-empty-output");
 		expect(steeringHelp.status).toBe(0);
 		expect(steeringHelp.stdout).toContain("RPC steering smoke");
 		expect(jsonlHelp.status).toBe(0);
