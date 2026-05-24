@@ -1,6 +1,23 @@
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildSummary, parseDebugSdkEventsArgs } from "../scripts/debug-sdk-events.mjs";
+import { CURSOR_SDK_STARTUP_NOISE_PATTERNS as providerNoisePatterns } from "../src/cursor-sdk-output-filter.js";
+import { resolveCursorSettingSources as resolveProviderSettingSources } from "../src/cursor-setting-sources.js";
+import { scrubSensitiveText as scrubProviderSensitiveText } from "../src/cursor-sensitive-text.js";
+import { CURSOR_SDK_STARTUP_NOISE_PATTERNS as scriptNoisePatterns } from "../scripts/lib/cursor-sdk-output-filter.mjs";
+import {
+	CURSOR_SETTING_SOURCES_ENV,
+	resolveCursorSettingSources as resolveScriptSettingSources,
+	scrubSensitiveText as scrubScriptSensitiveText,
+} from "../scripts/lib/cursor-probe-utils.mjs";
+import {
+	buildSummary,
+	createEventJsonlSink,
+	parseDebugSdkEventsArgs,
+} from "../scripts/debug-sdk-events.mjs";
+import { installCursorSdkOutputFilter, suppressCursorSdkOutput } from "../scripts/lib/cursor-sdk-output-filter.mjs";
 
 const scriptPath = "scripts/debug-sdk-events.mjs";
 
@@ -59,15 +76,16 @@ describe("debug-sdk-events maintainer probe", () => {
 		const artifactDir = "/tmp/pi-cursor-sdk-sdk-events-test";
 		const summary = buildSummary({
 			artifactDir,
-			streamEvents: [
-				{
-					ts: "2026-05-24T00:00:00.000Z",
-					elapsedMs: 0,
-					event: { type: "assistant", message: { content: [{ type: "text", text: "secret payload" }] } },
-				},
-			],
-			deltaEvents: [{ ts: "2026-05-24T00:00:00.100Z", elapsedMs: 100, update: { type: "text-delta", text: "delta" } }],
-			stepEvents: [{ ts: "2026-05-24T00:00:00.200Z", elapsedMs: 200, step: { type: "toolCall", message: { name: "read" } } }],
+			counts: {
+				stream: { assistant: 1 },
+				onDelta: { "text-delta": 1 },
+				onStep: { toolCall: 1 },
+			},
+			timing: {
+				stream: { eventCount: 1, firstMs: 0, lastMs: 0, maxGapMs: undefined },
+				onDelta: { eventCount: 1, firstMs: 100, lastMs: 100, maxGapMs: undefined },
+				onStep: { eventCount: 1, firstMs: 200, lastMs: 200, maxGapMs: undefined },
+			},
 			waitResult: { status: "finished", durationMs: 250, result: "done" },
 			conversation: [{ role: "user", content: "hello" }],
 			includeConversation: true,
@@ -86,6 +104,100 @@ describe("debug-sdk-events maintainer probe", () => {
 		expect(stdoutPayload).not.toContain("secret payload");
 		expect(stdoutPayload).not.toContain('"text": "delta"');
 		expect(collectStrings(summary)).not.toContain("hello");
+	});
+
+	it("appends JSONL event records incrementally and preserves partial artifacts", async () => {
+		const artifactDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-sdk-events-"));
+		writeFileSync(join(artifactDir, "stream-events.jsonl"), "stale\n");
+		const startedAt = Date.now();
+		const sink = createEventJsonlSink(artifactDir, startedAt);
+		try {
+			sink.appendStream({ type: "assistant", message: { content: [{ type: "text", text: "partial" }] } });
+			sink.appendDelta({ type: "text-delta", text: "delta" });
+			sink.appendStep({ type: "toolCall", message: { name: "read" } });
+
+			const streamEvents = readFileSync(join(artifactDir, "stream-events.jsonl"), "utf8");
+			expect(streamEvents).not.toContain("stale");
+			expect(streamEvents.trim().split("\n")).toHaveLength(1);
+			expect(JSON.parse(streamEvents.trim()).event.type).toBe("assistant");
+
+			const deltaEvents = readFileSync(join(artifactDir, "on-delta.jsonl"), "utf8");
+			expect(JSON.parse(deltaEvents.trim()).update.type).toBe("text-delta");
+
+			expect(sink.getSummaryState().counts.stream).toEqual({ assistant: 1 });
+			expect(readFileSync(join(artifactDir, "on-step.jsonl"), "utf8").trim()).not.toBe("");
+		} finally {
+			await sink.close();
+			rmSync(artifactDir, { recursive: true, force: true });
+		}
+	});
+
+	it("matches provider setting-source parsing and secret scrubbing helpers", () => {
+		expect(CURSOR_SETTING_SOURCES_ENV).toBe("PI_CURSOR_SETTING_SOURCES");
+		expect(scriptNoisePatterns).toEqual(providerNoisePatterns);
+
+		for (const raw of [undefined, "", "all", "none", "project,user", "OFF", "0"]) {
+			expect(resolveScriptSettingSources(raw)).toEqual(resolveProviderSettingSources(raw));
+		}
+
+		const leakedKey = "super-secret-cursor-key-12345";
+		const sample = `Bearer ${leakedKey} api_key=${leakedKey}`;
+		expect(scrubScriptSensitiveText(sample, leakedKey)).toBe(scrubProviderSensitiveText(sample, leakedKey));
+	});
+
+	it("filters SDK startup noise from stdout while allowing the final summary", async () => {
+		const terminalWrites: string[] = [];
+		const originalStdoutWrite = process.stdout.write;
+		process.stdout.write = ((
+			chunk: string | Uint8Array,
+			encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
+			callback?: (error?: Error | null) => void,
+		) => {
+			terminalWrites.push(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"));
+			const done = typeof encodingOrCallback === "function" ? encodingOrCallback : callback;
+			done?.();
+			return true;
+		}) as typeof process.stdout.write;
+
+		const restore = installCursorSdkOutputFilter();
+		try {
+			await suppressCursorSdkOutput(async () => {
+				process.stdout.write("managed_skills.example load completed\n");
+				console.log("[hooks] SessionStart trigger matcher is not supported in Cursor");
+			});
+
+			process.stdout.write(`${JSON.stringify({ artifactDir: "/tmp/example", counts: { stream: { assistant: 1 } } })}\n`);
+		} finally {
+			restore();
+			process.stdout.write = originalStdoutWrite;
+		}
+
+		const output = terminalWrites.join("");
+		expect(output).not.toContain("managed_skills.");
+		expect(output).not.toContain("[hooks]");
+		expect(output).toContain('"/tmp/example"');
+	});
+
+	it("runs packaged help from node_modules without importing TypeScript helpers", () => {
+		const root = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-package-runtime-"));
+		const packageRoot = join(root, "node_modules", "pi-cursor-sdk");
+		try {
+			mkdirSync(join(packageRoot, "scripts", "lib"), { recursive: true });
+			mkdirSync(join(packageRoot, "src"), { recursive: true });
+			cpSync("package.json", join(packageRoot, "package.json"));
+			cpSync(scriptPath, join(packageRoot, scriptPath));
+			cpSync("scripts/lib/cursor-probe-utils.mjs", join(packageRoot, "scripts/lib/cursor-probe-utils.mjs"));
+			cpSync("scripts/lib/cursor-sdk-output-filter.mjs", join(packageRoot, "scripts/lib/cursor-sdk-output-filter.mjs"));
+			cpSync("src/cursor-setting-sources.ts", join(packageRoot, "src/cursor-setting-sources.ts"));
+			cpSync("src/cursor-sensitive-text.ts", join(packageRoot, "src/cursor-sensitive-text.ts"));
+
+			const result = spawnSync(process.execPath, [scriptPath, "--help"], { cwd: packageRoot, encoding: "utf8" });
+			expect(result.status).toBe(0);
+			expect(result.stdout).toContain("Capture timestamped Cursor SDK event timelines");
+			expect(result.stderr).not.toContain("ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING");
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("shows help and validates script syntax without live Cursor auth", () => {

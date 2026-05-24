@@ -8,7 +8,7 @@ import {
 	type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import { Agent, createAgentPlatform } from "@cursor/sdk";
-import type { SDKAgent, SettingSource } from "@cursor/sdk";
+import type { SDKAgent } from "@cursor/sdk";
 import { installCursorMcpToolTimeoutOverride } from "./cursor-mcp-timeout-override.js";
 import { installCursorSdkOutputFilter, suppressCursorSdkOutput } from "./cursor-sdk-output-filter.js";
 import { buildCursorSendPrompt } from "./context.js";
@@ -78,8 +78,7 @@ const GENERIC_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed. The API key may be missing, invalid, or unauthorized. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
 const AUTH_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed because the API key may be invalid or unauthorized. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
-const CURSOR_SETTING_SOURCES_ENV = "PI_CURSOR_SETTING_SOURCES";
-
+import { resolveCursorSettingSources } from "./cursor-setting-sources.js";
 import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import { hasUsableText } from "./cursor-record-utils.js";
 
@@ -97,18 +96,6 @@ function resolveCursorApiKey(apiKey?: string): string | undefined {
 	if (!trimmed) return undefined;
 	if (trimmed === CURSOR_API_KEY_ENV_VAR) return process.env.CURSOR_API_KEY?.trim();
 	return trimmed;
-}
-
-function resolveCursorSettingSources(): SettingSource[] | undefined {
-	const raw = process.env[CURSOR_SETTING_SOURCES_ENV]?.trim();
-	if (!raw) return ["all"];
-	const normalized = raw.toLowerCase();
-	if (["0", "false", "off", "none", "omit", "disabled"].includes(normalized)) return undefined;
-	if (["1", "true", "on", "all"].includes(normalized)) return ["all"];
-	return raw
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter((entry): entry is SettingSource => Boolean(entry));
 }
 
 function sanitizeError(error: unknown, apiKey?: string): string {
@@ -173,7 +160,7 @@ export function streamCursor(
 			const cwd = getCursorSessionCwd();
 			const fastEnabled = getEffectiveFastForModelId(model.id);
 			const selection = buildCursorModelSelection(model.id, options?.reasoning ?? "off", fastEnabled);
-			const settingSources = resolveCursorSettingSources();
+			const settingSources = resolveCursorSettingSources(process.env.PI_CURSOR_SETTING_SOURCES);
 
 			installCursorMcpToolTimeoutOverride();
 			restoreCursorSdkOutputFilter = installCursorSdkOutputFilter();

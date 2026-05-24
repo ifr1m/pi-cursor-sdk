@@ -29,6 +29,8 @@
 		"scripts/isolated-cursor-smoke.sh",
 		"scripts/validate-smoke-jsonl.mjs",
 		"scripts/debug-sdk-events.mjs",
+		"scripts/lib/cursor-probe-utils.mjs",
+		"scripts/lib/cursor-sdk-output-filter.mjs",
 		"README.md",
 		"docs/cursor-model-ux-spec.md",
 		"docs/cursor-live-smoke-checklist.md",

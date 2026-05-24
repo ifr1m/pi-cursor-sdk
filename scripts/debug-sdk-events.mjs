@@ -3,13 +3,18 @@
  * Maintainer-only Cursor SDK event capture probe.
  * Captures timestamped run.stream(), onDelta, and onStep surfaces for one run.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
+import {
+	CURSOR_SETTING_SOURCES_ENV,
+	resolveCursorSettingSources,
+	scrubSensitiveText,
+} from "./lib/cursor-probe-utils.mjs";
+import { installCursorSdkOutputFilter, suppressCursorSdkOutput } from "./lib/cursor-sdk-output-filter.mjs";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json");
-const CURSOR_SETTING_SOURCES_ENV = "PI_CURSOR_SETTING_SOURCES";
 
 const ARTIFACTS = {
 	metadata: "metadata.json",
@@ -74,30 +79,9 @@ Safety:
 }
 
 function fail(message, secrets = []) {
-	const scrubbed = scrubSensitiveText(message, secrets);
+	const scrubbed = scrubSensitiveText(message, secrets[0]);
 	console.error(`debug-sdk-events: ${scrubbed}`);
 	process.exit(1);
-}
-
-function scrubSensitiveText(text, secrets = []) {
-	let scrubbed = text;
-	for (const secret of secrets) {
-		if (secret) scrubbed = scrubbed.split(secret).join("[REDACTED]");
-	}
-	return scrubbed
-		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-		.replace(/(api[_-]?key|authorization|auth[_-]?token)(["'\s:=]+)[^"'\s,}]+/gi, "$1$2[REDACTED]");
-}
-
-function resolveSettingSources(raw) {
-	if (!raw) return ["all"];
-	const normalized = raw.trim().toLowerCase();
-	if (["0", "false", "off", "none", "omit", "disabled"].includes(normalized)) return undefined;
-	if (["1", "true", "on", "all"].includes(normalized)) return ["all"];
-	return raw
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter(Boolean);
 }
 
 export function parseDebugSdkEventsArgs(argv, env = process.env) {
@@ -106,7 +90,7 @@ export function parseDebugSdkEventsArgs(argv, env = process.env) {
 		model: DEFAULT_MODEL,
 		prompt: undefined,
 		out: undefined,
-		settingSources: resolveSettingSources(env[CURSOR_SETTING_SOURCES_ENV]),
+		settingSources: resolveCursorSettingSources(env[CURSOR_SETTING_SOURCES_ENV]),
 		includeConversation: false,
 		apiKey: env.CURSOR_API_KEY?.trim() || undefined,
 		help: false,
@@ -164,11 +148,11 @@ export function parseDebugSdkEventsArgs(argv, env = process.env) {
 		if (arg === "--setting-sources") {
 			const value = argv[++index];
 			if (!value || value.startsWith("--")) fail("--setting-sources requires a value");
-			args.settingSources = resolveSettingSources(value);
+			args.settingSources = resolveCursorSettingSources(value);
 			continue;
 		}
 		if (arg.startsWith("--setting-sources=")) {
-			args.settingSources = resolveSettingSources(arg.slice("--setting-sources=".length));
+			args.settingSources = resolveCursorSettingSources(arg.slice("--setting-sources=".length));
 			continue;
 		}
 		if (arg === "--api-key") {
@@ -196,48 +180,88 @@ function eventType(value) {
 	return "unknown";
 }
 
-function countByType(records, selector) {
-	const counts = {};
-	for (const record of records) {
-		const type = selector(record);
-		counts[type] = (counts[type] ?? 0) + 1;
-	}
-	return counts;
-}
-
-function timingSummary(records) {
-	if (records.length === 0) {
-		return { eventCount: 0, firstMs: undefined, lastMs: undefined, maxGapMs: undefined };
-	}
-	const elapsed = records.map((record) => record.elapsedMs);
-	let maxGapMs = 0;
-	for (let index = 1; index < elapsed.length; index++) {
-		maxGapMs = Math.max(maxGapMs, elapsed[index] - elapsed[index - 1]);
-	}
+export function createTimingTracker() {
 	return {
-		eventCount: records.length,
-		firstMs: elapsed[0],
-		lastMs: elapsed[elapsed.length - 1],
-		maxGapMs,
+		eventCount: 0,
+		firstMs: undefined,
+		lastMs: undefined,
+		maxGapMs: undefined,
+		record(elapsedMs) {
+			if (this.eventCount === 0) {
+				this.firstMs = elapsedMs;
+			} else {
+				this.maxGapMs = Math.max(this.maxGapMs ?? 0, elapsedMs - (this.lastMs ?? elapsedMs));
+			}
+			this.eventCount += 1;
+			this.lastMs = elapsedMs;
+		},
+		snapshot() {
+			return {
+				eventCount: this.eventCount,
+				firstMs: this.firstMs,
+				lastMs: this.lastMs,
+				maxGapMs: this.maxGapMs,
+			};
+		},
 	};
 }
 
-function writeJsonl(path, records) {
-	writeFileSync(path, `${records.map((record) => JSON.stringify(record)).join("\n")}${records.length ? "\n" : ""}`);
-}
+export function createEventJsonlSink(artifactDir, startedAt) {
+	const paths = {
+		streamEvents: artifactPath(artifactDir, "streamEvents"),
+		onDelta: artifactPath(artifactDir, "onDelta"),
+		onStep: artifactPath(artifactDir, "onStep"),
+	};
+	for (const path of Object.values(paths)) {
+		writeFileSync(path, "");
+	}
+	const counts = {
+		stream: {},
+		onDelta: {},
+		onStep: {},
+	};
+	const timing = {
+		stream: createTimingTracker(),
+		onDelta: createTimingTracker(),
+		onStep: createTimingTracker(),
+	};
 
-function pushTimed(records, startedAt, key, value) {
-	records.push({
-		ts: new Date().toISOString(),
-		elapsedMs: Date.now() - startedAt,
-		[key]: value,
-	});
-}
+	function append(pathKey, countKey, recordKey, value) {
+		const elapsedMs = Date.now() - startedAt;
+		const record = {
+			ts: new Date().toISOString(),
+			elapsedMs,
+			[recordKey]: value,
+		};
+		appendFileSync(paths[pathKey], `${JSON.stringify(record)}\n`);
+		const type = eventType(value);
+		counts[countKey][type] = (counts[countKey][type] ?? 0) + 1;
+		timing[countKey].record(elapsedMs);
+		return record;
+	}
 
-function writeEventArtifacts(artifactDir, { streamEvents, deltaEvents, stepEvents }) {
-	writeJsonl(artifactPath(artifactDir, "streamEvents"), streamEvents);
-	writeJsonl(artifactPath(artifactDir, "onDelta"), deltaEvents);
-	writeJsonl(artifactPath(artifactDir, "onStep"), stepEvents);
+	return {
+		appendStream: (event) => append("streamEvents", "stream", "event", event),
+		appendDelta: (update) => append("onDelta", "onDelta", "update", update),
+		appendStep: (step) => append("onStep", "onStep", "step", step),
+		getSummaryState() {
+			return {
+				counts: {
+					stream: { ...counts.stream },
+					onDelta: { ...counts.onDelta },
+					onStep: { ...counts.onStep },
+				},
+				timing: {
+					stream: timing.stream.snapshot(),
+					onDelta: timing.onDelta.snapshot(),
+					onStep: timing.onStep.snapshot(),
+				},
+			};
+		},
+		close() {
+			return Promise.resolve();
+		},
+	};
 }
 
 function summarizeConversation(conversation) {
@@ -246,7 +270,14 @@ function summarizeConversation(conversation) {
 	return conversation;
 }
 
-export function buildSummary({ artifactDir, streamEvents, deltaEvents, stepEvents, waitResult, conversation, includeConversation }) {
+export function buildSummary({
+	artifactDir,
+	counts,
+	timing,
+	waitResult,
+	conversation,
+	includeConversation,
+}) {
 	return {
 		artifactDir,
 		files: {
@@ -257,16 +288,8 @@ export function buildSummary({ artifactDir, streamEvents, deltaEvents, stepEvent
 			waitResult: artifactPath(artifactDir, "waitResult"),
 			conversation: includeConversation ? artifactPath(artifactDir, "conversation") : undefined,
 		},
-		counts: {
-			stream: countByType(streamEvents, (record) => eventType(record.event)),
-			onDelta: countByType(deltaEvents, (record) => eventType(record.update)),
-			onStep: countByType(stepEvents, (record) => eventType(record.step)),
-		},
-		timing: {
-			stream: timingSummary(streamEvents),
-			onDelta: timingSummary(deltaEvents),
-			onStep: timingSummary(stepEvents),
-		},
+		counts,
+		timing,
 		wait: waitResult
 			? {
 					status: waitResult.status,
@@ -300,37 +323,42 @@ async function captureEvents(args) {
 	};
 	writeFileSync(artifactPath(artifactDir, "metadata"), `${JSON.stringify(metadata, null, 2)}\n`);
 
-	const streamEvents = [];
-	const deltaEvents = [];
-	const stepEvents = [];
+	const restoreOutputFilter = installCursorSdkOutputFilter();
+	const eventSink = createEventJsonlSink(artifactDir, startedAt);
 	let agent;
 	try {
-		const { Agent } = await import("@cursor/sdk");
-		agent = await Agent.create({
-			apiKey: args.apiKey,
-			model: { id: args.model },
-			local: args.settingSources ? { cwd: args.cwd, settingSources: args.settingSources } : { cwd: args.cwd },
-		});
-
-		const run = await agent.send(
-			{ text: args.prompt },
-			{
-				onDelta: ({ update }) => pushTimed(deltaEvents, startedAt, "update", update),
-				onStep: ({ step }) => pushTimed(stepEvents, startedAt, "step", step),
-			},
+		const { Agent } = await suppressCursorSdkOutput(() => import("@cursor/sdk"));
+		agent = await suppressCursorSdkOutput(() =>
+			Agent.create({
+				apiKey: args.apiKey,
+				model: { id: args.model },
+				local: args.settingSources ? { cwd: args.cwd, settingSources: args.settingSources } : { cwd: args.cwd },
+			}),
 		);
 
-		for await (const event of run.stream()) {
-			pushTimed(streamEvents, startedAt, "event", event);
-		}
+		const run = await suppressCursorSdkOutput(() =>
+			agent.send(
+				{ text: args.prompt },
+				{
+					onDelta: ({ update }) => eventSink.appendDelta(update),
+					onStep: ({ step }) => eventSink.appendStep(step),
+				},
+			),
+		);
 
-		const waitResult = await run.wait();
+		await suppressCursorSdkOutput(async () => {
+			for await (const event of run.stream()) {
+				eventSink.appendStream(event);
+			}
+		});
+
+		const waitResult = await suppressCursorSdkOutput(() => run.wait());
 		writeFileSync(artifactPath(artifactDir, "waitResult"), `${JSON.stringify(waitResult, null, 2)}\n`);
 
 		let conversation;
 		if (args.includeConversation) {
 			if (run.supports("conversation")) {
-				conversation = await run.conversation();
+				conversation = await suppressCursorSdkOutput(() => run.conversation());
 			} else {
 				conversation = {
 					skipped: true,
@@ -340,13 +368,9 @@ async function captureEvents(args) {
 			writeFileSync(artifactPath(artifactDir, "conversation"), `${JSON.stringify(conversation, null, 2)}\n`);
 		}
 
-		writeEventArtifacts(artifactDir, { streamEvents, deltaEvents, stepEvents });
-
 		const summary = buildSummary({
 			artifactDir,
-			streamEvents,
-			deltaEvents,
-			stepEvents,
+			...eventSink.getSummaryState(),
 			waitResult,
 			conversation,
 			includeConversation: args.includeConversation,
@@ -354,11 +378,15 @@ async function captureEvents(args) {
 		writeFileSync(artifactPath(artifactDir, "summary"), `${JSON.stringify(summary, null, 2)}\n`);
 		printStdoutSummary(summary);
 	} catch (error) {
-		writeEventArtifacts(artifactDir, { streamEvents, deltaEvents, stepEvents });
 		const message = error instanceof Error ? error.message : String(error);
 		fail(message, [args.apiKey]);
 	} finally {
-		agent?.close();
+		await eventSink.close().catch(() => {});
+		try {
+			agent?.close();
+		} finally {
+			restoreOutputFilter();
+		}
 	}
 }
 
