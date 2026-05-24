@@ -11,14 +11,33 @@ const require = createRequire(import.meta.url);
 const packageJson = require("../package.json");
 const CURSOR_SETTING_SOURCES_ENV = "PI_CURSOR_SETTING_SOURCES";
 
-function readSdkVersion() {
-	const sdkEntry = require.resolve("@cursor/sdk");
-	const sdkPackagePath = join(dirname(sdkEntry), "../../package.json");
-	return JSON.parse(readFileSync(sdkPackagePath, "utf8")).version;
-}
+const ARTIFACTS = {
+	metadata: "metadata.json",
+	streamEvents: "stream-events.jsonl",
+	onDelta: "on-delta.jsonl",
+	onStep: "on-step.jsonl",
+	waitResult: "wait-result.json",
+	conversation: "conversation.json",
+	summary: "summary.json",
+};
+
 const DEFAULT_MODEL = "composer-2.5";
 const RAW_ARTIFACT_WARNING =
 	"Raw artifact files may contain local paths, project text, tool args/results, or secrets from the workspace. Do not commit or share them.";
+
+function readSdkVersion() {
+	try {
+		const sdkEntry = require.resolve("@cursor/sdk");
+		const sdkPackagePath = join(dirname(sdkEntry), "../../package.json");
+		return JSON.parse(readFileSync(sdkPackagePath, "utf8")).version;
+	} catch {
+		return "unknown";
+	}
+}
+
+function artifactPath(artifactDir, name) {
+	return join(artifactDir, ARTIFACTS[name]);
+}
 
 function printHelp() {
 	console.log(`Capture timestamped Cursor SDK event timelines for one local run.
@@ -40,7 +59,7 @@ Options:
 
 Stdout:
   Prints artifact paths and summary counts only. Raw payloads stay on disk under:
-  stream-events.jsonl (run.stream()), on-delta.jsonl (onDelta), on-step.jsonl (onStep).
+  ${ARTIFACTS.streamEvents} (run.stream()), ${ARTIFACTS.onDelta} (onDelta), ${ARTIFACTS.onStep} (onStep).
 
 Exit codes:
   0  capture completed
@@ -207,16 +226,36 @@ function writeJsonl(path, records) {
 	writeFileSync(path, `${records.map((record) => JSON.stringify(record)).join("\n")}${records.length ? "\n" : ""}`);
 }
 
-function buildSummary({ artifactDir, streamEvents, deltaEvents, stepEvents, waitResult, conversation, includeConversation }) {
+function pushTimed(records, startedAt, key, value) {
+	records.push({
+		ts: new Date().toISOString(),
+		elapsedMs: Date.now() - startedAt,
+		[key]: value,
+	});
+}
+
+function writeEventArtifacts(artifactDir, { streamEvents, deltaEvents, stepEvents }) {
+	writeJsonl(artifactPath(artifactDir, "streamEvents"), streamEvents);
+	writeJsonl(artifactPath(artifactDir, "onDelta"), deltaEvents);
+	writeJsonl(artifactPath(artifactDir, "onStep"), stepEvents);
+}
+
+function summarizeConversation(conversation) {
+	if (!conversation) return undefined;
+	if (Array.isArray(conversation)) return { turnCount: conversation.length };
+	return conversation;
+}
+
+export function buildSummary({ artifactDir, streamEvents, deltaEvents, stepEvents, waitResult, conversation, includeConversation }) {
 	return {
 		artifactDir,
 		files: {
-			metadata: join(artifactDir, "metadata.json"),
-			streamEvents: join(artifactDir, "stream-events.jsonl"),
-			onDelta: join(artifactDir, "on-delta.jsonl"),
-			onStep: join(artifactDir, "on-step.jsonl"),
-			waitResult: join(artifactDir, "wait-result.json"),
-			conversation: includeConversation ? join(artifactDir, "conversation.json") : undefined,
+			metadata: artifactPath(artifactDir, "metadata"),
+			streamEvents: artifactPath(artifactDir, "streamEvents"),
+			onDelta: artifactPath(artifactDir, "onDelta"),
+			onStep: artifactPath(artifactDir, "onStep"),
+			waitResult: artifactPath(artifactDir, "waitResult"),
+			conversation: includeConversation ? artifactPath(artifactDir, "conversation") : undefined,
 		},
 		counts: {
 			stream: countByType(streamEvents, (record) => eventType(record.event)),
@@ -235,11 +274,7 @@ function buildSummary({ artifactDir, streamEvents, deltaEvents, stepEvents, wait
 					hasResultText: Boolean(waitResult.result?.trim()),
 				}
 			: undefined,
-		conversation: conversation
-			? Array.isArray(conversation)
-				? { turnCount: conversation.length }
-				: conversation
-			: undefined,
+		conversation: summarizeConversation(conversation),
 		warnings: [RAW_ARTIFACT_WARNING],
 	};
 }
@@ -263,7 +298,7 @@ async function captureEvents(args) {
 		includeConversation: args.includeConversation,
 		warnings: [RAW_ARTIFACT_WARNING],
 	};
-	writeFileSync(join(artifactDir, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
+	writeFileSync(artifactPath(artifactDir, "metadata"), `${JSON.stringify(metadata, null, 2)}\n`);
 
 	const streamEvents = [];
 	const deltaEvents = [];
@@ -280,51 +315,32 @@ async function captureEvents(args) {
 		const run = await agent.send(
 			{ text: args.prompt },
 			{
-				onDelta: ({ update }) => {
-					deltaEvents.push({
-						ts: new Date().toISOString(),
-						elapsedMs: Date.now() - startedAt,
-						update,
-					});
-				},
-				onStep: ({ step }) => {
-					stepEvents.push({
-						ts: new Date().toISOString(),
-						elapsedMs: Date.now() - startedAt,
-						step,
-					});
-				},
+				onDelta: ({ update }) => pushTimed(deltaEvents, startedAt, "update", update),
+				onStep: ({ step }) => pushTimed(stepEvents, startedAt, "step", step),
 			},
 		);
 
 		for await (const event of run.stream()) {
-			streamEvents.push({
-				ts: new Date().toISOString(),
-				elapsedMs: Date.now() - startedAt,
-				event,
-			});
+			pushTimed(streamEvents, startedAt, "event", event);
 		}
 
 		const waitResult = await run.wait();
-		writeFileSync(join(artifactDir, "wait-result.json"), `${JSON.stringify(waitResult, null, 2)}\n`);
+		writeFileSync(artifactPath(artifactDir, "waitResult"), `${JSON.stringify(waitResult, null, 2)}\n`);
 
 		let conversation;
 		if (args.includeConversation) {
 			if (run.supports("conversation")) {
 				conversation = await run.conversation();
-				writeFileSync(join(artifactDir, "conversation.json"), `${JSON.stringify(conversation, null, 2)}\n`);
 			} else {
 				conversation = {
 					skipped: true,
 					reason: run.unsupportedReason("conversation") ?? "conversation unsupported",
 				};
-				writeFileSync(join(artifactDir, "conversation.json"), `${JSON.stringify(conversation, null, 2)}\n`);
 			}
+			writeFileSync(artifactPath(artifactDir, "conversation"), `${JSON.stringify(conversation, null, 2)}\n`);
 		}
 
-		writeJsonl(join(artifactDir, "stream-events.jsonl"), streamEvents);
-		writeJsonl(join(artifactDir, "on-delta.jsonl"), deltaEvents);
-		writeJsonl(join(artifactDir, "on-step.jsonl"), stepEvents);
+		writeEventArtifacts(artifactDir, { streamEvents, deltaEvents, stepEvents });
 
 		const summary = buildSummary({
 			artifactDir,
@@ -335,12 +351,10 @@ async function captureEvents(args) {
 			conversation,
 			includeConversation: args.includeConversation,
 		});
-		writeFileSync(join(artifactDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
+		writeFileSync(artifactPath(artifactDir, "summary"), `${JSON.stringify(summary, null, 2)}\n`);
 		printStdoutSummary(summary);
 	} catch (error) {
-		writeJsonl(join(artifactDir, "stream-events.jsonl"), streamEvents);
-		writeJsonl(join(artifactDir, "on-delta.jsonl"), deltaEvents);
-		writeJsonl(join(artifactDir, "on-step.jsonl"), stepEvents);
+		writeEventArtifacts(artifactDir, { streamEvents, deltaEvents, stepEvents });
 		const message = error instanceof Error ? error.message : String(error);
 		fail(message, [args.apiKey]);
 	} finally {

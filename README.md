@@ -236,17 +236,7 @@ For Cursor provider/runtime changes, follow the manual [Cursor live smoke checkl
 
 ### Maintainer Cursor SDK event capture
 
-To compare raw `run.stream()`, `onDelta`, and `onStep` timelines for one local SDK run without writing a throwaway probe:
-
-```bash
-CURSOR_API_KEY=... npm run debug:sdk-events -- \
-  --cwd ~/Projects \
-  --model composer-2.5 \
-  --prompt 'Describe this workspace in one sentence.' \
-  --out /tmp/pi-cursor-sdk-sdk-events-manual
-```
-
-Stdout prints artifact paths and summary counts only. Raw payloads are written under `/tmp/...` by default and may contain local paths or secrets — do not commit them. See [Cursor testing lessons](docs/cursor-testing-lessons.md#cursor-sdk-event-capture-probe).
+Use `npm run debug:sdk-events` to capture timestamped `run.stream()`, `onDelta`, and `onStep` timelines for one local SDK run. See [Cursor testing lessons](docs/cursor-testing-lessons.md#cursor-sdk-event-capture-probe) for usage, artifact layout, and safety notes.
 
 ## Fallback models
 

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { parseDebugSdkEventsArgs } from "../scripts/debug-sdk-events.mjs";
+import { buildSummary, parseDebugSdkEventsArgs } from "../scripts/debug-sdk-events.mjs";
 
 const scriptPath = "scripts/debug-sdk-events.mjs";
 
@@ -10,6 +10,21 @@ function run(args: string[], env: Record<string, string | undefined> = {}) {
 		encoding: "utf8",
 		env: { ...process.env, ...env },
 	});
+}
+
+function collectStrings(value: unknown, strings: string[] = []): string[] {
+	if (typeof value === "string") {
+		strings.push(value);
+		return strings;
+	}
+	if (Array.isArray(value)) {
+		for (const entry of value) collectStrings(entry, strings);
+		return strings;
+	}
+	if (value && typeof value === "object") {
+		for (const entry of Object.values(value)) collectStrings(entry, strings);
+	}
+	return strings;
 }
 
 describe("debug-sdk-events maintainer probe", () => {
@@ -38,6 +53,39 @@ describe("debug-sdk-events maintainer probe", () => {
 		expect(parseDebugSdkEventsArgs(["--setting-sources", "none", "--prompt", "x"], {})).toMatchObject({
 			settingSources: undefined,
 		});
+	});
+
+	it("builds stdout-safe summaries without raw SDK payloads", () => {
+		const artifactDir = "/tmp/pi-cursor-sdk-sdk-events-test";
+		const summary = buildSummary({
+			artifactDir,
+			streamEvents: [
+				{
+					ts: "2026-05-24T00:00:00.000Z",
+					elapsedMs: 0,
+					event: { type: "assistant", message: { content: [{ type: "text", text: "secret payload" }] } },
+				},
+			],
+			deltaEvents: [{ ts: "2026-05-24T00:00:00.100Z", elapsedMs: 100, update: { type: "text-delta", text: "delta" } }],
+			stepEvents: [{ ts: "2026-05-24T00:00:00.200Z", elapsedMs: 200, step: { type: "toolCall", message: { name: "read" } } }],
+			waitResult: { status: "finished", durationMs: 250, result: "done" },
+			conversation: [{ role: "user", content: "hello" }],
+			includeConversation: true,
+		});
+
+		expect(summary.counts).toEqual({
+			stream: { assistant: 1 },
+			onDelta: { "text-delta": 1 },
+			onStep: { toolCall: 1 },
+		});
+		expect(summary.wait).toEqual({ status: "finished", durationMs: 250, hasResultText: true });
+		expect(summary.conversation).toEqual({ turnCount: 1 });
+		expect(summary.files.streamEvents).toBe(`${artifactDir}/stream-events.jsonl`);
+
+		const stdoutPayload = JSON.stringify(summary);
+		expect(stdoutPayload).not.toContain("secret payload");
+		expect(stdoutPayload).not.toContain('"text": "delta"');
+		expect(collectStrings(summary)).not.toContain("hello");
 	});
 
 	it("shows help and validates script syntax without live Cursor auth", () => {
