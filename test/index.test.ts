@@ -81,6 +81,20 @@ async function runModelSelectHandlers(
 	}
 }
 
+async function runBeforeAgentStartHandlers(pi: ReturnType<typeof createMockPi>, ctxOverrides: Partial<TestExtensionContext> = {}): Promise<void> {
+	const ctx = createTestExtensionContext(ctxOverrides);
+	for (const handler of pi._handlers.get("before_agent_start") ?? []) {
+		await handler({ type: "before_agent_start", prompt: "start", systemPrompt: "", systemPromptOptions: {} }, ctx);
+	}
+}
+
+async function runTurnStartHandlers(pi: ReturnType<typeof createMockPi>, ctxOverrides: Partial<TestExtensionContext> = {}): Promise<void> {
+	const ctx = createTestExtensionContext(ctxOverrides);
+	for (const handler of pi._handlers.get("turn_start") ?? []) {
+		await handler({ type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
+	}
+}
+
 function createMockPi(existingTools?: ToolInfo[]) {
 	const registered: Array<{ name: string; config: ProviderConfig }> = [];
 	const commands = new Map<string, TestRegisteredCommand>();
@@ -209,6 +223,8 @@ describe("extension factory", () => {
 			CURSOR_ASK_QUESTION_TOOL_NAME,
 		]);
 		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("before_agent_start", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("turn_start", expect.any(Function));
 		expect(pi.on).toHaveBeenCalledWith("model_select", expect.any(Function));
 		expect(mockedDiscover).toHaveBeenCalledOnce();
 		expect(pi.registerProvider).toHaveBeenCalledOnce();
@@ -248,6 +264,36 @@ describe("extension factory", () => {
 		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
 		expect(pi._activeToolNames()).not.toContain("cursor_edit");
 		expect(pi._activeToolNames()).not.toContain("cursor_generate_image");
+	});
+
+	it("resyncs Cursor-only tools before a turn when session startup did not know the model", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createMockPi();
+		await extensionFactory(pi);
+		await runSessionStartHandlers(pi, { model: undefined });
+
+		expect(pi._activeToolNames()).not.toContain("cursor");
+		expect(pi._activeToolNames()).not.toContain("grep");
+		expect(pi._activeToolNames()).not.toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
+
+		await runBeforeAgentStartHandlers(pi, { model: { provider: "cursor", api: "cursor-sdk", id: "composer-2.5" } as ExtensionContext["model"] });
+
+		expect(pi._activeToolNames()).toContain("cursor");
+		expect(pi._activeToolNames()).toContain("grep");
+		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
+		expect(buildCursorPiToolBridgeSnapshot(pi).piToolNameToMcpToolName.get(CURSOR_ASK_QUESTION_TOOL_NAME)).toBe("pi__cursor_ask_question");
+
+		pi.setActiveTools(["read", "bash", "edit", "write"]);
+		expect(pi._activeToolNames()).not.toContain("cursor");
+		expect(pi._activeToolNames()).not.toContain("grep");
+		expect(pi._activeToolNames()).not.toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
+
+		await runTurnStartHandlers(pi, { model: { provider: "cursor", api: "cursor-sdk", id: "composer-2.5" } as ExtensionContext["model"] });
+
+		expect(pi._activeToolNames()).toContain("cursor");
+		expect(pi._activeToolNames()).toContain("grep");
+		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
 	});
 
 	it("asks Cursor questions through pi UI selection", async () => {

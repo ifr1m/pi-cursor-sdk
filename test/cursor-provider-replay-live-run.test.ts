@@ -131,6 +131,133 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 		expect(replayDone.message.content).toEqual([{ type: "text", text: "Final answer only." }]);
 	});
 
+	it("falls back to trace text when the native replay tool is not active in the current turn", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		const registeredTools: RegisteredTool[] = [];
+		await registerNativeToolDisplayForTest(registeredTools);
+
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
+			opts.onDelta({
+				update: {
+					type: "tool-call-started",
+					toolCall: { name: "task", args: { description: "Inspect campaign pages" } },
+					callId: "task-1",
+				},
+			});
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "task",
+						args: { description: "Inspect campaign pages" },
+						result: { status: "success", value: { summary: "done" } },
+					},
+					callId: "task-1",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "Task complete." }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const context = makeContext();
+		context.tools = [{ name: "read", description: "Read files", parameters: Type.Object({}) }];
+
+		const events = await collectEvents(streamCursor(makeModel(), context, { apiKey: "test-key" }));
+
+		expect(hasEventType(events, "toolcall_start")).toBe(false);
+		expect(collectThinkingDeltas(events)).toContain("Cursor task");
+		expect(getDoneEvent(events).reason).toBe("stop");
+	});
+
+	it("does not replay queued live-run tools that became inactive after the run started", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		const registeredTools: RegisteredTool[] = [];
+		await registerNativeToolDisplayForTest(registeredTools);
+
+		let firstOnDelta: CursorDeltaHandler | undefined;
+		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
+		const runWait = vi.fn(
+			() =>
+				new Promise<{ id: string; status: "finished"; result: string }>((resolve) => {
+					resolveRun = resolve;
+				}),
+		);
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
+			firstOnDelta = opts.onDelta;
+			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "README.md" } }, callId: "read-1" } });
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: { name: "read", result: { status: "success", value: { content: "# Project" } } },
+					callId: "read-1",
+				},
+			});
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "running",
+				wait: runWait,
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		const firstDone = getDoneEvent(firstEvents);
+		const readCall = firstDone.message.content.find(isToolCallBlock);
+		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readResult = await readTool!.execute(readCall!.id, readCall!.arguments, undefined, undefined, {});
+
+		firstOnDelta?.({ update: { type: "tool-call-started", toolCall: { name: "grep", args: { pattern: "metric-link", path: "src/app/globals.css" } }, callId: "grep-1" } });
+		firstOnDelta?.({
+			update: {
+				type: "tool-call-completed",
+				toolCall: { name: "grep", result: { status: "success", value: { matches: ["src/app/globals.css"] } } },
+				callId: "grep-1",
+			},
+		});
+		resolveRun({ id: "run-1", status: "finished", result: "Done." });
+
+		const replayContext = makeContext();
+		replayContext.tools = [{ name: "read", description: "Read files", parameters: Type.Object({}) }];
+		replayContext.messages = [
+			...replayContext.messages,
+			firstDone.message,
+			{
+				role: "toolResult",
+				toolCallId: readCall!.id,
+				toolName: "read",
+				content: readResult.content,
+				details: readResult.details,
+				isError: false,
+				timestamp: 2,
+			},
+		];
+
+		const replayEvents = await collectEvents(streamCursor(makeModel(), replayContext, { apiKey: "test-key" }));
+
+		expect(hasEventType(replayEvents, "toolcall_start")).toBe(false);
+		expect(collectThinkingDeltas(replayEvents)).toContain("grep");
+	});
+
 	it("resumes an active live run when a steering user message follows tool results", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: RegisteredTool[] = [];

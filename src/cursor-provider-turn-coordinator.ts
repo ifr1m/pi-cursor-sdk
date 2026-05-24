@@ -107,6 +107,7 @@ export interface CursorSdkTurnCoordinatorOptions {
 	resolvedApiKey?: string;
 	liveRun?: CursorLiveRun;
 	useNativeToolReplay: boolean;
+	activeToolNames?: ReadonlySet<string>;
 	nativeReplayId: string;
 	textDeltas: string[];
 }
@@ -118,6 +119,7 @@ export class CursorSdkTurnCoordinator {
 	readonly resolvedApiKey?: string;
 	readonly liveRun?: CursorLiveRun;
 	readonly useNativeToolReplay: boolean;
+	readonly activeToolNames?: ReadonlySet<string>;
 	readonly nativeReplayId: string;
 	readonly textDeltas: string[];
 
@@ -142,6 +144,7 @@ export class CursorSdkTurnCoordinator {
 		this.resolvedApiKey = options.resolvedApiKey;
 		this.liveRun = options.liveRun;
 		this.useNativeToolReplay = options.useNativeToolReplay;
+		this.activeToolNames = options.activeToolNames;
 		this.nativeReplayId = options.nativeReplayId;
 		this.textDeltas = options.textDeltas;
 		this.contentEmitter = new CursorPartialContentEmitter(options.stream, options.partial, undefined, false);
@@ -347,7 +350,8 @@ export class CursorSdkTurnCoordinator {
 		}
 
 		const nativeRenderable = canRenderCursorToolNatively(display.toolName);
-		const route = this.useNativeToolReplay && nativeRenderable && this.liveRun ? "native_replay" : "trace";
+		const nativeToolActive = this.activeToolNames === undefined || this.activeToolNames.has(display.toolName);
+		const route = this.useNativeToolReplay && nativeRenderable && nativeToolActive && this.liveRun ? "native_replay" : "trace";
 
 		if (route === "native_replay" && this.liveRun) {
 			this.nativeToolReplayStarted = true;

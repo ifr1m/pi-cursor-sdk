@@ -209,6 +209,7 @@ export function streamCursor(
 			const sessionBridgeRun = sessionAgentLease.bridgeRun;
 			const promptInputTokens = estimateCursorPromptInputTokens(prompt, promptOptions);
 			const useNativeToolReplay = isCursorNativeToolDisplayRuntimeEnabled();
+			const activeToolNames = context.tools ? new Set(context.tools.map((tool) => tool.name)) : undefined;
 			const nativeReplayId = createCursorNativeReplayId();
 			const textDeltas: string[] = [];
 			const useLiveRun = useNativeToolReplay || bridgeRun !== undefined;
@@ -237,6 +238,7 @@ export function streamCursor(
 				resolvedApiKey,
 				liveRun,
 				useNativeToolReplay,
+				activeToolNames,
 				nativeReplayId,
 				textDeltas,
 			});
