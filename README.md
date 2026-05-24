@@ -234,6 +234,20 @@ PI_CURSOR_PI_TOOL_BRIDGE_DEBUG=1 pi --model cursor/composer-2.5
 
 For Cursor provider/runtime changes, follow the manual [Cursor live smoke checklist](docs/cursor-live-smoke-checklist.md) before release. See [Cursor testing lessons](docs/cursor-testing-lessons.md) for auth.json seeding, isolated `/tmp` harness layout, JSONL replay-error scans, and other regression traps. Assume every runtime surface is in scope. The checklist uses real `pi -e . --cursor-no-fast --model cursor/composer-2.5` runs with temporary session dirs and requires the visible TUI/output, scrubbed diagnostics, and persisted JSONL to agree. Do not mark a release ready with optional, deferred, mostly-passing, or unobserved smoke checks outstanding.
 
+### Maintainer Cursor SDK event capture
+
+To compare raw `run.stream()`, `onDelta`, and `onStep` timelines for one local SDK run without writing a throwaway probe:
+
+```bash
+CURSOR_API_KEY=... npm run debug:sdk-events -- \
+  --cwd ~/Projects \
+  --model composer-2.5 \
+  --prompt 'Describe this workspace in one sentence.' \
+  --out /tmp/pi-cursor-sdk-sdk-events-manual
+```
+
+Stdout prints artifact paths and summary counts only. Raw payloads are written under `/tmp/...` by default and may contain local paths or secrets — do not commit them. See [Cursor testing lessons](docs/cursor-testing-lessons.md#cursor-sdk-event-capture-probe).
+
 ## Fallback models
 
 If no key is available from `/login`, `CURSOR_API_KEY`, or `--api-key`, model discovery fails, or discovery returns no models, the extension registers a bundled fallback snapshot of the latest reviewed Cursor SDK model catalog and notifies interactive users when possible.

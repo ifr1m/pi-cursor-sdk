@@ -213,6 +213,31 @@ Then follow the full manual [Cursor live smoke checklist](./cursor-live-smoke-ch
 
 If live smoke auth is unavailable, report the release as **blocked**, not skipped-ready.
 
+## Cursor SDK event capture probe
+
+When debugging TUI/progress/replay timing gaps, capture raw Cursor SDK surfaces side-by-side instead of writing a throwaway probe:
+
+```bash
+CURSOR_API_KEY=... npm run debug:sdk-events -- \
+  --cwd ~/Projects \
+  --model composer-2.5 \
+  --prompt 'Scan all of my projects and give me ideas that would be great to add the Cursor SDK to' \
+  --out /tmp/pi-cursor-sdk-sdk-events-manual
+```
+
+The script writes timestamped artifacts under `--out` (default `/tmp/pi-cursor-sdk-sdk-events-<timestamp>`):
+
+- `stream-events.jsonl` — `run.stream()` messages
+- `on-delta.jsonl` — `agent.send(..., { onDelta })` updates
+- `on-step.jsonl` — `agent.send(..., { onStep })` steps
+- `wait-result.json` — final `run.wait()` metadata
+- optional `conversation.json` with `--include-conversation`
+- `summary.json` — event counts and timing gaps
+
+Stdout prints artifact paths and summary counts only. Raw payloads stay on disk and may contain local paths, project text, tool args/results, or secrets — do not commit or share them.
+
+Hard repo rule: Cursor SDK behavior claims must come from the installed `@cursor/sdk` package and/or https://cursor.com/docs/sdk/typescript, not from memory or ad-hoc probes alone.
+
 ## Related docs and scripts
 
 - [Cursor live smoke checklist](./cursor-live-smoke-checklist.md)
@@ -220,4 +245,5 @@ If live smoke auth is unavailable, report the release as **blocked**, not skippe
 - `scripts/isolated-cursor-smoke.sh`
 - `scripts/tmux-live-smoke.sh`
 - `scripts/validate-smoke-jsonl.mjs`
+- `scripts/debug-sdk-events.mjs`
 - `test/helpers/cursor-provider-harness.ts` — controllable native replay pi mock (`createNativeToolDisplayPiForTest`)
