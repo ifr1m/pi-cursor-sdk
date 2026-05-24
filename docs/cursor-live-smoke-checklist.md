@@ -45,6 +45,8 @@ node scripts/validate-smoke-jsonl.mjs --replay-errors "$SMOKE_DIR"
 node scripts/validate-smoke-jsonl.mjs --replay-errors-only "$SMOKE_DIR/session-subdir"
 ```
 
+The replay scan flags only error `toolResult` / error assistant messages with `Tool grep/cursor/find/ls not found`, not successful reads of docs that mention those strings. See [Cursor testing lessons](./cursor-testing-lessons.md#what-counts-as-a-replay-failure).
+
 The script is a helper only; it polls the section 3 TUI for answer/footer evidence and then cleans up the tmux session, but it does not replace manual visual review of the full TUI checklist. Release readiness still requires the manual checks below for detailed TUI behavior, bridge, standalone native replay, abort/cancel, packaging, cleanup, and any touched runtime surface not covered by the helper.
 
 Pass criteria:

@@ -20,6 +20,7 @@ Passing hundreds of unit tests did not prove that chain was safe. Regression cov
 - `test/cursor-provider-replay-live-run.test.ts` — inactive replay tools emit trace instead of broken `toolUse`
 - `test/cursor-native-replay-trace.test.ts` — shared inactive replay trace formatting
 - `test/cursor-native-replay-routing.test.ts` — `resolveNativeReplayDisposition` and `partitionNativeToolsByActiveContext`
+- `test/validate-smoke-jsonl.test.ts` — replay scan semantics (real errors vs doc mentions in successful reads)
 
 When changing provider/runtime behavior, ask whether the bug spans **pi extension lifecycle**, **active tool state**, **provider streaming**, and **persisted JSONL**. If yes, add an integration-style unit test or live smoke coverage for that chain.
 
@@ -121,6 +122,7 @@ Every live check should use its own `--session-dir` under the isolated tree. Do 
 | Inherited shell env | mise/profile hooks hung or polluted runs | Use `env -i ... MISE_DISABLE=1` for isolated pi calls |
 | No per-check timeout | One stuck prompt blocked entire harness | Wrap each live check with timeout/watchdog |
 | stdout-only assertions | Missed replay failures persisted only in JSONL | Scan JSONL for `Tool grep/cursor/find/ls not found` |
+| Naive JSONL substring scan | Successful `read` of docs mentioning replay errors looked like failures | `validate-smoke-jsonl.mjs` only flags error `toolResult` / error assistant messages |
 | Plan strip only on first turn | Under-tested multi-turn resync | Shim strips on every `turn_start`; stress multi-turn separately |
 | Assuming env auth equals pi auth | False "blocked" or false "pass" in CI-like shells | Check `auth.json` provider keys explicitly when needed |
 
@@ -140,12 +142,28 @@ Combined usage + replay scan after broader smoke:
 node scripts/validate-smoke-jsonl.mjs --replay-errors "$SMOKE_DIR"
 ```
 
-The replay scan fails on records containing:
+### What counts as a replay failure
 
-- `Tool grep not found`
-- `Tool cursor not found`
-- `Tool find not found`
-- `Tool ls not found`
+The scan fails only on **persisted error messages**, not arbitrary substring matches in session JSONL:
+
+- error `toolResult` records (`isError: true`) whose text contains:
+  - `Tool grep not found`
+  - `Tool cursor not found`
+  - `Tool find not found`
+  - `Tool ls not found`
+- error assistant messages (`stopReason: "error"` or `errorMessage`) containing those strings
+
+Successful tool results are ignored even when file contents mention those strings (for example a `read` of `docs/cursor-testing-lessons.md` during plan-strip smoke).
+
+### False-positive edge case (2026-05-23)
+
+Plan-strip live smoke can make Cursor `read` testing docs that *document* replay failure strings. A naive whole-record JSON scan reported four failures from one successful `read` toolResult (`isError: false`).
+
+When changing replay scan logic:
+
+1. Update `scripts/validate-smoke-jsonl.mjs`
+2. Add/adjust cases in `test/validate-smoke-jsonl.test.ts` (error toolResult must still fail; successful read of doc text must pass)
+3. Re-run `npm run smoke:isolated` on a packed temp install before release
 
 ## Plan-mode regression scenario
 
@@ -178,6 +196,12 @@ npm pack --dry-run
 SKIP_LIVE=1 npm run smoke:isolated
 npm run smoke:isolated            # requires auth.json or CURSOR_API_KEY
 npm run smoke:live                # partial tmux checklist subset
+```
+
+After changing `scripts/validate-smoke-jsonl.mjs` or replay scan expectations, also run:
+
+```bash
+npm test -- test/validate-smoke-jsonl.test.ts
 ```
 
 Then follow the full manual [Cursor live smoke checklist](./cursor-live-smoke-checklist.md) for surfaces the scripts do not cover (bridge MCP, abort/cancel, full TUI observation, packaging review, cleanup).
