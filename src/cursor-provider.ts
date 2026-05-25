@@ -70,6 +70,7 @@ import {
 	countCursorAgentMessages,
 	loadCursorTranscriptWebToolCallsAfterOffset,
 } from "./cursor-agent-message-web-tools.js";
+import { installCursorSdkAbortErrorSuppression } from "./cursor-sdk-abort-error-guard.js";
 
 function makeInitialMessage(model: Model<Api>): AssistantMessage {
 	return {
@@ -134,6 +135,7 @@ export function streamCursor(
 		let restoreCursorSdkOutputFilter: (() => void) | undefined;
 		let sdkEventDebug: CursorSdkEventDebugSink | undefined;
 		let deferSdkEventDebugFinalize = false;
+		const sdkAbortErrorSuppression = installCursorSdkAbortErrorSuppression();
 
 		const pushSanitizedStreamError = (error: unknown, reason: "error" | "aborted" = "error"): void => {
 			partial.stopReason = reason;
@@ -304,6 +306,7 @@ export function streamCursor(
 			// Handle abort signal
 			let run: Awaited<ReturnType<SDKAgent["send"]>> | null = null;
 			abortListener = () => {
+				sdkAbortErrorSuppression.suppressAbortErrors();
 				activeLiveRun?.bridgeRun?.cancel("Cursor SDK run aborted");
 				if (run) {
 					run.cancel().catch(() => {});
@@ -355,6 +358,8 @@ export function streamCursor(
 			});
 			if (liveRun) cursorLiveRuns.attachSdkRun(liveRun, run);
 			if (options?.signal?.aborted) {
+				sdkAbortErrorSuppression.suppressAbortErrors();
+				liveRun?.bridgeRun?.cancel("Cursor SDK run aborted");
 				await run.cancel().catch(() => {});
 				throw new CursorLiveRunAbortError();
 			}
@@ -426,6 +431,7 @@ export function streamCursor(
 					});
 				} catch (error) {
 					if (error instanceof CursorLiveRunAbortError) {
+						sdkAbortErrorSuppression.suppressAbortErrors();
 						turnCoordinator.discardIncompleteStartedToolCalls("abort");
 						turnCoordinator.closeTraceBlock();
 						flushPendingCursorLiveRunTraceEventsToStream(stream, partial, liveRun, {
@@ -438,8 +444,12 @@ export function streamCursor(
 					sdkEventDebugRef.current = undefined;
 					void waitCompletion
 						.finally(async () => {
-							sdkEventDebug?.recordFinalPartial(partial);
-							await sdkEventDebug?.finalize();
+							try {
+								sdkEventDebug?.recordFinalPartial(partial);
+								await sdkEventDebug?.finalize();
+							} finally {
+								sdkAbortErrorSuppression.dispose();
+							}
 						})
 						.catch(() => {});
 				}
@@ -499,14 +509,19 @@ export function streamCursor(
 				if (activeLiveRun && !activeLiveRun.disposed) await cursorLiveRuns.release(activeLiveRun);
 				else await abandonSessionCursorAgent(sessionAgentScopeKey);
 				if (error instanceof CursorLiveRunAbortError) {
+					sdkAbortErrorSuppression.suppressAbortErrors();
 					pushSanitizedStreamError(error, "aborted");
 				} else {
 					pushSanitizedStreamError(error, "error");
 				}
 			} finally {
 				if (!deferSdkEventDebugFinalize) {
-					sdkEventDebug?.recordFinalPartial(partial);
-					await sdkEventDebug?.finalize();
+					try {
+						sdkEventDebug?.recordFinalPartial(partial);
+						await sdkEventDebug?.finalize();
+					} finally {
+						sdkAbortErrorSuppression.dispose();
+					}
 				}
 				sdkEventDebugRef.current = undefined;
 				restoreCursorSdkOutputFilter?.();
@@ -518,7 +533,7 @@ export function streamCursor(
 		} catch (error) {
 			if (activeLiveRun && !activeLiveRun.disposed) await cursorLiveRuns.release(activeLiveRun).catch(() => {});
 			else await abandonSessionCursorAgent(sessionAgentScopeKey).catch(() => {});
-			pushSanitizedStreamError(error, "error");
+			pushSanitizedStreamError(error, error instanceof CursorLiveRunAbortError ? "aborted" : "error");
 		}
 
 		stream.end();

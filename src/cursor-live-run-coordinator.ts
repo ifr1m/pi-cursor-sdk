@@ -472,10 +472,12 @@ export function createCursorLiveRunCoordinator(deps: CursorLiveRunCoordinatorDep
 					}
 				}
 				if (abandoned) {
-					try {
-						await run.sdkRun?.cancel();
-					} catch {
-						// cancellation failure should not block session-agent abandonment
+					if (!run.done) {
+						try {
+							await run.sdkRun?.cancel();
+						} catch {
+							// cancellation failure should not block session-agent abandonment
+						}
 					}
 					await deps.abandonSessionAgent(run.sessionAgentScopeKey);
 				}
