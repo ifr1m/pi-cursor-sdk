@@ -399,8 +399,8 @@ describe("formatCursorToolTranscript", () => {
 		expect(taskDisplay.result.content[0].text).toContain("context.ts");
 		expect(mcpDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-			args: { toolName: "git", activityTitle: "Cursor MCP", activitySummary: "git" },
-			result: { details: { cursorToolName: "mcp", title: "Cursor MCP", summary: "git" } },
+			args: { toolName: "git", activityTitle: "Cursor MCP", activitySummary: "git · ## Git Status ✅" },
+			result: { details: { cursorToolName: "mcp", title: "Cursor MCP", summary: "git · ## Git Status ✅" } },
 			isError: false,
 		});
 		expect(mcpDisplay.result.content[0].text).toContain("## Git Status ✅");
@@ -412,6 +412,27 @@ describe("formatCursorToolTranscript", () => {
 			isError: false,
 		});
 		expect(deleteDisplay.result.content[0].text).toContain("Deleted 9 bytes");
+	});
+
+	it("scrubs secrets from Cursor MCP collapsed summaries", () => {
+		const secret = "super-secret-key-12345";
+		const display = buildCursorPiToolDisplay({
+			name: "mcp",
+			args: { toolName: "auth" },
+			result: {
+				status: "success",
+				value: {
+					content: [{ text: { text: `apiKey=${secret}\nBearer bearer-token-value` } }],
+				},
+			},
+		});
+
+		expect(display.args.activitySummary).toContain("auth · apiKey=[redacted]");
+		expect(display.args.activitySummary).not.toContain(secret);
+		expect(display.args.activitySummary).not.toContain("bearer-token-value");
+		expect(display.result.details?.summary).toContain("[redacted]");
+		expect(display.result.details?.summary).not.toContain(secret);
+		expect(display.result.details?.summary).not.toContain("bearer-token-value");
 	});
 
 	it("summarizes Cursor MCP non-text content without dumping raw payloads", () => {

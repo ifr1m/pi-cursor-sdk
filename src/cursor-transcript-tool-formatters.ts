@@ -1,4 +1,5 @@
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
+import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import { getFirstStringByKeys } from "./cursor-record-utils.js";
 import {
 	asRecord,
@@ -730,6 +731,28 @@ export function formatRecordScreen(args: Record<string, unknown>, result: Normal
 		else lines.push("Screen recording updated.");
 	}
 	return joinSections(header, lines.join("\n"));
+}
+
+export function getMcpResultPreview(result: NormalizedResult): string | undefined {
+	if (result.status === "error") return undefined;
+	const value = asRecord(result.value);
+	const content = getArray(value, "content") ?? [];
+	for (const entry of content) {
+		const text = getMcpContentText(entry);
+		if (text) {
+			const line = firstNonEmptyLine(text);
+			if (line) return truncateArg(scrubSensitiveText(line), 120);
+		}
+		const summary = describeNonTextMcpContent(entry);
+		if (summary) return summary;
+	}
+	return undefined;
+}
+
+export function summarizeMcp(args: Record<string, unknown>, result: NormalizedResult): string {
+	const toolName = truncateArg(getString(args, "toolName") ?? "mcp");
+	const preview = getMcpResultPreview(result);
+	return preview && preview !== toolName ? `${toolName} · ${preview}` : toolName;
 }
 
 export function formatMcp(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
