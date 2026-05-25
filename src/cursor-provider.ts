@@ -66,6 +66,10 @@ import {
 } from "./cursor-provider-errors.js";
 import { getEffectiveCursorSettingSources } from "./cursor-setting-sources.js";
 import { hasUsableText } from "./cursor-record-utils.js";
+import {
+	countCursorAgentMessages,
+	loadCursorTranscriptWebToolCallsAfterOffset,
+} from "./cursor-agent-message-web-tools.js";
 
 function makeInitialMessage(model: Model<Api>): AssistantMessage {
 	return {
@@ -138,6 +142,35 @@ export function streamCursor(
 					? formatCursorSdkAbortMessage(resolveCursorSdkAbortCause({ signalAborted: options?.signal?.aborted }))
 					: sanitizeCursorProviderError(error, resolvedApiKey ?? options?.apiKey);
 			stream.push({ type: "error", reason, error: partial });
+		};
+
+		const getCursorAgentMessageOffset = async (agentId: string, cwd: string): Promise<number | undefined> => {
+			try {
+				return await countCursorAgentMessages(agentId, cwd);
+			} catch (error) {
+				sdkEventDebug?.recordError("cursor_agent_message_count", error);
+				return undefined;
+			}
+		};
+
+		const replayCursorTranscriptWebToolCalls = async (
+			agentId: string,
+			cwd: string,
+			messageOffset: number | undefined,
+			turnCoordinator: CursorSdkTurnCoordinator,
+		): Promise<void> => {
+			try {
+				const transcriptToolCalls = await loadCursorTranscriptWebToolCallsAfterOffset({ agentId, cwd, offset: messageOffset });
+				if (transcriptToolCalls.length === 0) return;
+				sdkEventDebug?.recordCoordinatorEvent("cursor-transcript-web-tools", {
+					agentId,
+					messageOffset,
+					count: transcriptToolCalls.length,
+				});
+				turnCoordinator.handleTranscriptCompletedToolCalls(transcriptToolCalls);
+			} catch (error) {
+				sdkEventDebug?.recordError("cursor_transcript_web_tools", error);
+			}
 		};
 
 		try {
@@ -297,6 +330,7 @@ export function streamCursor(
 				images: prompt.images.length > 0 ? prompt.images : undefined,
 			};
 			sdkEventDebug?.recordSendPayload(sendPayload);
+			const cursorAgentMessageOffset = await getCursorAgentMessageOffset(agent.agentId, cwd);
 			sdkEventDebug?.recordProviderEvent("agent_send_start", sendPayload);
 			run = await agent.send(sendPayload, {
 				onDelta: (args) => {
@@ -324,6 +358,7 @@ export function streamCursor(
 				await run.cancel().catch(() => {});
 				throw new CursorLiveRunAbortError();
 			}
+			const activeRun = run;
 
 			if (liveRun) {
 				deferSdkEventDebugFinalize = true;
@@ -331,6 +366,9 @@ export function streamCursor(
 					.wait()
 					.then(async (result) => {
 						sdkEventDebug?.recordWaitResult(result);
+						if (result.status === "finished" && !options?.signal?.aborted) {
+							await replayCursorTranscriptWebToolCalls(activeRun.agentId, cwd, cursorAgentMessageOffset, turnCoordinator);
+						}
 						turnCoordinator.discardIncompleteStartedToolCalls(
 							result.status === "cancelled" || options?.signal?.aborted
 								? "abort"
@@ -411,6 +449,9 @@ export function streamCursor(
 
 			const result = await run.wait();
 			sdkEventDebug?.recordWaitResult(result);
+			if (result.status === "finished" && !options?.signal?.aborted) {
+				await replayCursorTranscriptWebToolCalls(run.agentId, cwd, cursorAgentMessageOffset, turnCoordinator);
+			}
 			turnCoordinator.discardIncompleteStartedToolCalls(
 				result.status === "cancelled" || options?.signal?.aborted
 					? "abort"

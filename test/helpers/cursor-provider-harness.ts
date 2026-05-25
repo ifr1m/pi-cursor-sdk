@@ -21,6 +21,9 @@ vi.mock("@cursor/sdk", () => {
 	return {
 		Agent: {
 			create: vi.fn().mockResolvedValue(mockAgent),
+			messages: {
+				list: vi.fn().mockResolvedValue([]),
+			},
 		},
 		createAgentPlatform: vi.fn().mockResolvedValue(mockPlatform),
 		_mockAgent: mockAgent,
@@ -43,6 +46,7 @@ import { Type, type TSchema } from "typebox";
 
 // Access the mocks via the module
 export const mockedCreate = vi.mocked(Agent.create);
+export const mockedMessagesList = vi.mocked(Agent.messages.list);
 export const mockedCreateAgentPlatform = vi.mocked(createAgentPlatform);
 
 export type RegisteredTool = ToolDefinition<TSchema, unknown, unknown>;
@@ -367,5 +371,6 @@ export async function resetCursorProviderTestState(): Promise<void> {
 		send: vi.fn(),
 		[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 	});
+	mockedMessagesList.mockResolvedValue([]);
 	mockedCreateAgentPlatform.mockResolvedValue(createMockAgentPlatform());
 }

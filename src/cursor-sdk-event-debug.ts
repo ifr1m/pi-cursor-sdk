@@ -42,7 +42,7 @@ export interface CursorSdkDisplayDecisionRecord {
 	disposition?: string;
 	toolName: string;
 	identity?: string;
-	source?: "started" | "fallback" | "delta" | "step";
+	source?: "started" | "fallback" | "transcript" | "delta" | "step";
 	transcript?: string;
 	traceText?: string;
 	replayToolId?: string;

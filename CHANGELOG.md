@@ -15,7 +15,7 @@
 
 ### Fixed
 
-- Label Cursor web search and web fetch activity clearly in TUI/replay output, including MCP-shaped web search/fetch calls, without mislabeling semantic search.
+- Label Cursor web search and web fetch activity clearly in TUI/replay output, including MCP-shaped web search/fetch calls and direct local Cursor transcript `WebSearch` calls that the SDK stream omits, without mislabeling semantic search.
 - Prevent deferred lifecycle timers from leaking `Cursor …` progress into terminal error/final partials after `run.wait()` resolves or rejects.
 - Preserve abort-time incomplete-tool visibility for live runs, including when earlier replay or bridge events are still queued, without replaying or synthesizing earlier tool work.
 - Suppress duplicate pi `AGENTS.md` injection on Cursor models only when effective Cursor `settingSources` load the overlapping `user` / `project` rule layers. Uses exact `contextFiles` block removal exclusively via the `before_agent_start` hook (not in `buildCursorPrompt` sanitization), honors `-nc` and `PI_CURSOR_SETTING_SOURCES=none`, restores full pi context when switching to non-Cursor models, and supports `PI_CURSOR_PRESERVE_PI_AGENTS_MD=1` opt-out.

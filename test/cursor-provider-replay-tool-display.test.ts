@@ -3,6 +3,7 @@ import { Type } from "typebox";
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
+	mockedMessagesList,
 	mockedCreateAgentPlatform,
 	makeModel,
 	makeContext,
@@ -200,6 +201,98 @@ it("replays Cursor grep activity through native grep display", async () => {
 		expect(toolResult.content[0].text).toContain("Pi - Wikipedia");
 
 		resolveRun({ id: "run-1", status: "finished", result: "Done." });
+
+		const replayContext = makeContext();
+		replayContext.messages = [
+			...replayContext.messages,
+			firstDone.message,
+			{
+				role: "toolResult",
+				toolCallId: toolCall.id,
+				toolName: "cursor",
+				content: toolResult.content,
+				details: toolResult.details,
+				isError: false,
+				timestamp: 2,
+			},
+		];
+		await collectEvents(streamCursor(makeModel(), replayContext, { apiKey: "test-key" }));
+		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
+	});
+
+	it("replays Cursor WebSearch activity from local agent messages when stream deltas omit tool events", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		const registeredTools: RegisteredTool[] = [];
+		await registerNativeToolDisplayForTest(registeredTools);
+
+		mockedMessagesList.mockImplementation(async (_agentId, options) => {
+			if (options?.limit === 1) return [];
+			return [
+				{
+					type: "user",
+					uuid: "agent-1:0",
+					agent_id: "agent-1",
+					message: {
+						agentConversationTurn: {
+							steps: [
+								{
+									toolCall: {
+										webSearchToolCall: {
+											args: { searchTerm: "Cursor IDE", toolCallId: "tool-web-1" },
+											result: {
+												success: {
+													references: [
+														{
+															title: "Web search results",
+															url: "",
+															chunk: "Links:\n1. [Cursor — Build Software with AI Agents](https://cursor.com/product)",
+														},
+													],
+												},
+											},
+										},
+									},
+								},
+							],
+						},
+					},
+				},
+			];
+		});
+
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
+			opts.onDelta({ update: { type: "text-delta", text: "SEARCH_DONE=yes" } });
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "running",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "SEARCH_DONE=yes" }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockedCreate.mockResolvedValue({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		const firstDone = getDoneEvent(firstEvents);
+		const toolCall = firstDone.message.content.find(isToolCallBlock);
+
+		expect(firstDone.reason).toBe("toolUse");
+		expect(toolCall.name).toBe("cursor");
+		expect(toolCall.arguments).toMatchObject({
+			query: "Cursor IDE",
+			activityTitle: "Cursor web search",
+			activitySummary: "Cursor IDE",
+		});
+
+		const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
+		const toolResult = await cursorTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		expect(toolResult.content[0].text).toContain("Cursor — Build Software with AI Agents");
 
 		const replayContext = makeContext();
 		replayContext.messages = [

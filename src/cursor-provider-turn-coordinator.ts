@@ -87,13 +87,15 @@ function mergeShellOutputDeltasIntoCursorToolCall(toolCall: unknown, deltas: Cur
 	};
 }
 
+type CursorToolDisplaySource = "started" | "fallback" | "transcript";
+
 type ToolCompletionResolution =
 	| { action: "ignore-bridge"; identity?: string }
 	| {
 			action: "handle";
 			toolCall: unknown;
 			identity?: string;
-			source?: "started" | "fallback";
+			source?: CursorToolDisplaySource;
 			matchedStartedCallId?: string;
 	  };
 
@@ -346,9 +348,15 @@ export class CursorSdkTurnCoordinator {
 		};
 	}
 
+	handleTranscriptCompletedToolCalls(toolCalls: readonly { identity: string; toolCall: unknown }[]): void {
+		for (const { identity, toolCall } of toolCalls) {
+			this.handleCompletedToolCall(toolCall, { identity, source: "transcript" });
+		}
+	}
+
 	private handleCompletedToolCall(
 		toolCall: unknown,
-		options: { identity?: string; source?: "started" | "fallback" } = {},
+		options: { identity?: string; source?: CursorToolDisplaySource } = {},
 	): void {
 		const planText = getCursorCreatePlanText(toolCall);
 		if (planText) this.cursorPlanTextCandidate = scrubSensitiveText(planText, this.resolvedApiKey);
