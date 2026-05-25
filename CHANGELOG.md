@@ -2,26 +2,41 @@
 
 ## Unreleased
 
+## 0.1.19 - 2026-05-25
+
 ### Added
 
+- Add maintainer Cursor SDK event capture probes, `npm run debug:sdk-events` and `npm run debug:provider-events`, with structured artifacts for SDK callbacks, stream events, provider decisions, bridge diagnostics, drain timelines, final partials, wait results, conversations, and optional pi session snapshots.
+- Add display-only replay for Cursor SDK `semSearch` and `recordScreen` activity, including distinct labels for semantic codebase search versus web search.
+- Add recognizable Cursor web search/fetch activity cards for SDK MCP/host completions and local Cursor transcript `webSearchToolCall` / `webFetchToolCall` records.
 - Surface incomplete started Cursor SDK tool calls as bounded neutral `Cursor … did not complete` cards or traces, including safe reasons for missing completion, abort, SDK failure, and run-drain cleanup while preserving #52 maintainer debug artifacts and excluding bridge-owned `pi__*` calls.
 - Add low-noise pending lifecycle visibility for long-running Cursor tools, delayed so fast start/complete pairs coalesce into completed replay cards instead of duplicate permanent start cards.
 - Render unknown future Cursor SDK tools as neutral bounded Cursor activity cards, while keeping explicit known-tool replay/transcript formatting authoritative.
 
 ### Changed
 
-- Remove the 4096-message local Cursor transcript counting cap so web-tool transcript fallback can work in very long reused local Cursor sessions.
+- Add a Cursor tool-tail guard and periodic session-agent rebootstrap so pooled local Cursor sessions recover from stale tool-tail or long incremental-send chains without losing the pi-facing session contract.
+- Refactor Cursor session send planning into `src/cursor-session-send-policy.ts` and document the new session-agent/send-policy ownership in `AGENTS.md`.
+- Improve collapsed summaries and bounded transcript text for neutral Cursor activity replay cards, including MCP, task, image, plan/todo, semantic search, record screen, web search/fetch, and future/unknown tools.
+- Document the SDK ToolType replay matrix, alias normalization, replay boundaries, and known SDK reporting limits for web search/fetch, future tools, and abort exceptions.
 - Route incomplete started-tool visibility through the same native replay disposition used by completed replay, so inactive, conflicting, non-native, and bridge-only contexts fall back to safe traces instead of invalid `cursor` tool-use turns.
 - Harden Cursor lifecycle and incomplete-tool labels to scrub commands, URLs, absolute paths, key/flag path values, and secrets before showing user-visible activity.
+- Remove the 4096-message local Cursor transcript counting cap so web-tool transcript fallback can work in very long reused local Cursor sessions.
 
 ### Fixed
 
-- Treat missing pi session snapshots in Cursor SDK debug artifacts as optional skipped debug data instead of false `pi_session_snapshot` errors, and let `debug-provider-events` backfill the snapshot after pi exits when the session file appears later.
-- Label Cursor web search and web fetch activity clearly in TUI/replay output, including MCP-shaped web search/fetch calls and direct local Cursor transcript `WebSearch` calls that the SDK stream omits, without mislabeling semantic search.
+- Fix replay JSONL scan false positives from successful read results and document JSONL replay scan semantics for maintainer smoke triage.
+- Suppress duplicate pi `AGENTS.md` injection on Cursor models only when effective Cursor `settingSources` load overlapping `user` / `project` rule layers. Uses exact `contextFiles` block removal exclusively via the `before_agent_start` hook, honors `-nc` and `PI_CURSOR_SETTING_SOURCES=none`, restores full pi context when switching to non-Cursor models, and supports `PI_CURSOR_PRESERVE_PI_AGENTS_MD=1` opt-out.
+- Fix collapsed read replay labels when Cursor reports only a local file preview.
+- Surface scrubbed Cursor SDK failure and abort reasons in pi instead of generic provider errors, and bound `ConnectError` / `ETIMEDOUT` failures at Cursor SDK async boundaries.
+- Harden replay fallbacks and debug discarded SDK tool calls without leaking raw call IDs or secret-bearing payloads.
+- Document #40 tool-call-as-plain-text triage and the repro template for distinguishing model narration from real pi replay failures.
+- Label Cursor web search and web fetch activity clearly in TUI/replay output without mislabeling SDK `semSearch`.
+- Surface direct local Cursor transcript `WebSearch` calls that the SDK stream omits.
 - Prevent Esc/user aborts during active local Cursor SDK runs from crashing pi with uncaught `ConnectError: [canceled] This operation was aborted` errors.
 - Prevent deferred lifecycle timers from leaking `Cursor …` progress into terminal error/final partials after `run.wait()` resolves or rejects.
 - Preserve abort-time incomplete-tool visibility for live runs, including when earlier replay or bridge events are still queued, without replaying or synthesizing earlier tool work.
-- Suppress duplicate pi `AGENTS.md` injection on Cursor models only when effective Cursor `settingSources` load the overlapping `user` / `project` rule layers. Uses exact `contextFiles` block removal exclusively via the `before_agent_start` hook (not in `buildCursorPrompt` sanitization), honors `-nc` and `PI_CURSOR_SETTING_SOURCES=none`, restores full pi context when switching to non-Cursor models, and supports `PI_CURSOR_PRESERVE_PI_AGENTS_MD=1` opt-out.
+- Treat missing pi session snapshots in Cursor SDK debug artifacts as optional skipped debug data instead of false `pi_session_snapshot` errors, and let `debug-provider-events` backfill the snapshot after pi exits when the session file appears later.
 
 ## 0.1.18 - 2026-05-23
 
