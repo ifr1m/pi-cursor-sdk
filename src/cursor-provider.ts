@@ -139,6 +139,7 @@ export function streamCursor(
 		};
 
 		try {
+			let turnCoordinatorForCleanup: CursorSdkTurnCoordinator | undefined;
 			try {
 			const throwIfAborted = (): void => {
 				if (options?.signal?.aborted) throw new CursorLiveRunAbortError();
@@ -263,6 +264,7 @@ export function streamCursor(
 				textDeltas,
 				debugRecorder: sdkEventDebug,
 			});
+			turnCoordinatorForCleanup = turnCoordinator;
 
 			// Handle abort signal
 			let run: Awaited<ReturnType<SDKAgent["send"]>> | null = null;
@@ -327,9 +329,9 @@ export function streamCursor(
 					.wait()
 					.then(async (result) => {
 						sdkEventDebug?.recordWaitResult(result);
+						turnCoordinator.discardIncompleteStartedToolCalls();
 						await sdkEventDebug?.captureRunArtifacts(run);
 						if (liveRun.disposed) return;
-						turnCoordinator.discardIncompleteStartedToolCalls();
 						await cacheSdkContextWindow(liveRun.agent.agentId, model.id);
 						if (liveRun.disposed) return;
 						if (result.status === "finished" && !options?.signal?.aborted) {
@@ -359,6 +361,7 @@ export function streamCursor(
 					.catch(async (error: unknown) => {
 						sdkEventDebug?.recordWaitResult({ status: "error", error: String(error) });
 						sdkEventDebug?.recordError("run_wait", error);
+						turnCoordinatorForCleanup?.discardIncompleteStartedToolCalls();
 						await sdkEventDebug?.captureRunArtifacts(run);
 						if (liveRun.disposed) return;
 						cursorLiveRuns.markError(liveRun, sanitizeCursorProviderError(error, resolvedApiKey ?? options?.apiKey));
@@ -393,8 +396,8 @@ export function streamCursor(
 
 			const result = await run.wait();
 			sdkEventDebug?.recordWaitResult(result);
-			await sdkEventDebug?.captureRunArtifacts(run);
 			turnCoordinator.discardIncompleteStartedToolCalls();
+			await sdkEventDebug?.captureRunArtifacts(run);
 			await cacheSdkContextWindow(agent.agentId, model.id);
 
 			// Close any open thinking/activity trace, then use the final run result only when
@@ -428,6 +431,7 @@ export function streamCursor(
 			}
 			} catch (error) {
 				sdkEventDebug?.recordError("provider_stream", error);
+				turnCoordinatorForCleanup?.discardIncompleteStartedToolCalls();
 				if (activeLiveRun && !activeLiveRun.disposed) await cursorLiveRuns.release(activeLiveRun);
 				else await abandonSessionCursorAgent(sessionAgentScopeKey);
 				if (error instanceof CursorLiveRunAbortError) {
