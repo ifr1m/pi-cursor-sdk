@@ -41,6 +41,7 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-native-tool-display-state.ts` owns native replay display state, env gating, and record/consume helpers.
 - `src/cursor-tool-transcript.ts`, `src/cursor-transcript-utils.ts`, `src/cursor-transcript-tool-formatters.ts`, and `src/cursor-tool-names.ts` handle display-only Cursor native tool replay and transcript labels.
 - `src/cursor-mcp-timeout-override.ts` owns Cursor SDK MCP call timeout overrides for long-running local MCP tools.
+- `src/cursor-agents-context.ts` owns Cursor-model suppression of pi `<project_context>` / `AGENTS.md` duplication and `PI_CURSOR_PRESERVE_PI_AGENTS_MD`.
 - `src/cursor-state.ts` owns `/cursor-fast`, `--cursor-fast`, `--cursor-no-fast`, session state, and global fast defaults.
 - `src/context.ts`, `src/context-window-cache.ts`, and `src/bundled-context-windows.ts` handle prompt conversion and context-window caches.
 - `test/**/*.test.ts` contains Vitest coverage for provider registration, discovery, state, context, bridge, replay, and streaming behavior.
@@ -105,6 +106,24 @@ Use a short written plan before multi-file behavior changes, SDK integration cha
 - Ambient Cursor settings/rules loading is enabled by default through `PI_CURSOR_SETTING_SOURCES=all`; keep SDK startup log filtering intact so settings/skills output does not corrupt pi's TUI.
 - Live `pi`/Cursor smoke tests may call external services and require Cursor auth in `~/.pi/agent/auth.json` and/or `CURSOR_API_KEY`; run them for Cursor provider/runtime changes. If auth is unavailable, report live smoke as release-blocked instead of skipped-ready. See `docs/cursor-testing-lessons.md` for isolated harness auth seeding.
 - For Cursor provider/runtime changes, follow `docs/cursor-live-smoke-checklist.md`. Assume every runtime surface is in scope. Use real `pi -e . --cursor-no-fast --model cursor/composer-2.5` invocations, a temporary `--session-dir`, manual observation, and no secret printing. Do not mark release-ready with optional/deferred/mostly-passing smoke items outstanding.
+
+## PR review workflow (maintainer)
+
+When the user requests a PR review (including thermo-nuclear / deep maintainability review):
+
+- Remediate **every** finding, structural and polish; do not leave “nice to have” items open.
+- When **you are the parent maintainer session** orchestrating remediation (not a delegated child worker), prefer dispatching a remedial code/docs subagent; the parent coordinates review, commit, push, and re-review loops. Child workers should implement assigned fixes directly and must not inherit subagent-dispatch instructions from this section.
+- After remediations land, **repeat the review** on the updated branch until there are **no** remaining findings (including docs/PR-body drift and test-contract gaps).
+- Do not approve on passing unit tests alone. Thermo-nuclear review is maintainability-only and does **not** tell you to skip live smoke; repo smoke gates live here and in `docs/cursor-live-smoke-checklist.md`.
+
+## Pre-commit live smoke (maintainer)
+
+Before **every commit** that touches Cursor provider/runtime, prompt/session send policy, agents-context dedup, bridge, replay, or related extension wiring:
+
+- Run real `pi` against the local extension: `pi -e . --cursor-no-fast --model cursor/composer-2.5` with a fresh `--session-dir` under `/tmp` (see `docs/cursor-live-smoke-checklist.md`).
+- Prefer `npm run smoke:live` (`scripts/tmux-live-smoke.sh`) or the relevant checklist subset via tmux when TUI observation matters; use `npm run smoke:isolated` for full pre-release packaging + live preflight when appropriate.
+- If Cursor auth (`~/.pi/agent/auth.json` or `CURSOR_API_KEY`) is unavailable, **do not commit**—report blocked, not skipped-ready.
+- Unit tests (`npm test`, `npm run typecheck`) are necessary but not sufficient for these commits.
 
 ## Progress updates and handoff
 
