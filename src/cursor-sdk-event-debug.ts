@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { copyFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type { InteractionUpdate } from "@cursor/sdk";
@@ -97,6 +97,10 @@ function eventType(value: unknown): string {
 
 function resolveCursorSdkEventDebugStderrEnabled(env: Record<string, string | undefined> = process.env): boolean {
 	return parseEnvBoolean(env[CURSOR_SDK_EVENT_DEBUG_STDERR_ENV], false);
+}
+
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+	return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === code;
 }
 
 function snapshotCursorSdkEventDebugRecord(record: unknown): unknown {
@@ -420,6 +424,9 @@ export class CursorSdkEventDebugSink {
 		if (!sessionFile) {
 			return { copied: false, reason: "session file unknown" };
 		}
+		if (!existsSync(sessionFile)) {
+			return { copied: false, sessionFile, reason: "session file not found at debug finalization" };
+		}
 		try {
 			copyFileSync(sessionFile, join(this.artifactDir, ARTIFACTS.piSessionSnapshot));
 			if (this.sessionDir) {
@@ -428,6 +435,9 @@ export class CursorSdkEventDebugSink {
 			this.recordTimeline("piSession", "snapshot", { sessionFile, artifact: ARTIFACTS.piSessionSnapshot });
 			return { copied: true, sessionFile };
 		} catch (error) {
+			if (isNodeErrorWithCode(error, "ENOENT")) {
+				return { copied: false, sessionFile, reason: "session file not found at debug finalization" };
+			}
 			this.recordError("pi_session_snapshot", error);
 			return {
 				copied: false,

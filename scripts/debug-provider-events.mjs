@@ -2,7 +2,7 @@
 /**
  * Maintainer probe: run one prompt through pi's Cursor provider and capture raw SDK callbacks.
  */
-import { mkdirSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -20,6 +20,9 @@ const DEFAULT_MODEL = "cursor/composer-2.5";
 const DEFAULT_OUT_BASE = ".debug/cursor-sdk-events";
 const CHILD_SHUTDOWN_GRACE_MS = 2_000;
 const SDK_EVENT_DEBUG_LOG_PREFIX = "[pi-cursor-sdk:sdk-events]";
+const PI_SESSION_SNAPSHOT_ARTIFACT = "pi-session-snapshot.jsonl";
+const SESSION_PI_SESSION_SNAPSHOT = "pi-session.jsonl";
+const SUMMARY_ARTIFACT = "summary.json";
 
 function readSdkVersion() {
 	try {
@@ -233,7 +236,7 @@ async function terminateChild(child) {
 }
 
 function readCaptureSummary(artifactDir, stderr) {
-	const summaryPath = join(artifactDir, "summary.json");
+	const summaryPath = join(artifactDir, SUMMARY_ARTIFACT);
 	try {
 		return JSON.parse(readFileSync(summaryPath, "utf8"));
 	} catch {
@@ -249,6 +252,31 @@ function readCaptureSummary(artifactDir, stderr) {
 		}
 	}
 	return undefined;
+}
+
+export function backfillPiSessionSnapshot(captureSummary, artifactDir, sessionDir) {
+	const sessionFile = captureSummary?.piSessionSnapshot?.sessionFile ?? captureSummary?.sessionFile;
+	if (!captureSummary || captureSummary.piSessionSnapshot?.copied || !sessionFile || !existsSync(sessionFile)) {
+		return captureSummary;
+	}
+	try {
+		copyFileSync(sessionFile, join(artifactDir, PI_SESSION_SNAPSHOT_ARTIFACT));
+		if (sessionDir) {
+			copyFileSync(sessionFile, join(sessionDir, SESSION_PI_SESSION_SNAPSHOT));
+		}
+		const updated = {
+			...captureSummary,
+			piSessionSnapshot: {
+				copied: true,
+				sessionFile,
+				recoveredAfterChildExit: true,
+			},
+		};
+		writeFileSync(join(artifactDir, SUMMARY_ARTIFACT), `${JSON.stringify(updated, null, 2)}\n`);
+		return updated;
+	} catch {
+		return captureSummary;
+	}
 }
 
 export async function runDebugProviderEvents(args) {
@@ -331,7 +359,7 @@ export async function runDebugProviderEvents(args) {
 			fail(`pi exited ${exitCode}\nstderr=${scrubSensitiveText(stderr.slice(-2000), args.apiKey)}`, [args.apiKey]);
 		}
 
-		const captureSummary = readCaptureSummary(artifactDir, stderr);
+		const captureSummary = backfillPiSessionSnapshot(readCaptureSummary(artifactDir, stderr), artifactDir, sessionDir);
 		if (!captureSummary?.artifactDir) {
 			fail(`missing summary.json in ${artifactDir}`, [args.apiKey]);
 		}

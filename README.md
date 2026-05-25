@@ -319,11 +319,13 @@ Cursor SDK local agents load MCP servers from Cursor setting sources and inline 
 
 ### I do not see Cursor web search or web fetch in pi's tool UI
 
-pi shows **Cursor web search** / **Cursor web fetch** activity cards when the installed `@cursor/sdk` reports completed replayable tool data (SDK `mcp` completions whose `toolName` is `WebSearch` / `web_search` / `WebFetch` / similar, or host tool names that normalize to those). This is separate from SDK `semSearch`, which is semantic **codebase** search.
+pi shows **Cursor web search** / **Cursor web fetch** activity cards only when the installed `@cursor/sdk` reports completed replayable tool data. Supported sources are SDK `mcp` completions whose `toolName` is `WebSearch` / `web_search` / `WebFetch` / similar, host tool names that normalize to those labels, and local Cursor transcript `webSearchToolCall` / `webFetchToolCall` records available through `Agent.messages.list()` after the run. This is separate from SDK `semSearch`, which is semantic **codebase** search.
 
-Many runs never expose web activity as replayable SDK tool completions. The model may still answer from internal Cursor web tooling or only mention search in assistant text/thinking. In that case pi cannot render a tool card because there is no completed SDK tool-call payload to replay. Capture a run with `npm run debug:sdk-events` when investigating; if `on-delta.jsonl` has no `tool-call-completed` entries for web tools, the limitation is on the Cursor SDK surface, not pi replay registration.
+Known SDK boundary: some local Cursor web search activity is not emitted through live `onDelta`, `onStep`, or `run.stream()` tool events. When that happens, pi can only reconstruct a card from the local agent transcript after `run.wait()` finishes, so the **Cursor web search** card may appear after assistant text rather than as a live in-progress card. Buffering all assistant text until `run.wait()` would make the ordering prettier but would break normal streaming, so pi does not do that.
 
-**Web fetch:** the installed SDK conversation schema has no dedicated `webFetch` ToolType (unlike `mcp` or `semSearch`). Fetch activity is only visible when Cursor reports it through `mcp` or another replayable host tool name.
+Many runs never expose web activity as replayable SDK tool completions or local transcript web tool records. The model may still answer from internal Cursor web tooling or only mention search in assistant text/thinking. In that case pi cannot render a tool card because there is no completed SDK tool-call payload to replay. Capture a run with `npm run debug:provider-events` when investigating; if `on-delta.jsonl`, `on-step.jsonl`, `stream-events.jsonl`, `coordinator-events.jsonl`, and `display-decisions.jsonl` have no completed or transcript web tool data, the limitation is on the Cursor SDK surface, not pi replay registration.
+
+**Web fetch:** `pi-cursor-sdk` can display `webFetchToolCall` transcript records and web-fetch-shaped MCP/host completions when Cursor reports them. It cannot make Cursor expose or execute a `WebFetch` tool. If Cursor's current local SDK tool set does not include WebFetch, pi cannot fetch a URL through Cursor web fetch; use an allowed browser/shell/MCP tool instead.
 
 ### Cursor does not call my pi extension tool
 

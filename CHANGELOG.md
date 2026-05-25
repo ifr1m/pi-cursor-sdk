@@ -10,11 +10,13 @@
 
 ### Changed
 
+- Remove the 4096-message local Cursor transcript counting cap so web-tool transcript fallback can work in very long reused local Cursor sessions.
 - Route incomplete started-tool visibility through the same native replay disposition used by completed replay, so inactive, conflicting, non-native, and bridge-only contexts fall back to safe traces instead of invalid `cursor` tool-use turns.
 - Harden Cursor lifecycle and incomplete-tool labels to scrub commands, URLs, absolute paths, key/flag path values, and secrets before showing user-visible activity.
 
 ### Fixed
 
+- Treat missing pi session snapshots in Cursor SDK debug artifacts as optional skipped debug data instead of false `pi_session_snapshot` errors, and let `debug-provider-events` backfill the snapshot after pi exits when the session file appears later.
 - Label Cursor web search and web fetch activity clearly in TUI/replay output, including MCP-shaped web search/fetch calls and direct local Cursor transcript `WebSearch` calls that the SDK stream omits, without mislabeling semantic search.
 - Prevent Esc/user aborts during active local Cursor SDK runs from crashing pi with uncaught `ConnectError: [canceled] This operation was aborted` errors.
 - Prevent deferred lifecycle timers from leaking `Cursor …` progress into terminal error/final partials after `run.wait()` resolves or rejects.

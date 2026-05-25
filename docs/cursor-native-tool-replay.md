@@ -122,7 +122,7 @@ These behaviors are by design. They are not pi replay execution bugs:
 - **`write`:** native pi `write` cards only when recorded content/path args satisfy pi's schema; otherwise neutral **Cursor write** activity.
 - **Plan/todo tools:** `createPlan` and `updateTodos` replay is display-only and does not drive pi plan mode or pi todo state (see [What replay does not do](#what-replay-does-not-do)).
 - **`semSearch`:** semantic codebase search activity, not web search.
-- **Web search/fetch:** visible **Cursor web search** / **Cursor web fetch** activity when the SDK reports completed replayable tool data (SDK `mcp` with web `toolName` or host aliases above). These cards are display-only; pi does not expose executable web search/fetch tools through replay.
+- **Web search/fetch:** visible **Cursor web search** / **Cursor web fetch** activity when the SDK reports completed replayable tool data (SDK `mcp` with web `toolName`, host aliases above, or local transcript `webSearchToolCall` / `webFetchToolCall` records). These cards are display-only; pi does not expose executable web search/fetch tools through replay.
 - **Unknown/future SDK tools:** neutral Cursor activity cards titled with the SDK tool name (for example **Cursor futureSemSearchWidget**) and bounded scrubbed args/result/error text until an explicit spec is added.
 
 ## What replay does not do
@@ -139,7 +139,16 @@ Native replay is display-only:
 
 If a Cursor read completion reports no content, the extension may include a bounded local file preview for safe in-workspace paths. That preview is labeled as a local preview captured at transcript time, not guaranteed Cursor-observed content.
 
-Other unsupported Cursor SDK tools may still be described through a bounded scrubbed activity transcript when the SDK reports completed tool-call data. Started Cursor SDK tool calls that never receive a completion event are surfaced as neutral **Cursor … did not complete** activity cards or equivalent low-noise thinking traces with a bounded reason such as `missing completion`, `aborted`, or `SDK run failed`. They are not replayed as successful results and raw args/results/errors are not dumped. Explicit failures remain visible when Cursor reports an error through a completed tool call or step result. Some Cursor-internal workflow actions (including web search/fetch that never surfaces as replayable SDK tool completions) may only appear in Cursor's own thinking stream, assistant text, or not be reported as replayable SDK tool data at all.
+Other unsupported Cursor SDK tools may still be described through a bounded scrubbed activity transcript when the SDK reports completed tool-call data. Started Cursor SDK tool calls that never receive a completion event are surfaced as neutral **Cursor … did not complete** activity cards or equivalent low-noise thinking traces with a bounded reason such as `missing completion`, `aborted`, or `SDK run failed`. They are not replayed as successful results and raw args/results/errors are not dumped. Explicit failures remain visible when Cursor reports an error through a completed tool call or step result. Some Cursor-internal workflow actions (including web search/fetch that never surfaces as replayable SDK tool completions or local transcript web tool records) may only appear in Cursor's own thinking stream, assistant text, or not be reported as replayable SDK tool data at all.
+
+## SDK reporting limits
+
+These are integration boundaries, not pi replay bugs:
+
+- **Live web-search ordering:** local Cursor WebSearch can be absent from live `onDelta`, `onStep`, and `run.stream()` tool events. When the only evidence is a post-run local transcript `webSearchToolCall`, pi can display the **Cursor web search** card only after `run.wait()` finishes. The extension intentionally keeps assistant text streaming instead of buffering the whole answer just to reorder that card.
+- **WebFetch availability:** `pi-cursor-sdk` can display a Cursor web fetch only after the SDK reports a `webFetchToolCall`, web-fetch-shaped MCP completion, or web-fetch host alias. It cannot make the Cursor SDK expose or execute WebFetch in a run where Cursor's tool set does not include it.
+- **Future SDK tools:** Cursor's official SDK docs say tool names, args, and result payloads can change. Unknown completed tools therefore fall back to neutral Cursor activity cards with bounded, scrubbed text. The extension cannot render tools that the SDK never emits.
+- **Abort exceptions:** user aborts are guarded for the observed Cursor SDK ConnectRPC cancellation shape. A materially different future SDK process-level abort error must be added to the guard after it is observed; broad suppression would hide real crashes.
 
 Maintainer debug (`PI_CURSOR_SDK_EVENT_DEBUG=1`) still records the same discarded started-call events in `coordinator-events.jsonl` under phase `discarded-incomplete-started-tool-call` for investigation (**#52**). User-visible incomplete cards and debug artifacts are complementary: cards explain the gap in the TUI; debug files retain normalized tool names and scrubbed call-id hashes without changing default stderr behavior.
 

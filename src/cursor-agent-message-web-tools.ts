@@ -1,7 +1,6 @@
 import { Agent, type AgentMessage } from "@cursor/sdk";
 import { asRecord, getArray, getString, stringifyUnknown } from "./cursor-transcript-utils.js";
 
-const CURSOR_AGENT_MESSAGE_COUNT_SEARCH_LIMIT = 4096;
 const CURSOR_AGENT_MESSAGE_PAGE_LIMIT = 8;
 
 export interface CursorTranscriptCompletedToolCall {
@@ -26,13 +25,10 @@ async function hasCursorAgentMessageAt(agentId: string, cwd: string, offset: num
 	return messages.length > 0;
 }
 
-export async function countCursorAgentMessages(agentId: string, cwd: string): Promise<number | undefined> {
+export async function countCursorAgentMessages(agentId: string, cwd: string): Promise<number> {
 	let high = 1;
-	while (high < CURSOR_AGENT_MESSAGE_COUNT_SEARCH_LIMIT && (await hasCursorAgentMessageAt(agentId, cwd, high))) {
+	while (await hasCursorAgentMessageAt(agentId, cwd, high)) {
 		high *= 2;
-	}
-	if (high >= CURSOR_AGENT_MESSAGE_COUNT_SEARCH_LIMIT && (await hasCursorAgentMessageAt(agentId, cwd, high))) {
-		return undefined;
 	}
 
 	let low = 0;

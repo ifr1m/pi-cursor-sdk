@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -15,7 +15,7 @@ import {
 	serializeDiscardedIncompleteStartedToolCall,
 	__testUtils as sdkEventDebugTestUtils,
 } from "../src/cursor-sdk-event-debug.js";
-import { parseDebugProviderEventsArgs } from "../scripts/debug-provider-events.mjs";
+import { backfillPiSessionSnapshot, parseDebugProviderEventsArgs } from "../scripts/debug-provider-events.mjs";
 
 describe("cursor sdk event debug sink", () => {
 	it("is disabled by default", () => {
@@ -184,6 +184,40 @@ describe("cursor sdk event debug sink", () => {
 });
 
 describe("cursor sdk event debug session grouping", () => {
+	it("treats a missing pi session snapshot as optional debug data", async () => {
+		const baseDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-event-debug-missing-session-"));
+		const missingSessionFile = join(baseDir, "missing-session.jsonl");
+		const { __testUtils: scopeTestUtils } = await import("../src/cursor-session-scope.js");
+
+		sdkEventDebugTestUtils.resetSessionDebugState();
+		scopeTestUtils.set(baseDir, missingSessionFile);
+
+		try {
+			const sink = CursorSdkEventDebugSink.maybeCreate({
+				cwd: baseDir,
+				modelId: "composer-2.5",
+				provider: "cursor",
+				env: {
+					PI_CURSOR_SDK_EVENT_DEBUG: "1",
+					PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR: join(baseDir, "run"),
+				},
+			});
+			await sink?.finalize();
+
+			const summary = JSON.parse(readFileSync(join(sink!.artifactDir, sdkEventDebugTestUtils.ARTIFACTS.summary), "utf8"));
+			expect(summary.piSessionSnapshot).toMatchObject({
+				copied: false,
+				sessionFile: missingSessionFile,
+				reason: "session file not found at debug finalization",
+			});
+			expect(summary.counts.errors).toBe(0);
+		} finally {
+			sdkEventDebugTestUtils.resetSessionDebugState();
+			scopeTestUtils.reset();
+			rmSync(baseDir, { recursive: true, force: true });
+		}
+	});
+
 	it("groups multiple turns under one pi session directory", async () => {
 		const baseDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-event-debug-session-"));
 		const sessionFile = join(baseDir, "my-session.jsonl");
@@ -470,6 +504,71 @@ describe("discarded incomplete started tool calls", () => {
 });
 
 describe("debug-provider-events maintainer probe", () => {
+	it("backfills a missing pi session snapshot after pi exits", () => {
+		const baseDir = mkdtempSync(join(tmpdir(), "pi-cursor-debug-provider-backfill-"));
+		const artifactDir = join(baseDir, "artifacts");
+		const sessionDir = join(baseDir, "session");
+		const sessionFile = join(sessionDir, "session.jsonl");
+		try {
+			mkdirSync(artifactDir, { recursive: true });
+			mkdirSync(sessionDir, { recursive: true });
+			writeFileSync(sessionFile, '{"type":"session"}\n');
+			const summary = {
+				artifactDir,
+				sessionFile,
+				counts: { errors: 0 },
+				piSessionSnapshot: {
+					copied: false,
+					sessionFile,
+					reason: "session file not found at debug finalization",
+				},
+			};
+			writeFileSync(join(artifactDir, sdkEventDebugTestUtils.ARTIFACTS.summary), `${JSON.stringify(summary, null, 2)}\n`);
+
+			const updated = backfillPiSessionSnapshot(summary, artifactDir, sessionDir);
+
+			expect(updated.piSessionSnapshot).toMatchObject({
+				copied: true,
+				sessionFile,
+				recoveredAfterChildExit: true,
+			});
+			expect(readFileSync(join(artifactDir, sdkEventDebugTestUtils.ARTIFACTS.piSessionSnapshot), "utf8")).toContain(
+				'"type":"session"',
+			);
+			expect(readFileSync(join(sessionDir, "pi-session.jsonl"), "utf8")).toContain('"type":"session"');
+			expect(JSON.parse(readFileSync(join(artifactDir, sdkEventDebugTestUtils.ARTIFACTS.summary), "utf8"))).toMatchObject({
+				piSessionSnapshot: { copied: true, recoveredAfterChildExit: true },
+			});
+		} finally {
+			rmSync(baseDir, { recursive: true, force: true });
+		}
+	});
+
+	it("leaves missing pi session snapshots optional when the file never appears", () => {
+		const baseDir = mkdtempSync(join(tmpdir(), "pi-cursor-debug-provider-backfill-missing-"));
+		const artifactDir = join(baseDir, "artifacts");
+		const sessionDir = join(baseDir, "session");
+		const sessionFile = join(sessionDir, "missing.jsonl");
+		try {
+			const summary = {
+				artifactDir,
+				counts: { errors: 0 },
+				piSessionSnapshot: {
+					copied: false,
+					sessionFile,
+					reason: "session file not found at debug finalization",
+				},
+			};
+
+			const updated = backfillPiSessionSnapshot(summary, artifactDir, sessionDir);
+
+			expect(updated).toBe(summary);
+			expect(existsSync(join(artifactDir, sdkEventDebugTestUtils.ARTIFACTS.piSessionSnapshot))).toBe(false);
+		} finally {
+			rmSync(baseDir, { recursive: true, force: true });
+		}
+	});
+
 	it("parses args and prompt file overrides", () => {
 		expect(
 			parseDebugProviderEventsArgs(["--cwd", "/tmp/work", "--model", "cursor/composer-2.5", "--prompt", "hello"], {
