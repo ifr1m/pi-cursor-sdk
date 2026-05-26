@@ -7,6 +7,7 @@ function run(command: string, args: string[]) {
 
 describe("smoke tooling package checks", () => {
 	it("keeps smoke helper syntax and help paths working without live Cursor auth", () => {
+		expect(run("bash", ["-n", "scripts/lib/cursor-smoke-shell.sh"]).status).toBe(0);
 		expect(run("bash", ["-n", "scripts/tmux-live-smoke.sh"]).status).toBe(0);
 		expect(run("bash", ["-n", "scripts/isolated-cursor-smoke.sh"]).status).toBe(0);
 		expect(run(process.execPath, ["--check", "scripts/steering-rpc-smoke.mjs"]).status).toBe(0);
@@ -51,6 +52,12 @@ describe("smoke tooling package checks", () => {
 		expect(paths.has("scripts/validate-smoke-jsonl.mjs")).toBe(true);
 		expect(paths.has("scripts/debug-sdk-events.mjs")).toBe(true);
 		expect(paths.has("scripts/debug-provider-events.mjs")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-smoke-shell.sh")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-setting-sources.mjs")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-setting-sources.d.mts")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-sensitive-text.mjs")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-sensitive-text.d.mts")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-cli-args.mjs")).toBe(true);
 		expect(paths.has("CHANGELOG.md")).toBe(true);
 		expect(paths.has("README.md")).toBe(true);
 		expect([...paths].some((path) => path.startsWith("dist/") || path.startsWith("coverage/") || path.startsWith(".pi/") || path.includes("smoke-dir"))).toBe(false);

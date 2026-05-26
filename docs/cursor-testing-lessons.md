@@ -425,4 +425,5 @@ rg '"type": "toolCall"|Tool call \(Cursor|cursor-replay-' "$SMOKE_DIR/session"/*
 - `scripts/validate-smoke-jsonl.mjs`
 - `scripts/debug-sdk-events.mjs`
 - `scripts/debug-provider-events.mjs`
+- `scripts/lib/` — shared maintainer plumbing (CLI arg parsing, secret-aware `fail()`, `PI_CURSOR_SETTING_SOURCES` parsing, child-process shutdown, shell timeout/auth helpers). Provider runtime imports `cursor-setting-sources.mjs` and `cursor-sensitive-text.mjs` from here so scripts and product code stay aligned (`test/maintainer-scripts-lib.test.ts`).
 - `test/helpers/cursor-provider-harness.ts` — controllable native replay pi mock (`createNativeToolDisplayPiForTest`)

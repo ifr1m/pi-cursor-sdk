@@ -10,8 +10,8 @@ import { CURSOR_SDK_STARTUP_NOISE_PATTERNS as scriptNoisePatterns } from "../scr
 import {
 	CURSOR_SETTING_SOURCES_ENV,
 	resolveCursorSettingSources as resolveScriptSettingSources,
-	scrubSensitiveText as scrubScriptSensitiveText,
-} from "../scripts/lib/cursor-probe-utils.mjs";
+} from "../scripts/lib/cursor-setting-sources.mjs";
+import { scrubSensitiveText as scrubScriptSensitiveText } from "../scripts/lib/cursor-sensitive-text.mjs";
 import {
 	buildSummary,
 	createEventJsonlSink,
@@ -186,10 +186,15 @@ describe("debug-sdk-events maintainer probe", () => {
 			mkdirSync(join(packageRoot, "src"), { recursive: true });
 			cpSync("package.json", join(packageRoot, "package.json"));
 			cpSync(scriptPath, join(packageRoot, scriptPath));
-			cpSync("scripts/lib/cursor-probe-utils.mjs", join(packageRoot, "scripts/lib/cursor-probe-utils.mjs"));
-			cpSync("scripts/lib/cursor-sdk-output-filter.mjs", join(packageRoot, "scripts/lib/cursor-sdk-output-filter.mjs"));
-			cpSync("src/cursor-setting-sources.ts", join(packageRoot, "src/cursor-setting-sources.ts"));
-			cpSync("src/cursor-sensitive-text.ts", join(packageRoot, "src/cursor-sensitive-text.ts"));
+			for (const libFile of [
+				"cursor-setting-sources.mjs",
+				"cursor-sensitive-text.mjs",
+				"cursor-cli-args.mjs",
+				"cursor-script-fail.mjs",
+				"cursor-sdk-output-filter.mjs",
+			]) {
+				cpSync(`scripts/lib/${libFile}`, join(packageRoot, "scripts/lib", libFile));
+			}
 
 			const result = spawnSync(process.execPath, [scriptPath, "--help"], { cwd: packageRoot, encoding: "utf8" });
 			expect(result.status).toBe(0);

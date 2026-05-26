@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
 import { Cursor } from "@cursor/sdk";
+import { defaultApiKeyFromEnv, parseArgv } from "./lib/cursor-cli-args.mjs";
+import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
+import { createScriptFail } from "./lib/cursor-script-fail.mjs";
 
 const FALLBACK_MODELS_PATH = "src/cursor-fallback-models.generated.ts";
 const CONTEXT_WINDOWS_PATH = "src/bundled-context-windows.ts";
@@ -38,70 +40,32 @@ Notes:
     requires successful local SDK runs; this script does not start agents.`);
 }
 
-function fail(message) {
-	console.error(`refresh-cursor-snapshots: ${message}`);
-	process.exit(1);
-}
+const fail = createScriptFail("refresh-cursor-snapshots");
 
-function scrubSensitiveText(text, secrets = []) {
-	let scrubbed = text;
-	for (const secret of secrets) {
-		if (secret) scrubbed = scrubbed.split(secret).join("[REDACTED]");
+function parseRefreshArgs(argv) {
+	if (argv.includes("-h") || argv.includes("--help")) {
+		printHelp();
+		process.exit(0);
 	}
-	return scrubbed
-		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-		.replace(/(api[_-]?key|authorization|auth[_-]?token)([\"'\s:=]+)[^\"'\s,}]+/gi, "$1$2[REDACTED]");
-}
-
-function parseArgs(argv) {
-	const args = {
-		write: false,
-		apiKey: process.env.CURSOR_API_KEY?.trim() || undefined,
-		contextWindowsPath: undefined,
-		fallbackContextWindow: DEFAULT_CONTEXT_WINDOW,
-	};
-	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index];
-		if (arg === "-h" || arg === "--help") {
-			printHelp();
-			process.exit(0);
-		}
-		if (arg === "--write") {
-			args.write = true;
-			continue;
-		}
-		if (arg === "--api-key") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--api-key requires a value");
-			args.apiKey = value.trim();
-			continue;
-		}
-		if (arg.startsWith("--api-key=")) {
-			args.apiKey = arg.slice("--api-key=".length).trim();
-			continue;
-		}
-		if (arg === "--context-windows") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--context-windows requires a file path");
-			args.contextWindowsPath = value;
-			continue;
-		}
-		if (arg.startsWith("--context-windows=")) {
-			args.contextWindowsPath = arg.slice("--context-windows=".length);
-			continue;
-		}
-		if (arg === "--fallback-context-window") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--fallback-context-window requires a positive integer");
-			args.fallbackContextWindow = parsePositiveInteger(value, "--fallback-context-window");
-			continue;
-		}
-		if (arg.startsWith("--fallback-context-window=")) {
-			args.fallbackContextWindow = parsePositiveInteger(arg.slice("--fallback-context-window=".length), "--fallback-context-window");
-			continue;
-		}
-		fail(`unknown argument ${arg}`);
-	}
+	const write = argv.includes("--write");
+	const filteredArgv = argv.filter((arg) => arg !== "--write");
+	const args = parseArgv(filteredArgv, {
+		defaults: {
+			write,
+			apiKey: defaultApiKeyFromEnv(),
+			contextWindowsPath: undefined,
+			fallbackContextWindow: DEFAULT_CONTEXT_WINDOW,
+		},
+		flags: {
+			apiKey: { names: ["--api-key"], assign: (value) => value.trim() },
+			contextWindowsPath: { names: ["--context-windows"] },
+			fallbackContextWindow: {
+				names: ["--fallback-context-window"],
+				assign: (value) => parsePositiveInteger(value, "--fallback-context-window"),
+			},
+		},
+		fail,
+	});
 	if (!args.apiKey) fail("missing Cursor API key; set CURSOR_API_KEY or pass --api-key");
 	return args;
 }
@@ -200,13 +164,13 @@ function formatContextWindows(models, checkpointWindows, fallbackContextWindow) 
 	return `// Generated from Cursor SDK checkpoint tokenDetails.maxTokens on ${date}.\n// Refresh with: npm run refresh:cursor-snapshots -- --write --context-windows ~/.pi/agent/cursor-sdk-context-windows.json\n// These are default/non-Max-mode SDK context windows for Cursor models that do not\n// expose a catalog \`context\` parameter. Do not replace them with Max Mode values\n// unless the Cursor SDK exposes an exact Max Mode model selection and the extension\n// uses that selection for matching pi model IDs.\nexport const BUNDLED_CONTEXT_WINDOWS = {\n${lines.join("\n")}\n} as const satisfies Record<string, number>;\n`;
 }
 
-const args = parseArgs(process.argv.slice(2));
+const args = parseRefreshArgs(process.argv.slice(2));
 let rawModels;
 try {
 	rawModels = await Cursor.models.list({ apiKey: args.apiKey });
 } catch (error) {
 	const rawMessage = error instanceof Error ? error.message : String(error);
-	fail(`Cursor.models.list() failed: ${scrubSensitiveText(rawMessage, [args.apiKey])}`);
+	fail(`Cursor.models.list() failed: ${scrubSensitiveText(rawMessage, args.apiKey)}`);
 }
 if (!Array.isArray(rawModels) || rawModels.length === 0) fail("Cursor.models.list() returned no models");
 

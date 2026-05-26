@@ -5,12 +5,16 @@
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import {
-	CURSOR_SETTING_SOURCES_ENV,
-	resolveCursorSettingSources,
-	scrubSensitiveText,
-} from "./lib/cursor-probe-utils.mjs";
+	commonProbeFlags,
+	defaultApiKeyFromEnv,
+	defaultSettingSourcesFromEnv,
+	defaultTimestampedDir,
+	parseArgv,
+	requireApiKey,
+} from "./lib/cursor-cli-args.mjs";
+import { createScriptFail } from "./lib/cursor-script-fail.mjs";
 import { installCursorSdkOutputFilter, suppressCursorSdkOutput } from "./lib/cursor-sdk-output-filter.mjs";
 
 const require = createRequire(import.meta.url);
@@ -78,101 +82,36 @@ Safety:
     https://cursor.com/docs/sdk/typescript before drawing integration conclusions.`);
 }
 
-function fail(message, secrets = []) {
-	const scrubbed = scrubSensitiveText(message, secrets[0]);
-	console.error(`debug-sdk-events: ${scrubbed}`);
-	process.exit(1);
-}
+const fail = createScriptFail("debug-sdk-events");
 
 export function parseDebugSdkEventsArgs(argv, env = process.env) {
-	const args = {
-		cwd: process.cwd(),
-		model: DEFAULT_MODEL,
-		prompt: undefined,
-		out: undefined,
-		settingSources: resolveCursorSettingSources(env[CURSOR_SETTING_SOURCES_ENV]),
-		includeConversation: false,
-		apiKey: env.CURSOR_API_KEY?.trim() || undefined,
-		help: false,
-	};
-	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index];
-		if (arg === "-h" || arg === "--help") {
-			args.help = true;
-			continue;
-		}
-		if (arg === "--include-conversation") {
-			args.includeConversation = true;
-			continue;
-		}
-		if (arg === "--cwd") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--cwd requires a path");
-			args.cwd = resolve(value);
-			continue;
-		}
-		if (arg.startsWith("--cwd=")) {
-			args.cwd = resolve(arg.slice("--cwd=".length));
-			continue;
-		}
-		if (arg === "--model") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--model requires a value");
-			args.model = value.trim();
-			continue;
-		}
-		if (arg.startsWith("--model=")) {
-			args.model = arg.slice("--model=".length).trim();
-			continue;
-		}
-		if (arg === "--prompt") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--prompt requires a value");
-			args.prompt = value;
-			continue;
-		}
-		if (arg.startsWith("--prompt=")) {
-			args.prompt = arg.slice("--prompt=".length);
-			continue;
-		}
-		if (arg === "--out") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--out requires a directory path");
-			args.out = resolve(value);
-			continue;
-		}
-		if (arg.startsWith("--out=")) {
-			args.out = resolve(arg.slice("--out=".length));
-			continue;
-		}
-		if (arg === "--setting-sources") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--setting-sources requires a value");
-			args.settingSources = resolveCursorSettingSources(value);
-			continue;
-		}
-		if (arg.startsWith("--setting-sources=")) {
-			args.settingSources = resolveCursorSettingSources(arg.slice("--setting-sources=".length));
-			continue;
-		}
-		if (arg === "--api-key") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--api-key requires a value");
-			args.apiKey = value.trim();
-			continue;
-		}
-		if (arg.startsWith("--api-key=")) {
-			args.apiKey = arg.slice("--api-key=".length).trim();
-			continue;
-		}
-		fail(`unknown argument: ${arg}`);
-	}
+	const includeConversation = argv.includes("--include-conversation");
+	const filteredArgv = argv.filter((arg) => arg !== "--include-conversation");
+	const args = parseArgv(filteredArgv, {
+		defaults: {
+			cwd: process.cwd(),
+			model: DEFAULT_MODEL,
+			prompt: undefined,
+			out: undefined,
+			settingSources: defaultSettingSourcesFromEnv(env),
+			includeConversation,
+			apiKey: defaultApiKeyFromEnv(env),
+		},
+		flags: {
+			cwd: commonProbeFlags.cwd,
+			model: commonProbeFlags.model,
+			prompt: commonProbeFlags.prompt,
+			out: commonProbeFlags.out,
+			apiKey: commonProbeFlags.apiKey,
+			settingSources: commonProbeFlags.settingSources,
+		},
+		fail,
+	});
 	return args;
 }
 
 function defaultOutDir() {
-	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-	return join("/tmp", `pi-cursor-sdk-sdk-events-${stamp}`);
+	return defaultTimestampedDir("pi-cursor-sdk-sdk-events");
 }
 
 function eventType(value) {
@@ -399,9 +338,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
 	if (!args.prompt?.trim()) {
 		fail("--prompt is required");
 	}
-	if (!args.apiKey) {
-		fail("Cursor API key is required. Set CURSOR_API_KEY or pass --api-key.");
-	}
+	args.apiKey = requireApiKey(args, env, fail);
 	await captureEvents(args);
 }
 

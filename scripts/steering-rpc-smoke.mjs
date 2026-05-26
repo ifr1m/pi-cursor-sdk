@@ -6,9 +6,10 @@ import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseJsonLines, terminateChild, waitForChildClose } from "./lib/cursor-child-process.mjs";
+import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const CHILD_SHUTDOWN_GRACE_MS = 2_000;
 
 function printHelp() {
 	console.log(`RPC steering smoke for pi-cursor-sdk live runs.
@@ -35,19 +36,6 @@ Notes:
 
 function fail(message) {
 	throw new Error(message);
-}
-
-function parseEvents(stdout) {
-	const events = [];
-	for (const line of stdout.split("\n")) {
-		if (!line.trim()) continue;
-		try {
-			events.push(JSON.parse(line));
-		} catch {
-			// ignore partial lines
-		}
-	}
-	return events;
 }
 
 function assistantText(events) {
@@ -79,7 +67,7 @@ function waitFor(getStdout, predicate, timeoutMs = 300_000) {
 	const start = Date.now();
 	return new Promise((resolve, reject) => {
 		const tick = () => {
-			const events = parseEvents(getStdout());
+			const events = parseJsonLines(getStdout());
 			if (predicate(events)) {
 				resolve(events);
 				return;
@@ -96,42 +84,6 @@ function waitFor(getStdout, predicate, timeoutMs = 300_000) {
 		};
 		tick();
 	});
-}
-
-function waitForChildClose(child) {
-	if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode ?? 1);
-	return new Promise((resolve) => {
-		child.once("close", (code) => resolve(code ?? 1));
-	});
-}
-
-function signalChild(child, signal) {
-	if (!child.pid) return;
-	try {
-		if (process.platform === "win32") {
-			child.kill(signal);
-		} else {
-			process.kill(-child.pid, signal);
-		}
-	} catch {
-		try {
-			child.kill(signal);
-		} catch {
-			// child already exited
-		}
-	}
-}
-
-async function terminateChild(child) {
-	child.stdin.destroy();
-	if (child.exitCode !== null || child.signalCode !== null) return;
-	signalChild(child, "SIGTERM");
-	const killTimer = setTimeout(() => signalChild(child, "SIGKILL"), CHILD_SHUTDOWN_GRACE_MS);
-	try {
-		await waitForChildClose(child);
-	} finally {
-		clearTimeout(killTimer);
-	}
 }
 
 async function runPiRpcSmoke(sessionDir) {
@@ -191,7 +143,7 @@ async function runPiRpcSmoke(sessionDir) {
 			fail("AgentBusyError detected in smoke output");
 		}
 
-		const text = assistantText(parseEvents(stdout));
+		const text = assistantText(parseJsonLines(stdout));
 		if (!text.includes("STEER_OK=yes")) {
 			fail(`missing STEER_OK=yes in assistant output: ${text.slice(0, 500)}`);
 		}
@@ -203,7 +155,7 @@ async function runPiRpcSmoke(sessionDir) {
 		const exitCode = await waitForChildClose(child);
 		closed = true;
 		if (exitCode !== 0) {
-			fail(`pi exited ${exitCode}\nstderr=${stderr.slice(-2000)}`);
+			fail(`pi exited ${exitCode}\nstderr=${scrubSensitiveText(stderr.slice(-2000), process.env.CURSOR_API_KEY)}`);
 		}
 
 		return {
