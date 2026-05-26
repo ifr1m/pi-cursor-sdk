@@ -214,6 +214,26 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 		expect(pi.setActiveTools).not.toHaveBeenCalled();
 	});
 
+	it("exposes native replay-registered edit and write when opt-in builtins are enabled", () => {
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("edit");
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("write");
+		try {
+			const tools = [
+				createBuiltinToolInfo("edit", "Edit files"),
+				createBuiltinToolInfo("write", "Write files"),
+				createToolInfo("sem_reindex", "Reindex semantic cache"),
+			];
+			const pi = createMockPi({
+				active: tools.map((tool) => tool.name),
+				tools,
+			});
+			const snapshot = buildCursorPiToolBridgeSnapshot(pi, { exposeOverlappingBuiltins: true });
+			expect(snapshot.tools.map((tool) => tool.piToolName)).toEqual(["edit", "write", "sem_reindex"]);
+		} finally {
+			nativeToolDisplayTestUtils.reset();
+		}
+	});
+
 	it("uses stable collision-safe MCP names", () => {
 		const pi = createMockPi({
 			active: ["tool one", "tool_one"],

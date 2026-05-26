@@ -16,6 +16,8 @@ describe("formatCursorToolTranscript", () => {
 		expect(isExcludedFromCursorBridgeExposure("cursor_web_search")).toBe(true);
 		expect(isExcludedFromCursorBridgeExposure("cursor_web_fetch")).toBe(true);
 		expect(isExcludedFromCursorBridgeExposure("bash")).toBe(false);
+		expect(isExcludedFromCursorBridgeExposure("edit")).toBe(false);
+		expect(isExcludedFromCursorBridgeExposure("write")).toBe(false);
 	});
 
 	it("formats Cursor read results as a pi-like read transcript", () => {

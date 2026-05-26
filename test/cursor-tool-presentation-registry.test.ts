@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildCursorPiToolDisplayFromSpec,
+	CURSOR_TOOL_DISPLAY_SPEC_KEYS,
 	type ToolDisplayContext,
 } from "../src/cursor-transcript-tool-specs.js";
 import {
@@ -11,7 +12,9 @@ import {
 	CURSOR_TOOL_PRESENTATION_SPECS,
 	classifyCursorWebToolKind,
 	getCursorReplayActivityTitle,
+	getCursorReplaySideEffectDescription,
 	getCursorReplaySummaryKind,
+	getCursorReplayWrapperLabel,
 	getCursorToolLifecycleLabelKind,
 	getCursorToolPresentationSpec,
 	getCursorToolVisibilityPolicy,
@@ -23,35 +26,16 @@ import {
 import { classifyCursorToolVisibility } from "../src/cursor-tool-visibility.js";
 import { normalizeToolName } from "../src/cursor-transcript-utils.js";
 
-const TRANSCRIPT_SPEC_KEYS = [
-	"read",
-	"shell",
-	"grep",
-	"glob",
-	"ls",
-	"edit",
-	"write",
-	"delete",
-	"readLints",
-	"updateTodos",
-	"createPlan",
-	"task",
-	"generateImage",
-	"mcp",
-	"semSearch",
-	"recordScreen",
-	"webSearch",
-	"webFetch",
-] as const satisfies readonly CursorNormalizedToolName[];
-
 describe("cursor tool presentation registry", () => {
 	it("lists every known normalized tool exactly once", () => {
 		expect(CURSOR_KNOWN_NORMALIZED_TOOL_NAMES).toHaveLength(CURSOR_TOOL_PRESENTATION_SPECS.length);
 		expect(new Set(CURSOR_KNOWN_NORMALIZED_TOOL_NAMES).size).toBe(CURSOR_TOOL_PRESENTATION_SPECS.length);
 	});
 
-	it("covers transcript display spec keys", () => {
-		for (const key of TRANSCRIPT_SPEC_KEYS) {
+	it("matches transcript display spec keys exactly to registry entries", () => {
+		expect(new Set(CURSOR_TOOL_DISPLAY_SPEC_KEYS)).toEqual(new Set(CURSOR_KNOWN_NORMALIZED_TOOL_NAMES));
+		expect(CURSOR_TOOL_DISPLAY_SPEC_KEYS).toHaveLength(CURSOR_KNOWN_NORMALIZED_TOOL_NAMES.length);
+		for (const key of CURSOR_TOOL_DISPLAY_SPEC_KEYS) {
 			expect(getCursorToolPresentationSpec(key)?.normalizedName).toBe(key);
 		}
 	});
@@ -69,6 +53,8 @@ describe("cursor tool presentation registry", () => {
 		}
 		expect(isExcludedFromCursorBridgeExposure(CURSOR_REPLAY_ACTIVITY_TOOL_NAME)).toBe(true);
 		expect(isExcludedFromCursorBridgeExposure("read")).toBe(false);
+		expect(isExcludedFromCursorBridgeExposure("edit")).toBe(false);
+		expect(isExcludedFromCursorBridgeExposure("write")).toBe(false);
 	});
 
 	it("derives replay activity label keys from normalized names", () => {
@@ -109,6 +95,16 @@ describe("cursor tool presentation registry", () => {
 		}
 	});
 
+	it("derives replay wrapper labels and side-effect policy from the registry", () => {
+		expect(getCursorReplayWrapperLabel("cursor_edit")).toBe("edit");
+		expect(getCursorReplayWrapperLabel("cursor_write")).toBe("write");
+		expect(getCursorReplayWrapperLabel("cursor_mcp")).toBe("Cursor MCP");
+		expect(getCursorReplaySideEffectDescription("cursor_edit")).toBe("file mutations");
+		expect(getCursorReplaySideEffectDescription("cursor_write")).toBe("file mutations");
+		expect(getCursorReplaySideEffectDescription(CURSOR_REPLAY_ACTIVITY_TOOL_NAME)).toBe("file mutations");
+		expect(getCursorReplaySideEffectDescription("cursor_mcp")).toBe("real tool work");
+	});
+
 	it("assigns replay summary kinds for every legacy replay tool", () => {
 		for (const legacyName of CURSOR_REPLAY_LEGACY_TOOL_NAMES) {
 			expect(getCursorReplaySummaryKind(legacyName as CursorReplayLegacyToolName)).toBeDefined();
@@ -124,7 +120,7 @@ describe("cursor tool presentation registry", () => {
 			result: { status: "success", value: { content: "ok" }, error: undefined },
 			options: {},
 		};
-		for (const key of TRANSCRIPT_SPEC_KEYS) {
+		for (const key of CURSOR_TOOL_DISPLAY_SPEC_KEYS) {
 			expect(() =>
 				buildCursorPiToolDisplayFromSpec({
 					...context,

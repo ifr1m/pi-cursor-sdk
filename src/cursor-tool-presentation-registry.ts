@@ -8,42 +8,7 @@ export const CURSOR_REPLAY_ACTIVITY_TOOL_NAME = "cursor" as const;
 
 export type CursorWebToolKind = "webSearch" | "webFetch";
 
-export type CursorNormalizedToolName =
-	| "read"
-	| "grep"
-	| "glob"
-	| "ls"
-	| "shell"
-	| "edit"
-	| "write"
-	| "delete"
-	| "readLints"
-	| "updateTodos"
-	| "createPlan"
-	| "task"
-	| "generateImage"
-	| "mcp"
-	| "semSearch"
-	| "recordScreen"
-	| "webSearch"
-	| "webFetch";
-
-export type CursorReplayLegacyToolName =
-	| "cursor_edit"
-	| "cursor_write"
-	| "cursor_read_lints"
-	| "cursor_delete"
-	| "cursor_update_todos"
-	| "cursor_task"
-	| "cursor_create_plan"
-	| "cursor_generate_image"
-	| "cursor_mcp"
-	| "cursor_sem_search"
-	| "cursor_record_screen"
-	| "cursor_web_search"
-	| "cursor_web_fetch";
-
-export type CursorReplayToolName = typeof CURSOR_REPLAY_ACTIVITY_TOOL_NAME | CursorReplayLegacyToolName;
+export type CursorReplaySideEffectCategory = "file_mutations" | "real_tool_work";
 
 export type CursorToolLifecycleLabelKind =
 	| "task"
@@ -78,20 +43,23 @@ export interface CursorToolVisibilityPolicy {
 }
 
 export interface CursorToolPresentationSpec {
-	normalizedName: CursorNormalizedToolName;
+	normalizedName: string;
 	/** Raw SDK/host names that resolve to this tool via {@link normalizeCursorToolName}. */
 	nameAliases?: readonly string[];
-	replayLegacyName?: CursorReplayLegacyToolName;
+	replayLegacyName?: string;
 	replaySourceName?: string;
 	promptLabel: string;
 	displayLabel: string;
 	visibility: CursorToolVisibilityPolicy;
-	bridgeExcluded: boolean;
 	webKind?: CursorWebToolKind;
 	/** Regexes matched against lowercased trimmed tool names for {@link classifyCursorWebToolKind}. */
 	webNamePatterns?: readonly RegExp[];
 	lifecycleLabelKind?: CursorToolLifecycleLabelKind;
 	replaySummaryKind?: CursorReplaySummaryKind;
+	/** Short label for replay-only tool definitions (for example `edit` for `cursor_edit`). */
+	replayWrapperLabel?: string;
+	/** Whether replay-only wrappers describe file mutations or other recorded tool work. */
+	replaySideEffectCategory?: CursorReplaySideEffectCategory;
 }
 
 const WEB_SEARCH_NAME_PATTERN =
@@ -106,7 +74,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "read",
 		displayLabel: "read",
 		visibility: { incompleteTitle: "Cursor read", fastLocalDiscovery: true },
-		bridgeExcluded: false,
 	},
 	{
 		normalizedName: "grep",
@@ -114,7 +81,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "grep",
 		displayLabel: "grep",
 		visibility: { incompleteTitle: "Cursor grep", fastLocalDiscovery: true },
-		bridgeExcluded: false,
 	},
 	{
 		normalizedName: "glob",
@@ -122,7 +88,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "glob",
 		displayLabel: "glob",
 		visibility: { incompleteTitle: "Cursor find", fastLocalDiscovery: true },
-		bridgeExcluded: false,
 	},
 	{
 		normalizedName: "ls",
@@ -130,7 +95,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "ls",
 		displayLabel: "ls",
 		visibility: { incompleteTitle: "Cursor ls", fastLocalDiscovery: true },
-		bridgeExcluded: false,
 	},
 	{
 		normalizedName: "shell",
@@ -142,7 +106,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 			lifecycleTitle: "Cursor shell",
 			lifecycleEligible: true,
 		},
-		bridgeExcluded: false,
 		lifecycleLabelKind: "shell",
 	},
 	{
@@ -163,7 +126,8 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor edit",
 		displayLabel: "Cursor edit",
 		visibility: {},
-		bridgeExcluded: true,
+		replayWrapperLabel: "edit",
+		replaySideEffectCategory: "file_mutations",
 		replaySummaryKind: "path",
 	},
 	{
@@ -174,7 +138,8 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor write",
 		displayLabel: "Cursor write",
 		visibility: {},
-		bridgeExcluded: true,
+		replayWrapperLabel: "write",
+		replaySideEffectCategory: "file_mutations",
 		replaySummaryKind: "path",
 	},
 	{
@@ -184,7 +149,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor delete",
 		displayLabel: "Cursor delete",
 		visibility: {},
-		bridgeExcluded: true,
 		replaySummaryKind: "path",
 	},
 	{
@@ -194,7 +158,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor diagnostics",
 		displayLabel: "Cursor diagnostics",
 		visibility: {},
-		bridgeExcluded: true,
 		replaySummaryKind: "read_lints",
 	},
 	{
@@ -204,7 +167,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor todos",
 		displayLabel: "Cursor todos",
 		visibility: { lifecycleEligible: true },
-		bridgeExcluded: true,
 		lifecycleLabelKind: "updateTodos",
 		replaySummaryKind: "todo_count",
 	},
@@ -215,7 +177,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor plan",
 		displayLabel: "Cursor plan",
 		visibility: { lifecycleEligible: true },
-		bridgeExcluded: true,
 		lifecycleLabelKind: "createPlan",
 		replaySummaryKind: "todo_count",
 	},
@@ -226,7 +187,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor task",
 		displayLabel: "Cursor task",
 		visibility: { lifecycleEligible: true },
-		bridgeExcluded: true,
 		lifecycleLabelKind: "task",
 		replaySummaryKind: "description",
 	},
@@ -237,7 +197,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor image generation",
 		displayLabel: "Cursor image generation",
 		visibility: { lifecycleEligible: true },
-		bridgeExcluded: true,
 		lifecycleLabelKind: "generateImage",
 		replaySummaryKind: "generate_image",
 	},
@@ -248,7 +207,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor MCP",
 		displayLabel: "Cursor MCP",
 		visibility: { lifecycleEligible: true },
-		bridgeExcluded: true,
 		lifecycleLabelKind: "mcp",
 		replaySummaryKind: "mcp_tool_name",
 	},
@@ -259,7 +217,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor semantic search",
 		displayLabel: "Cursor semantic search",
 		visibility: { lifecycleEligible: true },
-		bridgeExcluded: true,
 		lifecycleLabelKind: "semSearch",
 		replaySummaryKind: "sem_search",
 	},
@@ -270,7 +227,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor screen recording",
 		displayLabel: "Cursor screen recording",
 		visibility: { lifecycleEligible: true },
-		bridgeExcluded: true,
 		lifecycleLabelKind: "recordScreen",
 		replaySummaryKind: "record_screen",
 	},
@@ -282,7 +238,6 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor web search",
 		displayLabel: "Cursor web search",
 		visibility: { lifecycleEligible: true },
-		bridgeExcluded: true,
 		webKind: "webSearch",
 		webNamePatterns: [WEB_SEARCH_NAME_PATTERN],
 		lifecycleLabelKind: "webSearch",
@@ -296,13 +251,27 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor web fetch",
 		displayLabel: "Cursor web fetch",
 		visibility: { lifecycleEligible: true },
-		bridgeExcluded: true,
 		webKind: "webFetch",
 		webNamePatterns: [WEB_FETCH_NAME_PATTERN],
 		lifecycleLabelKind: "webFetch",
 		replaySummaryKind: "web_url",
 	},
-] satisfies readonly CursorToolPresentationSpec[];
+] as const satisfies readonly CursorToolPresentationSpec[];
+
+type CursorToolPresentationSpecEntry = (typeof CURSOR_TOOL_PRESENTATION_SPECS)[number];
+
+export type CursorNormalizedToolName = CursorToolPresentationSpecEntry["normalizedName"];
+
+export type CursorReplayLegacyToolName = Extract<
+	CursorToolPresentationSpecEntry,
+	{ readonly replayLegacyName: string }
+>["replayLegacyName"];
+
+export type CursorReplayToolName = typeof CURSOR_REPLAY_ACTIVITY_TOOL_NAME | CursorReplayLegacyToolName;
+
+const CURSOR_REPLAY_ACTIVITY_SIDE_EFFECT_CATEGORY: CursorReplaySideEffectCategory = "file_mutations";
+
+const presentationSpecs: readonly CursorToolPresentationSpec[] = CURSOR_TOOL_PRESENTATION_SPECS;
 
 function hasReplayLegacyName(
 	spec: CursorToolPresentationSpec,
@@ -310,61 +279,53 @@ function hasReplayLegacyName(
 	return spec.replayLegacyName !== undefined;
 }
 
-/** Stable registration order for native replay tool wrappers. */
-const CURSOR_REPLAY_LEGACY_TOOL_NAME_ORDER = [
-	"cursor_edit",
-	"cursor_write",
-	"cursor_read_lints",
-	"cursor_delete",
-	"cursor_update_todos",
-	"cursor_task",
-	"cursor_create_plan",
-	"cursor_generate_image",
-	"cursor_mcp",
-	"cursor_sem_search",
-	"cursor_record_screen",
-	"cursor_web_search",
-	"cursor_web_fetch",
-] as const satisfies readonly CursorReplayLegacyToolName[];
+/** Stable registration order for native replay tool wrappers (registry declaration order). */
+export const CURSOR_REPLAY_LEGACY_TOOL_NAMES: readonly CursorReplayLegacyToolName[] = presentationSpecs.flatMap((spec) =>
+	spec.replayLegacyName ? [spec.replayLegacyName as CursorReplayLegacyToolName] : [],
+);
 
-export const CURSOR_REPLAY_LEGACY_TOOL_NAMES: readonly CursorReplayLegacyToolName[] =
-	CURSOR_REPLAY_LEGACY_TOOL_NAME_ORDER;
+const CURSOR_REPLAY_ACTIVITY_LABEL_ENTRIES = presentationSpecs.flatMap((spec) =>
+	spec.replayLegacyName
+		? [[spec.normalizedName as CursorNormalizedToolName, spec.replayLegacyName as CursorReplayLegacyToolName] as const]
+		: [],
+);
 
 export const CURSOR_REPLAY_ACTIVITY_LABEL_KEYS_BY_TOOL_NAME = Object.fromEntries(
-	CURSOR_TOOL_PRESENTATION_SPECS.filter(hasReplayLegacyName).map((spec) => [spec.normalizedName, spec.replayLegacyName]),
-) as Record<CursorNormalizedToolName & string, CursorReplayLegacyToolName>;
+	CURSOR_REPLAY_ACTIVITY_LABEL_ENTRIES,
+) as Record<
+	(typeof CURSOR_REPLAY_ACTIVITY_LABEL_ENTRIES)[number][0],
+	(typeof CURSOR_REPLAY_ACTIVITY_LABEL_ENTRIES)[number][1]
+>;
 
-export type CursorReplayActivityToolName = keyof typeof CURSOR_REPLAY_ACTIVITY_LABEL_KEYS_BY_TOOL_NAME;
+export type CursorReplayActivityToolName = (typeof CURSOR_REPLAY_ACTIVITY_LABEL_ENTRIES)[number][0];
 
 const SPECS_BY_NORMALIZED_NAME = new Map<string, CursorToolPresentationSpec>(
-	CURSOR_TOOL_PRESENTATION_SPECS.map((spec) => [spec.normalizedName, spec]),
+	presentationSpecs.map((spec) => [spec.normalizedName, spec]),
 );
 
 const SPECS_BY_NORMALIZED_KEY = new Map<string, CursorToolPresentationSpec>(
-	CURSOR_TOOL_PRESENTATION_SPECS.map((spec) => [spec.normalizedName.toLowerCase(), spec]),
+	presentationSpecs.map((spec) => [spec.normalizedName.toLowerCase(), spec]),
 );
 
 const SPECS_BY_REPLAY_LEGACY_NAME = new Map<string, CursorToolPresentationSpec>(
-	CURSOR_TOOL_PRESENTATION_SPECS.flatMap((spec) =>
-		spec.replayLegacyName ? [[spec.replayLegacyName, spec] as const] : [],
-	),
+	presentationSpecs.flatMap((spec) => (spec.replayLegacyName ? [[spec.replayLegacyName, spec] as const] : [])),
 );
 
 const ALIAS_TO_NORMALIZED_NAME = new Map<string, CursorNormalizedToolName>(
-	CURSOR_TOOL_PRESENTATION_SPECS.flatMap((spec) =>
-		(spec.nameAliases ?? []).map((alias) => [alias.toLowerCase(), spec.normalizedName]),
+	presentationSpecs.flatMap((spec) =>
+		(spec.nameAliases ?? []).map((alias) => [alias.toLowerCase(), spec.normalizedName as CursorNormalizedToolName]),
 	),
 );
 
-const WEB_KIND_BY_PATTERN = CURSOR_TOOL_PRESENTATION_SPECS.flatMap((spec) =>
+const WEB_KIND_BY_PATTERN = presentationSpecs.flatMap((spec) =>
 	spec.webKind && spec.webNamePatterns
 		? spec.webNamePatterns.map((pattern) => ({ pattern, webKind: spec.webKind! }))
 		: [],
 );
 
-export const CURSOR_KNOWN_NORMALIZED_TOOL_NAMES = CURSOR_TOOL_PRESENTATION_SPECS.map(
-	(spec) => spec.normalizedName,
-) as readonly CursorNormalizedToolName[];
+export const CURSOR_KNOWN_NORMALIZED_TOOL_NAMES = presentationSpecs.map(
+	(spec) => spec.normalizedName as CursorNormalizedToolName,
+);
 
 export function getCursorToolPresentationSpec(
 	name: string,
@@ -407,9 +368,22 @@ export function isCursorReplayToolName(toolName: string): toolName is CursorRepl
 }
 
 export function isExcludedFromCursorBridgeExposure(toolName: string): boolean {
-	const spec = getCursorToolPresentationSpec(toolName);
-	if (spec?.bridgeExcluded) return true;
-	return toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME;
+	return toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME || isCursorReplayLegacyToolName(toolName);
+}
+
+export function getCursorReplayWrapperLabel(toolName: CursorReplayToolName): string {
+	if (toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME) return getCursorReplayDisplayLabel(toolName);
+	const spec = SPECS_BY_REPLAY_LEGACY_NAME.get(toolName);
+	return spec?.replayWrapperLabel ?? getCursorReplayDisplayLabel(toolName);
+}
+
+export function getCursorReplaySideEffectCategory(toolName: CursorReplayToolName): CursorReplaySideEffectCategory {
+	if (toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME) return CURSOR_REPLAY_ACTIVITY_SIDE_EFFECT_CATEGORY;
+	return SPECS_BY_REPLAY_LEGACY_NAME.get(toolName)?.replaySideEffectCategory ?? "real_tool_work";
+}
+
+export function getCursorReplaySideEffectDescription(toolName: CursorReplayToolName): string {
+	return getCursorReplaySideEffectCategory(toolName) === "file_mutations" ? "file mutations" : "real tool work";
 }
 
 export function getCursorReplaySourceToolName(toolName: CursorReplayLegacyToolName): string {
@@ -432,7 +406,8 @@ export function getCursorReplayDisplayLabel(toolName: CursorReplayToolName): str
 
 export function getCursorReplayActivityLabelKey(toolName: string): CursorReplayLegacyToolName | undefined {
 	const spec = getCursorToolPresentationSpec(toolName);
-	return spec?.replayLegacyName;
+	if (!spec?.replayLegacyName) return undefined;
+	return spec.replayLegacyName as CursorReplayLegacyToolName;
 }
 
 export function getCursorReplayActivityTitle(toolName: string): string | undefined {

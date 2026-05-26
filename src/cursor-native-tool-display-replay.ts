@@ -8,8 +8,10 @@ import { LOCAL_READ_PREVIEW_NOTICE, isLocalReadPreviewContent } from "./cursor-t
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 	getCursorReplayDisplayLabel,
+	getCursorReplaySideEffectDescription,
 	getCursorReplaySourceToolName,
 	getCursorReplaySummaryKind,
+	getCursorReplayWrapperLabel,
 	type CursorReplayToolName,
 } from "./cursor-tool-presentation-registry.js";
 
@@ -86,12 +88,6 @@ function buildImageReplayComponent(text: string, imageData: string, mimeType: st
 			imageComponent.invalidate();
 		},
 	};
-}
-
-function getCursorReplayToolLabel(toolName: CursorReplayToolName): string {
-	if (toolName === "cursor_edit") return "edit";
-	if (toolName === "cursor_write") return "write";
-	return getCursorReplayDisplayLabel(toolName);
 }
 
 export function getCursorReplayPath(args: Record<string, unknown> | undefined, details: CursorReplayToolDetails | undefined): string {
@@ -258,7 +254,7 @@ function getCursorReplayActivityTitle(toolName: CursorReplayToolName, args: Reco
 	if (toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME && typeof args?.activityTitle === "string" && args.activityTitle.trim()) {
 		return args.activityTitle.trim();
 	}
-	return getCursorReplayToolLabel(toolName);
+	return getCursorReplayWrapperLabel(toolName);
 }
 
 function formatReplayRecordingDurationMs(ms: number | undefined): string | undefined {
@@ -511,10 +507,10 @@ export function renderNativeLookingCursorReadReplayResult(
 
 export function createCursorReplayOnlyToolDefinition(toolName: CursorReplayToolName): ToolDefinition<typeof cursorReplayToolSchema, unknown> {
 	const cursorToolName = toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME ? "activity" : getCursorReplaySourceToolName(toolName);
-	const sideEffectDescription = toolName === "cursor_edit" || toolName === "cursor_write" || toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME ? "file mutations" : "real tool work";
+	const sideEffectDescription = getCursorReplaySideEffectDescription(toolName);
 	return {
 		name: toolName,
-		label: getCursorReplayToolLabel(toolName),
+		label: getCursorReplayWrapperLabel(toolName),
 		description: `Replay display for a Cursor SDK ${cursorToolName} operation. This tool only returns recorded Cursor results and never executes ${sideEffectDescription} directly.`,
 		promptSnippet: `Render a recorded Cursor SDK ${cursorToolName} operation without executing ${sideEffectDescription}.`,
 		promptGuidelines: [
