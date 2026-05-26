@@ -25,6 +25,7 @@ import {
 	type ToolResultEvent,
 	type TurnStartEvent,
 } from "@earendil-works/pi-coding-agent";
+import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { Type, type TSchema } from "typebox";
 import type { CursorNativeToolDisplayExtensionApi } from "../../src/cursor-native-tool-display-registration.js";
 import type cursorExtensionFactory from "../../src/index.js";
@@ -85,12 +86,33 @@ export type HarnessEventMap = {
 export type HarnessEventResultMap = {
 	tool_call: ToolCallEventResult;
 	before_agent_start: BeforeAgentStartEventResult;
+	tool_result: HarnessToolResultCombinedResult;
+	session_before_tree: HarnessSessionBeforeTreeCombinedResult;
 };
 
 /** Combined invoke result for before_agent_start (matches installed pi ExtensionRunner). */
 export type HarnessBeforeAgentStartCombinedResult = {
 	messages?: NonNullable<BeforeAgentStartEventResult["message"]>[];
 	systemPrompt?: string;
+};
+
+/** Combined invoke result for tool_result (matches installed pi ExtensionRunner.emitToolResult). */
+export type HarnessToolResultCombinedResult = {
+	content?: (TextContent | ImageContent)[];
+	details?: unknown;
+	isError?: boolean;
+};
+
+/** Combined invoke result for session_before_tree (matches installed pi ExtensionRunner.emit). */
+export type HarnessSessionBeforeTreeCombinedResult = {
+	cancel?: boolean;
+	summary?: {
+		summary: string;
+		details?: unknown;
+	};
+	customInstructions?: string;
+	replaceInstructions?: boolean;
+	label?: string;
 };
 
 /** @deprecated Use ExtensionContextOverrides */
@@ -148,7 +170,7 @@ export interface EventHarness {
 	runSessionBeforeTree: (
 		eventOverrides?: Partial<HarnessEventMap["session_before_tree"]>,
 		ctxOverrides?: ExtensionContextOverrides,
-	) => Promise<void>;
+	) => Promise<HarnessEventInvokeResult<"session_before_tree">>;
 	runToolCall: (
 		event: ToolCallEvent,
 		ctxOverrides?: ExtensionContextOverrides,
@@ -160,7 +182,7 @@ export interface EventHarness {
 	runToolResult: (
 		event: ToolResultEvent,
 		ctxOverrides?: ExtensionContextOverrides,
-	) => Promise<void>;
+	) => Promise<HarnessEventInvokeResult<"tool_result">>;
 }
 
 export interface PiHarness extends EventHarness {
@@ -191,11 +213,9 @@ export interface BridgePiHarness extends EventHarness {
 	setActiveTools: MockFn<ExtensionAPI["setActiveTools"]>;
 }
 
-export type HarnessEventInvokeResult<E extends HarnessEventName> = E extends "tool_call"
-	? ToolCallEventResult | undefined
-	: E extends "before_agent_start"
-		? HarnessBeforeAgentStartCombinedResult | undefined
-		: void;
+export type HarnessEventInvokeResult<E extends HarnessEventName> = E extends keyof HarnessEventResultMap
+	? HarnessEventResultMap[E] | undefined
+	: void;
 
 const DEFAULT_BUILTIN_TOOL_NAMES = ["read", "bash", "grep", "find", "ls", "edit", "write"] as const;
 const DEFAULT_ACTIVE_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
@@ -325,7 +345,19 @@ function createMinimalExtensionContextInternal(overrides: ExtensionContextOverri
 type HarnessStoredHandler =
 	| ExtensionHandler<ToolCallEvent, ToolCallEventResult>
 	| ExtensionHandler<BeforeAgentStartEvent, BeforeAgentStartEventResult>
-	| ExtensionHandler<HarnessEventMap[Exclude<HarnessEventName, "tool_call" | "before_agent_start">]>;
+	| ExtensionHandler<ToolResultEvent, HarnessToolResultCombinedResult>
+	| ExtensionHandler<SessionBeforeTreeEvent, HarnessSessionBeforeTreeCombinedResult>
+	| ExtensionHandler<HarnessEventMap[Exclude<HarnessEventName, "tool_call" | "before_agent_start" | "tool_result" | "session_before_tree">]>;
+
+function createBeforeAgentStartContext(
+	baseCtx: ExtensionContext,
+	getSystemPrompt: () => string,
+): ExtensionContext {
+	return {
+		...baseCtx,
+		getSystemPrompt,
+	};
+}
 
 async function invokeBeforeAgentStartHandlers(
 	payload: BeforeAgentStartEvent,
@@ -340,9 +372,10 @@ async function invokeBeforeAgentStartHandlers(
 			...payload,
 			systemPrompt: currentSystemPrompt,
 		};
+		const chainedCtx = createBeforeAgentStartContext(ctx, () => currentSystemPrompt);
 		const result = await (handler as ExtensionHandler<BeforeAgentStartEvent, BeforeAgentStartEventResult>)(
 			event,
-			ctx,
+			chainedCtx,
 		);
 		if (!result) continue;
 		if (result.message) {
@@ -360,6 +393,62 @@ async function invokeBeforeAgentStartHandlers(
 		messages: messages.length > 0 ? messages : undefined,
 		systemPrompt: systemPromptModified ? currentSystemPrompt : undefined,
 	};
+}
+
+async function invokeToolResultHandlers(
+	payload: ToolResultEvent,
+	ctx: ExtensionContext,
+	handlers: readonly HarnessStoredHandler[],
+): Promise<HarnessToolResultCombinedResult | undefined> {
+	const currentEvent: ToolResultEvent = { ...payload };
+	let modified = false;
+	for (const handler of handlers) {
+		const result = await (handler as ExtensionHandler<ToolResultEvent, HarnessToolResultCombinedResult>)(
+			currentEvent,
+			ctx,
+		);
+		if (!result) continue;
+		if (result.content !== undefined) {
+			currentEvent.content = result.content;
+			modified = true;
+		}
+		if (result.details !== undefined) {
+			currentEvent.details = result.details;
+			modified = true;
+		}
+		if (result.isError !== undefined) {
+			currentEvent.isError = result.isError;
+			modified = true;
+		}
+	}
+	if (!modified) {
+		return undefined;
+	}
+	return {
+		content: currentEvent.content,
+		details: currentEvent.details,
+		isError: currentEvent.isError,
+	};
+}
+
+async function invokeSessionBeforeTreeHandlers(
+	payload: SessionBeforeTreeEvent,
+	ctx: ExtensionContext,
+	handlers: readonly HarnessStoredHandler[],
+): Promise<HarnessSessionBeforeTreeCombinedResult | undefined> {
+	let result: HarnessSessionBeforeTreeCombinedResult | undefined;
+	for (const handler of handlers) {
+		const handlerResult = await (
+			handler as ExtensionHandler<SessionBeforeTreeEvent, HarnessSessionBeforeTreeCombinedResult>
+		)(payload, ctx);
+		if (handlerResult) {
+			result = handlerResult;
+			if (result.cancel) {
+				return result;
+			}
+		}
+	}
+	return result;
 }
 
 function createHarnessEventApi() {
@@ -383,15 +472,39 @@ function createHarnessEventApi() {
 				eventHandlers,
 			)) as HarnessEventInvokeResult<E>;
 		}
-		let toolCallResult: ToolCallEventResult | undefined;
-		for (const handler of eventHandlers) {
-			const result = await (handler as ExtensionHandler<HarnessEventMap[E]>)(payload, ctx);
-			if (event === "tool_call" && result !== undefined) {
-				toolCallResult = result as ToolCallEventResult;
-			}
+		if (event === "tool_result") {
+			return (await invokeToolResultHandlers(
+				payload as ToolResultEvent,
+				ctx,
+				eventHandlers,
+			)) as HarnessEventInvokeResult<E>;
+		}
+		if (event === "session_before_tree") {
+			return (await invokeSessionBeforeTreeHandlers(
+				payload as SessionBeforeTreeEvent,
+				ctx,
+				eventHandlers,
+			)) as HarnessEventInvokeResult<E>;
 		}
 		if (event === "tool_call") {
+			const toolCallPayload = payload as ToolCallEvent;
+			let toolCallResult: ToolCallEventResult | undefined;
+			for (const handler of eventHandlers) {
+				const result = await (handler as ExtensionHandler<ToolCallEvent, ToolCallEventResult>)(
+					toolCallPayload,
+					ctx,
+				);
+				if (result) {
+					toolCallResult = result;
+					if (result.block) {
+						return toolCallResult as HarnessEventInvokeResult<E>;
+					}
+				}
+			}
 			return toolCallResult as HarnessEventInvokeResult<E>;
+		}
+		for (const handler of eventHandlers) {
+			await (handler as ExtensionHandler<HarnessEventMap[E]>)(payload, ctx);
 		}
 		return undefined as HarnessEventInvokeResult<E>;
 	};
@@ -498,8 +611,8 @@ function createHarnessEventApi() {
 	const runToolResult = async (
 		event: ToolResultEvent,
 		ctxOverrides: ExtensionContextOverrides = {},
-	): Promise<void> => {
-		await invokeEvent("tool_result", event, ctxOverrides);
+	): Promise<HarnessEventInvokeResult<"tool_result">> => {
+		return invokeEvent("tool_result", event, ctxOverrides);
 	};
 
 	const runSessionTree = async (
@@ -516,8 +629,8 @@ function createHarnessEventApi() {
 	const runSessionBeforeTree = async (
 		eventOverrides: Partial<HarnessEventMap["session_before_tree"]> = {},
 		ctxOverrides: ExtensionContextOverrides = {},
-	): Promise<void> => {
-		await invokeEvent(
+	): Promise<HarnessEventInvokeResult<"session_before_tree">> => {
+		return invokeEvent(
 			"session_before_tree",
 			{
 				type: "session_before_tree",
