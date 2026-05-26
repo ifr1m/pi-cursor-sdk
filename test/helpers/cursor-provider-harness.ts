@@ -38,7 +38,11 @@ import { __testUtils as cursorSessionCwdTestUtils } from "../../src/cursor-sessi
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../../src/cursor-provider.js";
 import { registerCursorPiToolBridge, __testUtils as cursorPiToolBridgeTestUtils } from "../../src/cursor-pi-tool-bridge.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../../src/model-discovery.js";
-import { __testUtils as nativeToolDisplayTestUtils, registerCursorNativeToolDisplay } from "../../src/cursor-native-tool-display.js";
+import {
+	__testUtils as nativeToolDisplayTestUtils,
+	registerCursorNativeToolDisplay,
+} from "../../src/cursor-native-tool-display.js";
+import type { CursorNativeToolDisplayExtensionApi } from "../../src/cursor-native-tool-display-registration.js";
 import type { ModelListItem, SendOptions } from "@cursor/sdk";
 import type { AssistantMessage, AssistantMessageEvent, ToolCall } from "@earendil-works/pi-ai";
 import type { ToolInfo } from "@earendil-works/pi-coding-agent";
@@ -51,8 +55,9 @@ import {
 	makeAssistantMessage,
 	makeContext,
 	makeModel,
+	type ExtensionContextOverrides,
+	type HarnessOn,
 	type RegisteredTool,
-	type TestExtensionContext,
 } from "./pi-harness.js";
 
 export {
@@ -65,8 +70,8 @@ export {
 	makeAssistantMessage,
 	makeContext,
 	makeModel,
+	type ExtensionContextOverrides,
 	type RegisteredTool,
-	type TestExtensionContext,
 } from "./pi-harness.js";
 
 // Access the mocks via the module
@@ -77,9 +82,9 @@ export const mockedCreateAgentPlatform = vi.mocked(createAgentPlatform);
 export function registerBridgeForProviderTest(options: { active: string[]; tools: ToolInfo[] }) {
 	const sessionShutdownHandlers: Array<(event: { reason: string }) => Promise<void> | void> = [];
 	const pi = createBridgePiHarness(options);
-	pi.on.mockImplementation((event: string, handler: (event: { reason: string }) => Promise<void> | void) => {
+	pi.on.mockImplementation(((event: string, handler: (event: { reason: string }) => Promise<void> | void) => {
 		if (event === "session_shutdown") sessionShutdownHandlers.push(handler);
-	});
+	}) as HarnessOn);
 	registerCursorPiToolBridge(pi);
 	return { pi, sessionShutdownHandlers };
 }
@@ -182,7 +187,7 @@ export function createMockAgentPlatform(
 export interface NativeToolDisplayTestPi {
 	getActiveTools: ReturnType<typeof vi.fn>;
 	setActiveTools: ReturnType<typeof vi.fn>;
-	runTurnStart: (ctxOverrides?: TestExtensionContext) => Promise<void>;
+	runTurnStart: (ctxOverrides?: ExtensionContextOverrides) => Promise<void>;
 }
 
 export async function createNativeToolDisplayPiForTest(registeredTools: RegisteredTool[] = []): Promise<NativeToolDisplayTestPi> {
@@ -191,17 +196,17 @@ export async function createNativeToolDisplayPiForTest(registeredTools: Register
 			createBuiltinToolInfo(name),
 		),
 	});
-	const nativePi = {
-		on: pi.on,
-		registerTool: vi.fn((tool: RegisteredTool) => {
-			registeredTools.push(tool);
-			pi.registerTool(tool);
-		}),
+	const nativePi: CursorNativeToolDisplayExtensionApi = {
+		on: pi.on as CursorNativeToolDisplayExtensionApi["on"],
+		registerTool: (tool) => {
+			registeredTools.push(tool as RegisteredTool);
+			pi.registerTool(tool as RegisteredTool);
+		},
 		getAllTools: pi.getAllTools,
 		getActiveTools: pi.getActiveTools,
 		setActiveTools: pi.setActiveTools,
 	};
-	registerCursorNativeToolDisplay(nativePi as never);
+	registerCursorNativeToolDisplay(nativePi);
 	await pi.runSessionStart({ hasUI: false });
 	return {
 		getActiveTools: pi.getActiveTools,
@@ -306,7 +311,7 @@ export async function resetCursorProviderTestState(): Promise<void> {
 		agentId: "agent-1",
 		send: vi.fn(),
 		[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-	});
+	} as unknown as Awaited<ReturnType<typeof Agent.create>>);
 	mockedMessagesList.mockResolvedValue([]);
 	mockedCreateAgentPlatform.mockResolvedValue(createMockAgentPlatform());
 }

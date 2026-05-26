@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/helpers/pi-harness.ts",
+    "test/helpers/cursor-provider-harness.ts",
+    "test/cursor-state.test.ts",
+    "test/cursor-session-agent.test.ts"
+  ]
+}

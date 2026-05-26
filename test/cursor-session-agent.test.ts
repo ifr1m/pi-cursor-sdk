@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { shouldBootstrapCursorSend, computeCursorContextFingerprint } from "../src/context.js";
-import { makeContext } from "./helpers/pi-harness.js";
+import { createEventHarness, createExtensionTestContext, makeContext } from "./helpers/pi-harness.js";
 import { __testUtils as cursorSessionScopeTestUtils, registerCursorSessionScope } from "../src/cursor-session-scope.js";
 import {
 	acquireSessionCursorAgent,
@@ -509,12 +509,7 @@ describe("cursor-session-agent", () => {
 			agentId: "agent-1",
 			[Symbol.asyncDispose]: mockDispose,
 		});
-		const sessionShutdownHandlers: Array<(event: { reason: "quit" | "reload" }) => Promise<void> | void> = [];
-		const pi = {
-			on: vi.fn((event: string, handler: (event: { reason: "quit" | "reload" }) => Promise<void> | void) => {
-				if (event === "session_shutdown") sessionShutdownHandlers.push(handler);
-			}),
-		};
+		const pi = createEventHarness();
 
 		registerCursorSessionAgent(pi);
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
@@ -526,7 +521,7 @@ describe("cursor-session-agent", () => {
 		});
 
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(true);
-		await sessionShutdownHandlers[0]?.({ reason: "quit" });
+		await pi.runSessionShutdown({ reason: "quit" });
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(false);
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
@@ -537,12 +532,7 @@ describe("cursor-session-agent", () => {
 			agentId: `agent-${createAgent.mock.calls.length + 1}`,
 			[Symbol.asyncDispose]: mockDispose,
 		}));
-		const sessionShutdownHandlers: Array<(event: { reason: "quit" | "reload" }) => Promise<void> | void> = [];
-		const pi = {
-			on: vi.fn((event: string, handler: (event: { reason: "quit" | "reload" }) => Promise<void> | void) => {
-				if (event === "session_shutdown") sessionShutdownHandlers.push(handler);
-			}),
-		};
+		const pi = createEventHarness();
 
 		registerCursorSessionAgent(pi);
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
@@ -554,7 +544,7 @@ describe("cursor-session-agent", () => {
 		};
 		const first = await acquireSessionCursorAgent(params);
 
-		await sessionShutdownHandlers[0]?.({ reason: "reload" });
+		await pi.runSessionShutdown({ reason: "reload" });
 		const second = await acquireSessionCursorAgent(params);
 
 		expect(first.agent).not.toBe(second.agent);
@@ -568,12 +558,7 @@ describe("cursor-session-agent", () => {
 			agentId: "agent-1",
 			[Symbol.asyncDispose]: mockDispose,
 		});
-		const sessionStartHandlers: Array<(event: unknown, ctx: { cwd: string; sessionManager?: { getSessionFile?: () => string } }) => Promise<void> | void> = [];
-		const pi = {
-			on: vi.fn((event: string, handler: (event: unknown, ctx: { cwd: string; sessionManager?: { getSessionFile?: () => string } }) => Promise<void> | void) => {
-				if (event === "session_start") sessionStartHandlers.push(handler);
-			}),
-		};
+		const pi = createEventHarness();
 
 		registerCursorSessionScope(pi);
 		registerCursorSessionAgent(pi);
@@ -585,9 +570,16 @@ describe("cursor-session-agent", () => {
 			createAgent,
 		});
 
-		for (const handler of sessionStartHandlers) {
-			await handler({}, { cwd: "/tmp/project", sessionManager: { getSessionFile: () => "/tmp/sessions/session-b.jsonl" } });
-		}
+		await pi.invokeEventWithContext(
+			"session_start",
+			{ type: "session_start", reason: "startup" },
+			createExtensionTestContext({
+				cwd: "/tmp/project",
+				sessionManager: {
+					getSessionFile: () => "/tmp/sessions/session-b.jsonl",
+				},
+			}),
+		);
 
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/session-a.jsonl")).toBe(false);
 		expect(mockDispose).toHaveBeenCalledTimes(1);
@@ -623,12 +615,7 @@ describe("cursor-session-agent", () => {
 			agentId: "agent-1",
 			[Symbol.asyncDispose]: mockDispose,
 		});
-		const sessionTreeHandlers: Array<() => Promise<void> | void> = [];
-		const pi = {
-			on: vi.fn((event: string, handler: () => Promise<void> | void) => {
-				if (event === "session_tree") sessionTreeHandlers.push(handler);
-			}),
-		};
+		const pi = createEventHarness();
 
 		registerCursorSessionAgent(pi);
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
@@ -640,7 +627,7 @@ describe("cursor-session-agent", () => {
 		});
 
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(true);
-		await sessionTreeHandlers[0]?.();
+		await pi.runSessionTree();
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(false);
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
@@ -651,12 +638,7 @@ describe("cursor-session-agent", () => {
 			agentId: `agent-${createAgent.mock.calls.length + 1}`,
 			[Symbol.asyncDispose]: mockDispose,
 		}));
-		const sessionBeforeTreeHandlers: Array<() => void> = [];
-		const pi = {
-			on: vi.fn((event: string, handler: () => void) => {
-				if (event === "session_before_tree") sessionBeforeTreeHandlers.push(handler);
-			}),
-		};
+		const pi = createEventHarness();
 
 		registerCursorSessionAgent(pi);
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
@@ -668,7 +650,7 @@ describe("cursor-session-agent", () => {
 		};
 
 		const first = await acquireSessionCursorAgent(params);
-		sessionBeforeTreeHandlers[0]?.();
+		await pi.runSessionBeforeTree();
 		const second = await acquireSessionCursorAgent(params);
 
 		expect(first.agent).not.toBe(second.agent);
