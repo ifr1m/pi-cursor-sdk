@@ -1,6 +1,21 @@
 import type { CursorNormalizedToolName } from "./cursor-tool-presentation-registry.js";
 
+/** Structured replay detail variants with dedicated render paths. */
+export type CursorReplayStructuredToolName = "edit" | "write" | "generateImage";
+
+export type CursorReplayToolDetailsVariant =
+	| CursorReplayStructuredToolName
+	| "titledActivity"
+	| "genericFallback";
+
+/** Cursor tool names allowed on titled-activity cards (excludes structured tool names). */
+export type CursorReplayActivityCursorToolName = Exclude<
+	CursorNormalizedToolName,
+	CursorReplayStructuredToolName
+>;
+
 export interface CursorReplayEditDetails {
+	variant: "edit";
 	cursorToolName: "edit";
 	path?: string;
 	linesAdded?: number;
@@ -14,6 +29,7 @@ export interface CursorReplayEditDetails {
 }
 
 export interface CursorReplayWriteDetails {
+	variant: "write";
 	cursorToolName: "write";
 	path?: string;
 	linesCreated?: number;
@@ -25,19 +41,22 @@ export interface CursorReplayWriteDetails {
 }
 
 export interface CursorReplayGenerateImageDetails {
+	variant: "generateImage";
 	cursorToolName: "generateImage";
 	imagePath?: string;
 	imageDisplayPath?: string;
 	imageMimeType?: string;
 	summary?: string;
 	expandedText?: string;
+	/** Display title override; renderer defaults to `Cursor generateImage` when omitted. */
 	title?: string;
 	collapseDetailsByDefault?: boolean;
 }
 
 /** Neutral Cursor activity cards and unknown-tool fallbacks with a display title. */
 export interface CursorReplayTitledActivityDetails {
-	cursorToolName: string;
+	variant: "titledActivity";
+	cursorToolName: CursorReplayActivityCursorToolName;
 	title: string;
 	summary?: string;
 	expandedText?: string;
@@ -48,6 +67,7 @@ export interface CursorReplayTitledActivityDetails {
 
 /** Parsed replay details without a display title (legacy or malformed payloads). */
 export interface CursorReplayGenericFallbackDetails {
+	variant: "genericFallback";
 	cursorToolName: string;
 	summary?: string;
 	expandedText?: string;
@@ -92,6 +112,7 @@ function readCursorToolName(record: Record<string, unknown>): string | undefined
 
 function parseCursorReplayEditDetails(record: Record<string, unknown>): CursorReplayEditDetails {
 	return {
+		variant: "edit",
 		cursorToolName: "edit",
 		path: readOptionalString(record, "path"),
 		linesAdded: readOptionalNumber(record, "linesAdded"),
@@ -107,6 +128,7 @@ function parseCursorReplayEditDetails(record: Record<string, unknown>): CursorRe
 
 function parseCursorReplayWriteDetails(record: Record<string, unknown>): CursorReplayWriteDetails {
 	return {
+		variant: "write",
 		cursorToolName: "write",
 		path: readOptionalString(record, "path"),
 		linesCreated: readOptionalNumber(record, "linesCreated"),
@@ -119,24 +141,28 @@ function parseCursorReplayWriteDetails(record: Record<string, unknown>): CursorR
 }
 
 function parseCursorReplayGenerateImageDetails(record: Record<string, unknown>): CursorReplayGenerateImageDetails {
+	const title = readOptionalString(record, "title");
+	const collapseDetailsByDefault = readOptionalBoolean(record, "collapseDetailsByDefault");
 	return {
+		variant: "generateImage",
 		cursorToolName: "generateImage",
 		imagePath: readOptionalString(record, "imagePath"),
 		imageDisplayPath: readOptionalString(record, "imageDisplayPath"),
 		imageMimeType: readOptionalString(record, "imageMimeType"),
 		summary: readOptionalString(record, "summary"),
 		expandedText: readOptionalString(record, "expandedText"),
-		title: readOptionalString(record, "title"),
-		collapseDetailsByDefault: readOptionalBoolean(record, "collapseDetailsByDefault"),
+		...(title !== undefined ? { title } : {}),
+		...(collapseDetailsByDefault !== undefined ? { collapseDetailsByDefault } : {}),
 	};
 }
 
 function parseCursorReplayTitledActivityDetails(
 	record: Record<string, unknown>,
-	cursorToolName: string,
+	cursorToolName: CursorReplayActivityCursorToolName,
 	title: string,
 ): CursorReplayTitledActivityDetails {
 	return {
+		variant: "titledActivity",
 		cursorToolName,
 		title,
 		summary: readOptionalString(record, "summary"),
@@ -152,10 +178,16 @@ function parseCursorReplayGenericFallbackDetails(
 	cursorToolName: string,
 ): CursorReplayGenericFallbackDetails {
 	return {
+		variant: "genericFallback",
 		cursorToolName,
 		summary: readOptionalString(record, "summary"),
 		expandedText: readOptionalString(record, "expandedText"),
 	};
+}
+
+/** Boundary coercion for activity cards; structured names must use dedicated variants. */
+export function coerceCursorReplayActivityCursorToolName(cursorToolName: string): CursorReplayActivityCursorToolName {
+	return cursorToolName as CursorReplayActivityCursorToolName;
 }
 
 export function parseCursorReplayToolDetails(value: unknown): CursorReplayToolDetails | undefined {
@@ -166,7 +198,11 @@ export function parseCursorReplayToolDetails(value: unknown): CursorReplayToolDe
 	if (cursorToolName === "generateImage") return parseCursorReplayGenerateImageDetails(value);
 	const title = readOptionalString(value, "title")?.trim();
 	if (title) {
-		return parseCursorReplayTitledActivityDetails(value, cursorToolName ?? "activity", title);
+		return parseCursorReplayTitledActivityDetails(
+			value,
+			coerceCursorReplayActivityCursorToolName(cursorToolName ?? "activity"),
+			title,
+		);
 	}
 	return parseCursorReplayGenericFallbackDetails(value, cursorToolName ?? "tool");
 }
@@ -175,19 +211,19 @@ export function parseCursorReplayToolDetails(value: unknown): CursorReplayToolDe
 export const asCursorReplayToolDetails = parseCursorReplayToolDetails;
 
 export function buildCursorReplayEditDetails(
-	fields: Omit<CursorReplayEditDetails, "cursorToolName">,
+	fields: Omit<CursorReplayEditDetails, "variant" | "cursorToolName">,
 ): CursorReplayEditDetails {
-	return { cursorToolName: "edit", ...fields };
+	return { variant: "edit", cursorToolName: "edit", ...fields };
 }
 
 export function buildCursorReplayWriteDetails(
-	fields: Omit<CursorReplayWriteDetails, "cursorToolName">,
+	fields: Omit<CursorReplayWriteDetails, "variant" | "cursorToolName">,
 ): CursorReplayWriteDetails {
-	return { cursorToolName: "write", ...fields };
+	return { variant: "write", cursorToolName: "write", ...fields };
 }
 
 export function assembleCursorReplayTitledActivityDetails(
-	cursorToolName: CursorNormalizedToolName | string,
+	cursorToolName: CursorReplayActivityCursorToolName,
 	title: string,
 	fields: CursorReplayActivityDetailFields,
 	contentText: string,
@@ -196,6 +232,7 @@ export function assembleCursorReplayTitledActivityDetails(
 ): CursorReplayTitledActivityDetails {
 	const summary = isError ? fields.summary : (fields.summary ?? activitySummary);
 	return {
+		variant: "titledActivity",
 		cursorToolName,
 		title,
 		summary,
@@ -205,6 +242,8 @@ export function assembleCursorReplayTitledActivityDetails(
 		...(fields.fileSize !== undefined ? { fileSize: fields.fileSize } : {}),
 	};
 }
+
+export const CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE = "Cursor generateImage" as const;
 
 export function assembleCursorReplayActivityResultDetails(
 	cursorToolName: CursorNormalizedToolName | string,
@@ -217,34 +256,47 @@ export function assembleCursorReplayActivityResultDetails(
 	if (cursorToolName === "generateImage") {
 		const summary = isError ? fields.summary : (fields.summary ?? activitySummary);
 		return {
+			variant: "generateImage",
 			cursorToolName: "generateImage",
 			imagePath: fields.imagePath,
 			imageDisplayPath: fields.imageDisplayPath,
 			imageMimeType: fields.imageMimeType,
-			title,
 			summary,
 			expandedText: fields.expandedText ?? contentText,
 		};
 	}
-	return assembleCursorReplayTitledActivityDetails(cursorToolName, title, fields, contentText, isError, activitySummary);
+	return assembleCursorReplayTitledActivityDetails(
+		coerceCursorReplayActivityCursorToolName(cursorToolName),
+		title,
+		fields,
+		contentText,
+		isError,
+		activitySummary,
+	);
 }
 
 export function isCursorReplayEditDetails(details: CursorReplayToolDetails): details is CursorReplayEditDetails {
-	return details.cursorToolName === "edit";
+	return details.variant === "edit";
 }
 
 export function isCursorReplayWriteDetails(details: CursorReplayToolDetails): details is CursorReplayWriteDetails {
-	return details.cursorToolName === "write";
+	return details.variant === "write";
 }
 
 export function isCursorReplayGenerateImageDetails(
 	details: CursorReplayToolDetails,
 ): details is CursorReplayGenerateImageDetails {
-	return details.cursorToolName === "generateImage";
+	return details.variant === "generateImage";
 }
 
 export function isCursorReplayTitledActivityDetails(
 	details: CursorReplayToolDetails,
 ): details is CursorReplayTitledActivityDetails {
-	return "title" in details && typeof details.title === "string" && details.title.length > 0;
+	return details.variant === "titledActivity";
+}
+
+export function isCursorReplayGenericFallbackDetails(
+	details: CursorReplayToolDetails,
+): details is CursorReplayGenericFallbackDetails {
+	return details.variant === "genericFallback";
 }

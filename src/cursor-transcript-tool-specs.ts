@@ -11,10 +11,11 @@ import {
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
 import {
 	assembleCursorReplayActivityResultDetails,
+	assembleCursorReplayTitledActivityDetails,
 	buildCursorReplayEditDetails,
 	buildCursorReplayWriteDetails,
+	coerceCursorReplayActivityCursorToolName,
 	type CursorReplayActivityDetailFields,
-	type CursorReplayTitledActivityDetails,
 	type CursorReplayToolDetails,
 } from "./cursor-replay-tool-details.js";
 import {
@@ -202,12 +203,20 @@ function buildGenericPiToolDisplay(context: ToolDisplayContext): CursorPiToolDis
 		result.status === "error"
 			? undefined
 			: activitySummary ?? truncateArg(displayName === "unknown" ? "tool" : displayName);
-	return buildReplaySummaryDisplay(CURSOR_REPLAY_ACTIVITY_TOOL_NAME, activityArgs, result, contentText, {
-		cursorToolName: name,
-		title: activityTitle,
-		summary,
-		expandedText: contentText,
-	} satisfies CursorReplayTitledActivityDetails);
+	return buildReplaySummaryDisplay(
+		CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
+		activityArgs,
+		result,
+		contentText,
+		assembleCursorReplayTitledActivityDetails(
+			coerceCursorReplayActivityCursorToolName(displayName === "unknown" ? "tool" : displayName),
+			activityTitle,
+			{ summary, expandedText: contentText },
+			contentText,
+			result.status === "error",
+			activitySummary,
+		),
+	);
 }
 
 function buildEditPiToolDisplay(context: ToolDisplayContext): CursorPiToolDisplay {

@@ -14,6 +14,7 @@ import {
 	type CursorReplayToolName,
 } from "./cursor-tool-presentation-registry.js";
 import {
+	CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE,
 	type CursorReplayEditDetails,
 	type CursorReplayGenerateImageDetails,
 	type CursorReplayTitledActivityDetails,
@@ -478,7 +479,7 @@ function renderCursorGenerateImageResult(
 	context: Parameters<CursorReplayRenderResult>[3],
 	isError: boolean,
 ): Component {
-	const title = details.title ?? "Cursor generateImage";
+	const title = CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE;
 	return renderExpandableCursorReplayResult(title, details, result, options, theme, context, isError);
 }
 
@@ -491,17 +492,24 @@ function renderCursorReplayDetails(
 	isError: boolean,
 	text: string,
 ): Component {
-	if (isCursorReplayEditDetails(details) && hasCursorEditChanges(details)) {
-		return renderCursorReplayEditResult(details, options, theme);
-	}
-	if (isCursorReplayWriteDetails(details)) {
-		return renderCursorReplayWriteResult(details, result, options, theme);
-	}
-	if (isCursorReplayGenerateImageDetails(details)) {
-		return renderCursorGenerateImageResult(details, result, options, theme, context, isError);
-	}
-	if (isCursorReplayTitledActivityDetails(details)) {
-		return renderExpandableCursorReplayResult(details.title, details, result, options, theme, context, isError);
+	switch (details.variant) {
+		case "edit":
+			if (hasCursorEditChanges(details)) {
+				return renderCursorReplayEditResult(details, options, theme);
+			}
+			break;
+		case "write":
+			return renderCursorReplayWriteResult(details, result, options, theme);
+		case "generateImage":
+			return renderCursorGenerateImageResult(details, result, options, theme, context, isError);
+		case "titledActivity":
+			return renderExpandableCursorReplayResult(details.title, details, result, options, theme, context, isError);
+		case "genericFallback":
+			break;
+		default: {
+			const _exhaustive: never = details;
+			return _exhaustive;
+		}
 	}
 	return new Text(text || theme.fg("success", "Cursor tool result replayed"), 0, 0);
 }

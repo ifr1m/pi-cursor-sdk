@@ -54,7 +54,7 @@
 		"node": ">=22.19.0"
 	},
 	"scripts": {
-		"typecheck": "tsc --noEmit",
+		"typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"refresh:cursor-snapshots": "node scripts/refresh-cursor-model-snapshots.mjs",

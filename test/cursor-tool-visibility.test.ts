@@ -48,7 +48,15 @@ describe("cursor tool visibility classification", () => {
 			const expectedTitle = classifyCursorToolVisibility(toolCall).activityTitle;
 			const display = buildCursorPiToolDisplay(toolCall);
 			expect(display.args.activityTitle).toBe(expectedTitle);
-			expect(display.result.details).toMatchObject({ title: expectedTitle });
+			if (toolCall.name === "generateImage") {
+				expect(display.result.details).toMatchObject({
+					variant: "generateImage",
+					cursorToolName: "generateImage",
+				});
+				expect(display.result.details).not.toHaveProperty("title");
+			} else {
+				expect(display.result.details).toMatchObject({ title: expectedTitle });
+			}
 		}
 	});
 });

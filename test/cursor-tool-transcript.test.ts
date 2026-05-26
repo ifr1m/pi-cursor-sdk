@@ -624,8 +624,8 @@ describe("formatCursorToolTranscript", () => {
 			args: { prompt: "Small badge", activityTitle: "Cursor image generation", activitySummary: "/Users/example/.cursor/projects/repo/assets/badge.png" },
 			result: {
 				details: {
+					variant: "generateImage",
 					cursorToolName: "generateImage",
-					title: "Cursor image generation",
 					summary: "saved /Users/example/.cursor/projects/repo/assets/badge.png",
 					imagePath: "/Users/example/.cursor/projects/repo/assets/badge.png",
 					imageDisplayPath: "/Users/example/.cursor/projects/repo/assets/badge.png",
