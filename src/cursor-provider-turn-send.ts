@@ -1,5 +1,6 @@
 import { CursorLiveRunAbortError } from "./cursor-live-run-coordinator.js";
 import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
+import { getCursorAgentMessageOffset } from "./cursor-provider-turn-finalize.js";
 import type { installCursorSdkAbortErrorSuppression } from "./cursor-sdk-abort-error-guard.js";
 import type {
 	CursorProviderTurnPrepared,
@@ -19,7 +20,7 @@ export interface SendCursorProviderTurnParams {
 export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnParams): Promise<CursorProviderTurnSend> {
 	const { params, runtime, prepared, sdkAbortErrorSuppression, throwIfAborted } = sendParams;
 	const { options } = params;
-	const { agent, turnCoordinator, sendPlan, bootstrap, liveRun, prompt, sendPayload } = prepared;
+	const { agent, turnCoordinator, sendPlan, bootstrap, liveRun, prompt, sendPayload, cwd } = prepared;
 
 	runtime.sdkRun = null;
 	runtime.abortListener = () => {
@@ -32,6 +33,8 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 	runtime.abortSignal = options?.signal;
 	runtime.abortSignal?.addEventListener("abort", runtime.abortListener, { once: true });
 
+	throwIfAborted();
+	prepared.cursorAgentMessageOffset = await getCursorAgentMessageOffset(agent.agentId, cwd, params.sdkEventDebug);
 	throwIfAborted();
 	params.sdkEventDebug?.recordSendMeta({
 		mode: sendPlan.mode,

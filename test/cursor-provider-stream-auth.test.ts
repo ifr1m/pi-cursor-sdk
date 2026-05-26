@@ -4,6 +4,7 @@ import {
 	resetCursorProviderTestState,
 	mockedCreate,
 	mockedCreateAgentPlatform,
+	mockedMessagesList,
 	makeModel,
 	makeContext,
 	makeAssistantMessage,
@@ -29,6 +30,7 @@ import {
 	type CursorStepHandler,
 	type RegisteredTool,
 } from "./helpers/cursor-provider-harness.js";
+import { CursorPiToolBridgeRunImpl } from "../src/cursor-pi-tool-bridge-run.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../src/model-discovery.js";
@@ -42,7 +44,22 @@ import { join } from "node:path";
 describe("streamCursor auth and abort", () => {
 	beforeEach(resetCursorProviderTestState);
 
-it("aborts after agent creation without sending a prompt when already cancelled", async () => {
+	it("emits start before abort when the signal is already cancelled", async () => {
+		const controller = new AbortController();
+		controller.abort();
+
+		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key", signal: controller.signal });
+		const events = await collectEvents(stream);
+		const error = getErrorEvent(events);
+
+		expect(hasEventType(events, "start")).toBe(true);
+		expect(error.reason).toBe("aborted");
+		expect(events.findIndex((event) => event.type === "start")).toBeLessThan(
+			events.findIndex((event) => event.type === "error"),
+		);
+	});
+
+	it("aborts after agent creation without sending a prompt when already cancelled", async () => {
 		const controller = new AbortController();
 		const mockDispose = vi.fn().mockResolvedValue(undefined);
 		const mockSend = vi.fn();
@@ -154,6 +171,53 @@ it("aborts after agent creation without sending a prompt when already cancelled"
 		expect(message).toContain("/login");
 		expect(message).toContain("CURSOR_API_KEY");
 		expect(message).not.toContain("super-secret-key-12345");
+	});
+
+	it("cancels bridge runs promptly when aborted during Agent.messages.list offset probing", async () => {
+		registerBridgeForProviderTest({
+			active: ["sem_reindex"],
+			tools: [createBridgeToolInfo("sem_reindex", Type.Object({ target: Type.String() }), "Reindex semantic cache")],
+		});
+		const bridgeCancelSpy = vi.spyOn(CursorPiToolBridgeRunImpl.prototype, "cancel");
+
+		let releaseMessagesList: () => void = () => {};
+		const messagesListGate = new Promise<void>((resolve) => {
+			releaseMessagesList = resolve;
+		});
+		mockedMessagesList.mockImplementation(async () => {
+			await messagesListGate;
+			return [];
+		});
+
+		const controller = new AbortController();
+		const mockSend = vi.fn().mockImplementation(
+			async () =>
+				new Promise<never>(() => {
+					// Intentionally never resolves so abort during offset probing is observable.
+				}),
+		);
+		mockedCreate.mockResolvedValue({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const stream = streamCursor(makeModel("composer-2"), makeContext(), {
+			apiKey: "test-key",
+			signal: controller.signal,
+		});
+		const eventsPromise = collectEvents(stream);
+
+		await vi.waitFor(() => expect(mockedMessagesList).toHaveBeenCalled());
+		controller.abort();
+		await vi.waitFor(() => expect(bridgeCancelSpy).toHaveBeenCalledWith("Cursor SDK run aborted"));
+
+		releaseMessagesList();
+		const events = await eventsPromise;
+
+		expect(getErrorEvent(events).reason).toBe("aborted");
+		expect(mockSend).not.toHaveBeenCalled();
+		bridgeCancelSpy.mockRestore();
 	});
 
 	it("cancels run on abort signal", async () => {

@@ -57,8 +57,6 @@ export interface CursorProviderTurnSend {
 export interface CursorProviderTurnRuntime {
 	resolvedApiKey: string | undefined;
 	sessionAgentScopeKey: string;
-	agent: SDKAgent | null;
-	bridgeRun: CursorPiToolBridgeRun | undefined;
 	activeLiveRun: CursorLiveRun | undefined;
 	liveRunForBridgeQueue: CursorLiveRun | undefined;
 	queuedBridgeRequestsBeforeLiveRun: CursorPiBridgeToolRequest[];
@@ -74,8 +72,6 @@ export function createCursorProviderTurnRuntime(): CursorProviderTurnRuntime {
 	return {
 		resolvedApiKey: undefined,
 		sessionAgentScopeKey: "",
-		agent: null,
-		bridgeRun: undefined,
 		activeLiveRun: undefined,
 		liveRunForBridgeQueue: undefined,
 		queuedBridgeRequestsBeforeLiveRun: [],

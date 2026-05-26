@@ -72,8 +72,8 @@ export class CursorProviderTurnRunner {
 		const { stream, partial, model, context, options, sdkEventDebugRef } = this.params;
 
 		try {
-			this.throwIfAborted();
 			stream.push({ type: "start", partial });
+			this.throwIfAborted();
 			this.sdkEventDebug?.recordContextSnapshot(context);
 
 			const cwd = getCursorSessionCwd();
@@ -111,7 +111,6 @@ export class CursorProviderTurnRunner {
 					discardIncompleteTools: (outcome) => this.discardIncompleteTools(outcome),
 					finalizeSdkEventDebug: () => this.finalizeSdkEventDebug(),
 				});
-				this.runtime.agent = null;
 				return;
 			}
 

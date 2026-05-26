@@ -19,7 +19,6 @@ import { getEffectiveCursorSettingSources } from "./cursor-setting-sources.js";
 import { isCursorNativeToolDisplayRuntimeEnabled } from "./cursor-native-tool-display.js";
 import { MISSING_CURSOR_API_KEY_MESSAGE } from "./cursor-provider-errors.js";
 import { CursorSdkTurnCoordinator } from "./cursor-provider-turn-coordinator.js";
-import { getCursorAgentMessageOffset } from "./cursor-provider-turn-finalize.js";
 import { resolveCursorApiKey } from "./cursor-provider-turn-api-key.js";
 import type {
 	CursorProviderTurnPrepared,
@@ -65,8 +64,6 @@ export async function prepareCursorProviderTurn(
 	};
 	let sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
 	runtime.sessionAgentScopeKey = sessionAgentLease.scopeKey;
-	runtime.agent = sessionAgentLease.agent;
-	runtime.bridgeRun = sessionAgentLease.bridgeRun;
 	throwIfAborted();
 
 	const promptOptions = getCursorPromptOptions(model);
@@ -76,8 +73,6 @@ export async function prepareCursorProviderTurn(
 		await resetSessionCursorAgent(sessionAgentLease.scopeKey);
 		sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
 		runtime.sessionAgentScopeKey = sessionAgentLease.scopeKey;
-		runtime.agent = sessionAgentLease.agent;
-		runtime.bridgeRun = sessionAgentLease.bridgeRun;
 		sendPlan = planCursorSessionSend(sessionAgentLease.sendState, context);
 		prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
 	}
@@ -145,8 +140,6 @@ export async function prepareCursorProviderTurn(
 	});
 	runtime.turnCoordinatorForCleanup = turnCoordinator;
 
-	const cursorAgentMessageOffset = await getCursorAgentMessageOffset(agent.agentId, cwd, params.sdkEventDebug);
-
 	return {
 		cwd,
 		sessionAgentLease,
@@ -163,7 +156,7 @@ export async function prepareCursorProviderTurn(
 		textDeltas,
 		liveRun,
 		turnCoordinator,
-		cursorAgentMessageOffset,
+		cursorAgentMessageOffset: undefined,
 	};
 }
 
