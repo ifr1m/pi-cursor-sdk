@@ -5,7 +5,7 @@
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import {
 	commonProbeFlags,
 	defaultApiKeyFromEnv,

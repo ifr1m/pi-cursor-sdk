@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveCursorSettingSources as resolveProviderSettingSources } from "../src/cursor-setting-sources.js";
-import { scrubSensitiveText as scrubProviderSensitiveText } from "../src/cursor-sensitive-text.js";
 import {
 	commonProbeFlags,
 	defaultApiKeyFromEnv,
@@ -10,7 +9,11 @@ import {
 	requireApiKey,
 } from "../scripts/lib/cursor-cli-args.mjs";
 import { parseJsonLines, terminateChild, waitForChildClose } from "../scripts/lib/cursor-child-process.mjs";
-import { CURSOR_SETTING_SOURCES_ENV, resolveCursorSettingSources } from "../scripts/lib/cursor-setting-sources.mjs";
+import {
+	CURSOR_SETTING_SOURCES_ENV,
+	resolveCursorSettingSources,
+	serializeCursorSettingSources,
+} from "../scripts/lib/cursor-setting-sources.mjs";
 import { scrubSensitiveText } from "../scripts/lib/cursor-sensitive-text.mjs";
 import { createScriptFail } from "../scripts/lib/cursor-script-fail.mjs";
 
@@ -23,10 +26,19 @@ describe("maintainer scripts shared lib", () => {
 		expect(defaultSettingSourcesFromEnv({ PI_CURSOR_SETTING_SOURCES: "none" })).toBeUndefined();
 	});
 
-	it("scrubs secrets and bridge endpoints consistently with provider runtime", () => {
+	it("scrubs secrets and bridge endpoints", () => {
 		const leakedKey = "super-secret-cursor-key-12345";
 		const sample = `Bearer ${leakedKey} http://127.0.0.1:4242/cursor-pi-tool-bridge/abc/mcp`;
-		expect(scrubSensitiveText(sample, leakedKey)).toBe(scrubProviderSensitiveText(sample, leakedKey));
+		const scrubbed = scrubSensitiveText(sample, leakedKey);
+		expect(scrubbed).not.toContain(leakedKey);
+		expect(scrubbed).toContain("Bearer [redacted]");
+		expect(scrubbed).toContain("[redacted-bridge-endpoint]");
+	});
+
+	it("serializes setting sources for child env forwarding", () => {
+		expect(serializeCursorSettingSources(["all"])).toBe("all");
+		expect(serializeCursorSettingSources(["project", "user"])).toBe("project,user");
+		expect(serializeCursorSettingSources(undefined)).toBe("none");
 	});
 
 	it("parses common probe flags and enforces api key requirements", () => {
@@ -61,6 +73,19 @@ describe("maintainer scripts shared lib", () => {
 		expect(() => requireApiKey({}, {}, fail)).toThrow(/Cursor API key is required/);
 	});
 
+	it("rejects malformed repeated flag values", () => {
+		const fail = vi.fn((message: string) => {
+			throw new Error(message);
+		});
+		expect(() =>
+			parseArgv(["--model", "--model=bad"], {
+				defaults: { model: "default" },
+				flags: { model: commonProbeFlags.model },
+				fail,
+			}),
+		).toThrow(/--model requires a value/);
+	});
+
 	it("builds timestamped artifact directories under /tmp by default", () => {
 		const dir = defaultTimestampedDir("pi-cursor-sdk-test-prefix");
 		expect(dir).toMatch(/^\/tmp\/pi-cursor-sdk-test-prefix-/);
@@ -72,14 +97,17 @@ describe("maintainer scripts shared lib", () => {
 		expect(typeof terminateChild).toBe("function");
 	});
 
-	it("createScriptFail scrubs provided secrets before exit", () => {
+	it("createScriptFail scrubs all provided secrets before exit", () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as typeof process.exit);
 		const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
-		const leakedKey = "super-secret-cursor-key-12345";
+		const firstSecret = "super-secret-cursor-key-12345";
+		const secondSecret = "another-secret-token-67890";
 		const fail = createScriptFail("test-script");
-		fail(`failed with ${leakedKey}`, [leakedKey]);
+		fail(`failed with ${firstSecret} and ${secondSecret}`, [firstSecret, secondSecret]);
+		const output = stderr.mock.calls.join("");
 		expect(stderr).toHaveBeenCalledWith(expect.stringContaining("[redacted]"));
-		expect(stderr.mock.calls.join("")).not.toContain(leakedKey);
+		expect(output).not.toContain(firstSecret);
+		expect(output).not.toContain(secondSecret);
 		exit.mockRestore();
 		stderr.mockRestore();
 	});

@@ -25,7 +25,8 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-edit-diff.ts` owns canonical edit diff fallback resolution for replay/display paths.
 - `src/cursor-record-utils.ts` owns shared record/string-key parsing helpers used across bridge and transcript layers.
 - `src/cursor-partial-content-emitter.ts` owns shared thinking/text block emission for live-run drain and turn coordinator paths.
-- `src/cursor-sensitive-text.ts` owns canonical secret scrubbing for provider errors and native replay display.
+- `scripts/lib/cursor-sensitive-text.mjs` owns canonical secret scrubbing; `src/cursor-sensitive-text.ts` re-exports it for provider errors and native replay display.
+- `scripts/lib/cursor-setting-sources.mjs` owns canonical `PI_CURSOR_SETTING_SOURCES` parsing/serialization; `src/cursor-setting-sources.ts` re-exports it for provider runtime.
 - `src/cursor-transcript-tool-specs.ts` owns the unified per-tool transcript and replay display spec registry.
 - `src/cursor-pi-tool-bridge-types.ts` owns shared bridge/MCP type contracts.
 - `src/cursor-env-boolean.ts` owns canonical env boolean parsing (default and tri-state optional) for bridge diagnostics, flags, and native replay gating.

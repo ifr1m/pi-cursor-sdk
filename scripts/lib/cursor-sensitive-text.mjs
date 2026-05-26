@@ -1,4 +1,4 @@
-/** Canonical secret/bridge scrubbing for maintainer scripts (parity-tested against src). */
+/** Canonical secret/bridge scrubbing (parity-tested; re-exported from src/cursor-sensitive-text.ts). */
 
 function escapeRegExp(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -1,4 +1,4 @@
-/** Canonical Cursor settingSources parsing for maintainer scripts (parity-tested against src). */
+/** Canonical Cursor settingSources parsing (parity-tested; re-exported from src/cursor-setting-sources.ts). */
 export const CURSOR_SETTING_SOURCES_ENV = "PI_CURSOR_SETTING_SOURCES";
 
 export function resolveCursorSettingSources(raw) {
@@ -11,4 +11,10 @@ export function resolveCursorSettingSources(raw) {
 		.split(",")
 		.map((entry) => entry.trim())
 		.filter(Boolean);
+}
+
+/** Serialize parsed settingSources for PI_CURSOR_SETTING_SOURCES (undefined => explicit none). */
+export function serializeCursorSettingSources(settingSources) {
+	if (settingSources === undefined) return "none";
+	return settingSources.join(",");
 }

@@ -3,9 +3,6 @@ import { CURSOR_SETTING_SOURCES_ENV, resolveCursorSettingSources } from "./curso
 
 export function readArgvValue(argv, index, flagName, fail) {
 	const current = argv[index];
-	if (current?.startsWith(`${flagName}=`)) {
-		return current.slice(flagName.length + 1);
-	}
 	if (!current || current.startsWith("--")) {
 		fail(`${flagName} requires a value`);
 	}

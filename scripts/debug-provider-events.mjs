@@ -5,7 +5,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	commonProbeFlags,
@@ -17,6 +17,7 @@ import {
 import { parseJsonLines, terminateChild, waitForChildClose } from "./lib/cursor-child-process.mjs";
 import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
 import { createScriptFail } from "./lib/cursor-script-fail.mjs";
+import { serializeCursorSettingSources } from "./lib/cursor-setting-sources.mjs";
 
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -181,7 +182,7 @@ export async function runDebugProviderEvents(args) {
 		CURSOR_API_KEY: args.apiKey,
 		PI_CURSOR_SDK_EVENT_DEBUG: "1",
 		PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR: artifactDir,
-		PI_CURSOR_SETTING_SOURCES: args.settingSources?.join(",") ?? "all",
+		PI_CURSOR_SETTING_SOURCES: serializeCursorSettingSources(args.settingSources),
 		PI_CURSOR_NATIVE_TOOL_DISPLAY: envFlag(process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY, "1"),
 		PI_CURSOR_PI_TOOL_BRIDGE: envFlag(process.env.PI_CURSOR_PI_TOOL_BRIDGE, "1"),
 	};
