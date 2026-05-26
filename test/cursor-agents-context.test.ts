@@ -29,6 +29,7 @@ import {
 } from "../src/cursor-agents-context.js";
 import { buildCursorPrompt } from "../src/context.js";
 import { CURSOR_SETTING_SOURCES_ENV } from "../src/cursor-setting-sources.js";
+import { createEventHarness, makeModel } from "./helpers/pi-harness.js";
 import { buildPiSystemPromptWithContextFiles, makeSystemPromptOptions } from "./helpers/pi-system-prompt.js";
 
 const GLOBAL_AGENTS_PATH = "/Users/me/.pi/agent/AGENTS.md";
@@ -318,24 +319,22 @@ describe("shouldSuppressPiAgentsContext", () => {
 });
 
 describe("registerCursorAgentsContextDedup", () => {
+	const cursorModelOverrides = { model: makeModel("composer-2.5") };
+
 	it("strips via before_agent_start for cursor models with overlapping setting sources", async () => {
-		const handlers = new Map<string, (event: BeforeAgentStartEvent, ctx: ExtensionContext) => unknown>();
-		const pi = {
-			on: vi.fn((event: string, handler: (event: BeforeAgentStartEvent, ctx: ExtensionContext) => unknown) => {
-				handlers.set(event, handler);
-			}),
-		};
+		const pi = createEventHarness();
 		registerCursorAgentsContextDedup(pi);
 
 		const prompt = buildPiSystemPromptWithContextFiles([PROJECT_FILE]);
-		const result = await handlers.get("before_agent_start")?.(
+		const result = await pi.invokeEvent(
+			"before_agent_start",
 			{
 				type: "before_agent_start",
 				prompt: "hello",
 				systemPrompt: prompt,
 				systemPromptOptions: makeSystemPromptOptions([PROJECT_FILE]),
 			},
-			{ model: { provider: "cursor", id: "composer-2.5" } } as ExtensionContext,
+			cursorModelOverrides,
 		);
 
 		expect(result?.systemPrompt).toBeTypeOf("string");
@@ -343,22 +342,18 @@ describe("registerCursorAgentsContextDedup", () => {
 	});
 
 	it("does not modify prompt when systemPromptOptions is absent", async () => {
-		const handlers = new Map<string, (event: BeforeAgentStartEvent, ctx: ExtensionContext) => unknown>();
-		const pi = {
-			on: vi.fn((event: string, handler: (event: BeforeAgentStartEvent, ctx: ExtensionContext) => unknown) => {
-				handlers.set(event, handler);
-			}),
-		};
+		const pi = createEventHarness();
 		registerCursorAgentsContextDedup(pi);
 
 		const prompt = buildPiSystemPromptWithContextFiles([PROJECT_FILE]);
-		const result = await handlers.get("before_agent_start")?.(
+		const result = await pi.invokeEvent(
+			"before_agent_start",
 			{
 				type: "before_agent_start",
 				prompt: "hello",
 				systemPrompt: prompt,
 			} as BeforeAgentStartEvent,
-			{ model: { provider: "cursor", id: "composer-2.5" } } as ExtensionContext,
+			cursorModelOverrides,
 		);
 
 		expect(result).toBeUndefined();
@@ -366,46 +361,38 @@ describe("registerCursorAgentsContextDedup", () => {
 
 	it("does not modify prompt when setting sources are none", async () => {
 		process.env[CURSOR_SETTING_SOURCES_ENV] = "none";
-		const handlers = new Map<string, (event: BeforeAgentStartEvent, ctx: ExtensionContext) => unknown>();
-		const pi = {
-			on: vi.fn((event: string, handler: (event: BeforeAgentStartEvent, ctx: ExtensionContext) => unknown) => {
-				handlers.set(event, handler);
-			}),
-		};
+		const pi = createEventHarness();
 		registerCursorAgentsContextDedup(pi);
 
 		const prompt = buildPiSystemPromptWithContextFiles([PROJECT_FILE]);
-		const result = await handlers.get("before_agent_start")?.(
+		const result = await pi.invokeEvent(
+			"before_agent_start",
 			{
 				type: "before_agent_start",
 				prompt: "hello",
 				systemPrompt: prompt,
 				systemPromptOptions: makeSystemPromptOptions([PROJECT_FILE]),
 			},
-			{ model: { provider: "cursor", id: "composer-2.5" } } as ExtensionContext,
+			cursorModelOverrides,
 		);
 
 		expect(result).toBeUndefined();
 	});
 
 	it("feeds deduped system prompt from before_agent_start into buildCursorPrompt", async () => {
-		const handlers = new Map<string, (event: BeforeAgentStartEvent, ctx: ExtensionContext) => unknown>();
-		const pi = {
-			on: vi.fn((event: string, handler: (event: BeforeAgentStartEvent, ctx: ExtensionContext) => unknown) => {
-				handlers.set(event, handler);
-			}),
-		};
+		const pi = createEventHarness();
 		registerCursorAgentsContextDedup(pi);
 
 		const prompt = buildPiSystemPromptWithContextFiles([PROJECT_FILE]);
-		const hookResult = await handlers.get("before_agent_start")?.(
+		const hookResult = await pi.invokeEvent(
+			"before_agent_start",
 			{
 				type: "before_agent_start",
 				prompt: "hello",
 				systemPrompt: prompt,
 				systemPromptOptions: makeSystemPromptOptions([PROJECT_FILE]),
 			},
-			{ model: { provider: "cursor", id: "composer-2.5" } } as ExtensionContext,
+			cursorModelOverrides,
 		);
 
 		expect(hookResult?.systemPrompt).toBeTypeOf("string");

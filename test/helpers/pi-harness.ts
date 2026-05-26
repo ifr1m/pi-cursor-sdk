@@ -4,6 +4,7 @@ import {
 	AuthStorage,
 	ModelRegistry,
 	type BeforeAgentStartEvent,
+	type BeforeAgentStartEventResult,
 	type BuildSystemPromptOptions,
 	type ExtensionAPI,
 	type ExtensionCommandContext,
@@ -80,6 +81,18 @@ export type HarnessEventMap = {
 	tool_result: ToolResultEvent;
 };
 
+/** Per-handler result types for harness events that return values to the caller. */
+export type HarnessEventResultMap = {
+	tool_call: ToolCallEventResult;
+	before_agent_start: BeforeAgentStartEventResult;
+};
+
+/** Combined invoke result for before_agent_start (matches installed pi ExtensionRunner). */
+export type HarnessBeforeAgentStartCombinedResult = {
+	messages?: NonNullable<BeforeAgentStartEventResult["message"]>[];
+	systemPrompt?: string;
+};
+
 /** @deprecated Use ExtensionContextOverrides */
 export type TestExtensionContext = ExtensionContextOverrides;
 
@@ -116,7 +129,9 @@ export interface EventHarness {
 		model: NonNullable<ExtensionContext["model"]>,
 		ctxOverrides?: ExtensionContextOverrides,
 	) => Promise<void>;
-	runBeforeAgentStart: (ctxOverrides?: ExtensionContextOverrides) => Promise<void>;
+	runBeforeAgentStart: (
+		ctxOverrides?: ExtensionContextOverrides,
+	) => Promise<HarnessEventInvokeResult<"before_agent_start">>;
 	runTurnStart: (ctxOverrides?: ExtensionContextOverrides) => Promise<void>;
 	runSessionShutdown: (
 		eventOverrides?: Partial<HarnessEventMap["session_shutdown"]>,
@@ -178,7 +193,9 @@ export interface BridgePiHarness extends EventHarness {
 
 export type HarnessEventInvokeResult<E extends HarnessEventName> = E extends "tool_call"
 	? ToolCallEventResult | undefined
-	: void;
+	: E extends "before_agent_start"
+		? HarnessBeforeAgentStartCombinedResult | undefined
+		: void;
 
 const DEFAULT_BUILTIN_TOOL_NAMES = ["read", "bash", "grep", "find", "ls", "edit", "write"] as const;
 const DEFAULT_ACTIVE_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
@@ -305,7 +322,45 @@ function createMinimalExtensionContextInternal(overrides: ExtensionContextOverri
 	};
 }
 
-type HarnessStoredHandler = ExtensionHandler<HarnessEventMap[HarnessEventName], ToolCallEventResult | undefined>;
+type HarnessStoredHandler =
+	| ExtensionHandler<ToolCallEvent, ToolCallEventResult>
+	| ExtensionHandler<BeforeAgentStartEvent, BeforeAgentStartEventResult>
+	| ExtensionHandler<HarnessEventMap[Exclude<HarnessEventName, "tool_call" | "before_agent_start">]>;
+
+async function invokeBeforeAgentStartHandlers(
+	payload: BeforeAgentStartEvent,
+	ctx: ExtensionContext,
+	handlers: readonly HarnessStoredHandler[],
+): Promise<HarnessBeforeAgentStartCombinedResult | undefined> {
+	let currentSystemPrompt = payload.systemPrompt;
+	const messages: NonNullable<BeforeAgentStartEventResult["message"]>[] = [];
+	let systemPromptModified = false;
+	for (const handler of handlers) {
+		const event: BeforeAgentStartEvent = {
+			...payload,
+			systemPrompt: currentSystemPrompt,
+		};
+		const result = await (handler as ExtensionHandler<BeforeAgentStartEvent, BeforeAgentStartEventResult>)(
+			event,
+			ctx,
+		);
+		if (!result) continue;
+		if (result.message) {
+			messages.push(result.message);
+		}
+		if (result.systemPrompt !== undefined) {
+			currentSystemPrompt = result.systemPrompt;
+			systemPromptModified = true;
+		}
+	}
+	if (messages.length === 0 && !systemPromptModified) {
+		return undefined;
+	}
+	return {
+		messages: messages.length > 0 ? messages : undefined,
+		systemPrompt: systemPromptModified ? currentSystemPrompt : undefined,
+	};
+}
 
 function createHarnessEventApi() {
 	const handlers = new Map<HarnessEventName, HarnessStoredHandler[]>();
@@ -320,8 +375,16 @@ function createHarnessEventApi() {
 		payload: HarnessEventMap[E],
 		ctx: ExtensionContext,
 	): Promise<HarnessEventInvokeResult<E>> => {
+		const eventHandlers = handlers.get(event) ?? [];
+		if (event === "before_agent_start") {
+			return (await invokeBeforeAgentStartHandlers(
+				payload as BeforeAgentStartEvent,
+				ctx,
+				eventHandlers,
+			)) as HarnessEventInvokeResult<E>;
+		}
 		let toolCallResult: ToolCallEventResult | undefined;
-		for (const handler of handlers.get(event) ?? []) {
+		for (const handler of eventHandlers) {
 			const result = await (handler as ExtensionHandler<HarnessEventMap[E]>)(payload, ctx);
 			if (event === "tool_call" && result !== undefined) {
 				toolCallResult = result as ToolCallEventResult;
@@ -363,9 +426,11 @@ function createHarnessEventApi() {
 		);
 	};
 
-	const runBeforeAgentStart = async (ctxOverrides: ExtensionContextOverrides = {}): Promise<void> => {
+	const runBeforeAgentStart = async (
+		ctxOverrides: ExtensionContextOverrides = {},
+	): Promise<HarnessEventInvokeResult<"before_agent_start">> => {
 		const ctx = createExtensionTestContext(ctxOverrides);
-		await invokeEventWithContext(
+		return invokeEventWithContext(
 			"before_agent_start",
 			{
 				type: "before_agent_start",

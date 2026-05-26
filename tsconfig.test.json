@@ -14,6 +14,7 @@
     "test/index.test.ts",
     "test/index-session-cwd-integration.test.ts",
     "test/cursor-session-cwd.test.ts",
-    "test/cursor-pi-tool-bridge.test.ts"
+    "test/cursor-pi-tool-bridge.test.ts",
+    "test/cursor-agents-context.test.ts"
   ]
 }
