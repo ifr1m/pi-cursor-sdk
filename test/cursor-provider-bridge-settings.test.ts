@@ -23,11 +23,15 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
+	mockCreatedAgent,
+	asMockSdkAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { estimateCursorPromptMessageTokens } from "../src/context.js";
@@ -54,7 +58,7 @@ it("loads all Cursor setting sources by default for ambient MCP/tools", async ()
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -80,7 +84,7 @@ it("loads all Cursor setting sources by default for ambient MCP/tools", async ()
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -106,7 +110,7 @@ it("loads all Cursor setting sources by default for ambient MCP/tools", async ()
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -160,7 +164,7 @@ it("loads all Cursor setting sources by default for ambient MCP/tools", async ()
 				console.log('18:05:57.962 INFO  managed_skills.removed ctx=syncBuiltinSkills meta={skill_id: "cursor-sdk"}');
 				process.stderr.write("Error initializing ignore mapping for /tmp/project: permission denied\n");
 				console.warn("Ripgrep path not configured. Call configureRipgrepPath() at startup.");
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "finished",
@@ -168,7 +172,7 @@ it("loads all Cursor setting sources by default for ambient MCP/tools", async ()
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			});
 			mockedCreate.mockImplementationOnce(async () => {
 				process.stdout.write('INFO managed_skills.removed meta={skill_id:"clone"}\n');
@@ -177,11 +181,11 @@ it("loads all Cursor setting sources by default for ambient MCP/tools", async ()
 				process.stdout.write("UNEXPECTED startup stdout with test-key\n");
 				process.stderr.write("UNEXPECTED startup stderr with test-key\n");
 				console.log("UNEXPECTED startup console with test-key");
-				return {
+				return asMockSdkAgent({
 					agentId: "agent-1",
 					send: mockSend,
 					[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-				};
+				});
 			});
 
 			await collectEvents(streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" }));
@@ -228,7 +232,7 @@ it("loads all Cursor setting sources by default for ambient MCP/tools", async ()
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});

@@ -23,16 +23,20 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
-} from "./helpers/cursor-provider-harness.js";
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
+	textFromToolResultBlock,
+	createExtensionTestContext} from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { estimateCursorPromptMessageTokens } from "../src/context.js";
 import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display.js";
-import type { Context } from "@earendil-works/pi-ai";
+import type { AssistantMessageEvent, Context } from "@earendil-works/pi-ai";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -62,7 +66,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 					callId: "plan-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -70,9 +74,9 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -84,12 +88,12 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 
 		expect(firstDone.reason).toBe("toolUse");
 		expect(firstDone.message.content.map((block) => block.type)).toEqual(["toolCall"]);
-		expect(toolCall.name).toBe("cursor");
-		expect(toolCall.arguments).toMatchObject({ totalCount: 0 });
+		expect(toolCall!.name).toBe("cursor");
+		expect(toolCall!.arguments).toMatchObject({ totalCount: 0 });
 
 		const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
-		const toolResult = await cursorTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
-		expect(toolResult.content[0].text).toContain("createPlan");
+		const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
+		expect(textFromToolResultBlock(toolResult.content[0])).toContain("createPlan");
 		expect(toolResult.details).toMatchObject({ cursorToolName: "createPlan" });
 
 		resolveRun({ id: "run-1", status: "finished", result: "Final Cursor plan text." });
@@ -100,7 +104,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "cursor",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -141,7 +145,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 					callId: "plan-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -149,9 +153,9 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -165,10 +169,10 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		expect(firstText).toBe("Compiling the tool inventory and execution status.\n");
 		expect(firstDone.reason).toBe("toolUse");
 		expect(firstDone.message.content.map((block) => block.type)).toEqual(["text", "toolCall"]);
-		expect(toolCall.name).toBe("cursor");
+		expect(toolCall!.name).toBe("cursor");
 
 		const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
-		const toolResult = await cursorTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		resolveRun({ id: "run-1", status: "finished", result: "Final plan:\n1. Summarize available tools.\n2. Report execution status." });
 
 		const replayContext = makeContext();
@@ -177,7 +181,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "cursor",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -220,7 +224,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 					callId: "plan-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -228,9 +232,9 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -240,7 +244,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 		const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
-		const toolResult = await cursorTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const replayContext = makeContext();
 		replayContext.messages = [
@@ -248,7 +252,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "cursor",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -314,7 +318,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 				},
 			});
 			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "mcp", args: { toolName: "demo" } }, callId: "c2" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -322,9 +326,9 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -334,7 +338,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const toolResult = await readTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const replayContext = makeContext();
 		replayContext.messages = [
@@ -342,7 +346,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "read",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -373,7 +377,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 			firstDone.message,
 			{
 				role: "toolResult" as const,
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "read",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -410,7 +414,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		);
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "mcp", args: { toolName: "demo" } }, callId: "c1" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -418,9 +422,9 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -487,7 +491,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -495,9 +499,9 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -513,14 +517,14 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 
 		const toolCall = done.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const toolResult = await readTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		const replayContext = makeContext();
 		replayContext.messages = [
 			...replayContext.messages,
 			done.message,
 			{
 				role: "toolResult" as const,
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "read",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -558,7 +562,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -566,9 +570,9 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -578,10 +582,10 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const toolResult = await readTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		const toolResultMessage = {
 			role: "toolResult" as const,
-			toolCallId: toolCall.id,
+			toolCallId: toolCall!.id,
 			toolName: "read",
 			content: toolResult.content,
 			details: toolResult.details,

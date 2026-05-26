@@ -13,10 +13,14 @@ import {
 	isToolCallBlock,
 	registerBridgeForProviderTest,
 	registerNativeToolDisplayForTest,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	delayBeforeToolCompletion,
 	type CursorDeltaHandler,
 	type RegisteredTool,
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
+	createExtensionTestContext,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { CursorSdkEventDebugSink } from "../src/cursor-sdk-event-debug.js";
@@ -77,7 +81,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 					callId: "mcp-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -85,9 +89,9 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -104,7 +108,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 
 		resolveRun({ id: "run-1", status: "finished", result: "Done." });
 		const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
-		const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, {});
+		const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const replayContext = makeContext();
 		replayContext.messages = [
@@ -135,7 +139,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				},
 			});
 			opts.onDelta({ update: { type: "text-delta", text: "done" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -143,9 +147,9 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -180,7 +184,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 			});
 			await delayBeyondLifecycleDefer();
 			opts.onDelta({ update: { type: "text-delta", text: "done" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -188,9 +192,9 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -208,7 +212,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		registerBridgeForProviderTest({
 			active: ["sem_reindex"],
-			tools: [createBridgeToolInfo("sem_reindex", Type.Object({ target: Type.String() }), "Reindex semantic cache")],
+			tools: [createTestToolInfo("sem_reindex", Type.Object({ target: Type.String() }), "Reindex semantic cache")],
 		});
 
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
@@ -235,7 +239,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				},
 			});
 			opts.onDelta({ update: { type: "text-delta", text: "done" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -243,9 +247,9 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -269,7 +273,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 					callId: "shell-wait-fail-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-shell-fail",
 				agentId: "agent-1",
 				status: "running",
@@ -277,9 +281,9 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -311,7 +315,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 					callId: "shell-wait-finished-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-shell-finished",
 				agentId: "agent-1",
 				status: "finished",
@@ -319,9 +323,9 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -353,7 +357,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 					callId: "shell-live-wait-finished-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-shell-live-finished",
 				agentId: "agent-1",
 				status: "running",
@@ -361,9 +365,9 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -416,7 +420,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 					callId: "shell-live-wait-fail-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-shell-live-fail",
 				agentId: "agent-1",
 				status: "running",
@@ -424,9 +428,9 @@ describe("streamCursor Cursor tool lifecycle", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),

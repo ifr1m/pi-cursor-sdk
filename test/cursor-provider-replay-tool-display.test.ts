@@ -24,11 +24,16 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
+	textFromToolResultBlock,
+	createExtensionTestContext,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { estimateCursorPromptMessageTokens } from "../src/context.js";
@@ -83,7 +88,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -91,9 +96,9 @@ it("replays Cursor grep activity through native grep display", async () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -105,13 +110,13 @@ it("replays Cursor grep activity through native grep display", async () => {
 		const trace = collectThinkingDeltas(firstEvents);
 
 		expect(firstDone.reason).toBe("toolUse");
-		expect(toolCall.name).toBe("grep");
-		expect(toolCall.arguments).toEqual({ pattern: "sem_reindex", path: "src" });
+		expect(toolCall!.name).toBe("grep");
+		expect(toolCall!.arguments).toEqual({ pattern: "sem_reindex", path: "src" });
 		expect(trace).not.toContain("src/tools/reindex.ts");
 
 		const grepTool = registeredTools.find((tool) => tool.name === "grep");
-		const toolResult = await grepTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
-		expect(toolResult.content[0].text).toContain("src/tools/reindex.ts");
+		const toolResult = await grepTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
+		expect(textFromToolResultBlock(toolResult.content[0])).toContain("src/tools/reindex.ts");
 
 		resolveRun({ id: "run-1", status: "finished", result: "Done." });
 
@@ -121,7 +126,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "grep",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -166,7 +171,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 					callId: "web-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -174,9 +179,9 @@ it("replays Cursor grep activity through native grep display", async () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -188,8 +193,8 @@ it("replays Cursor grep activity through native grep display", async () => {
 		const trace = collectThinkingDeltas(firstEvents);
 
 		expect(firstDone.reason).toBe("toolUse");
-		expect(toolCall.name).toBe("cursor");
-		expect(toolCall.arguments).toMatchObject({
+		expect(toolCall!.name).toBe("cursor");
+		expect(toolCall!.arguments).toMatchObject({
 			query: "pi mathematics",
 			activityTitle: "Cursor web search",
 			activitySummary: "pi mathematics",
@@ -197,8 +202,8 @@ it("replays Cursor grep activity through native grep display", async () => {
 		expect(trace).not.toContain("Wikipedia");
 
 		const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
-		const toolResult = await cursorTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
-		expect(toolResult.content[0].text).toContain("Pi - Wikipedia");
+		const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
+		expect(textFromToolResultBlock(toolResult.content[0])).toContain("Pi - Wikipedia");
 
 		resolveRun({ id: "run-1", status: "finished", result: "Done." });
 
@@ -208,7 +213,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "cursor",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -262,7 +267,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "text-delta", text: "SEARCH_DONE=yes" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -270,9 +275,9 @@ it("replays Cursor grep activity through native grep display", async () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -283,16 +288,16 @@ it("replays Cursor grep activity through native grep display", async () => {
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 
 		expect(firstDone.reason).toBe("toolUse");
-		expect(toolCall.name).toBe("cursor");
-		expect(toolCall.arguments).toMatchObject({
+		expect(toolCall!.name).toBe("cursor");
+		expect(toolCall!.arguments).toMatchObject({
 			query: "Cursor IDE",
 			activityTitle: "Cursor web search",
 			activitySummary: "Cursor IDE",
 		});
 
 		const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
-		const toolResult = await cursorTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
-		expect(toolResult.content[0].text).toContain("Cursor — Build Software with AI Agents");
+		const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
+		expect(textFromToolResultBlock(toolResult.content[0])).toContain("Cursor — Build Software with AI Agents");
 
 		const replayContext = makeContext();
 		replayContext.messages = [
@@ -300,7 +305,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "cursor",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -344,7 +349,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 						callId: "c1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "running",
@@ -352,9 +357,9 @@ it("replays Cursor grep activity through native grep display", async () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			});
-			mockedCreate.mockResolvedValue({
+			mockCreatedAgent({
 				agentId: "agent-1",
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -364,18 +369,18 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const firstDone = getDoneEvent(firstEvents);
 			const toolCall = firstDone.message.content.find(isToolCallBlock);
 
-			expect(toolCall.name).toBe("cursor");
-			expect(toolCall.arguments).toMatchObject({ path: targetPath });
-			expect(toolCall.arguments).not.toHaveProperty("edits");
+			expect(toolCall!.name).toBe("cursor");
+			expect(toolCall!.arguments).toMatchObject({ path: targetPath });
+			expect(toolCall!.arguments).not.toHaveProperty("edits");
 			const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
 			expect(cursorTool).toBeDefined();
-			const toolResult = await cursorTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+			const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
 				content: [{ type: "text", text: expect.stringContaining(`edit ${targetPath}`) }],
 				details: { cursorToolName: "edit", title: "Cursor edit", summary: targetPath, diff: `--- a/${targetPath}\n+++ b/${targetPath}` },
 				terminate: false,
 			});
-			expect(toolResult.content[0].text).not.toContain("Validation failed for tool \"edit\"");
+			expect(textFromToolResultBlock(toolResult.content[0])).not.toContain("Validation failed for tool \"edit\"");
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
 
 			const editTool = registeredTools.find((tool) => tool.name === "edit");
@@ -386,7 +391,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 					{ path: targetPath, edits: [{ oldText: "old\n", newText: "mutated\n" }] },
 					undefined,
 					undefined,
-					{},
+					createExtensionTestContext(),
 				),
 			).rejects.toThrow("replay-only call does not execute file mutations");
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
@@ -399,7 +404,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 				firstDone.message,
 				{
 					role: "toolResult",
-					toolCallId: toolCall.id,
+					toolCallId: toolCall!.id,
 					toolName: "cursor",
 					content: toolResult.content,
 					details: toolResult.details,
@@ -450,7 +455,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 						callId: "c1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "running",
@@ -458,9 +463,9 @@ it("replays Cursor grep activity through native grep display", async () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			});
-			mockedCreate.mockResolvedValue({
+			mockCreatedAgent({
 				agentId: "agent-1",
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -470,18 +475,18 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const firstDone = getDoneEvent(firstEvents);
 			const toolCall = firstDone.message.content.find(isToolCallBlock);
 
-			expect(toolCall.name).toBe("cursor");
-			expect(toolCall.arguments).toMatchObject({ path: targetPath, activityTitle: "Cursor write", activitySummary: targetPath });
-			expect(toolCall.arguments).not.toHaveProperty("content");
+			expect(toolCall!.name).toBe("cursor");
+			expect(toolCall!.arguments).toMatchObject({ path: targetPath, activityTitle: "Cursor write", activitySummary: targetPath });
+			expect(toolCall!.arguments).not.toHaveProperty("content");
 			const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
 			expect(cursorTool).toBeDefined();
-			const toolResult = await cursorTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+			const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
 				content: [{ type: "text", text: expect.stringContaining(`write ${targetPath}`) }],
 				details: { cursorToolName: "write", title: "Cursor write", path: targetPath },
 				terminate: false,
 			});
-			expect(toolResult.content[0].text).not.toContain("Validation failed for tool \"write\"");
+			expect(textFromToolResultBlock(toolResult.content[0])).not.toContain("Validation failed for tool \"write\"");
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
 
 			resolveRun({ id: "run-1", status: "finished", result: "Done." });
@@ -492,7 +497,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 				firstDone.message,
 				{
 					role: "toolResult",
-					toolCallId: toolCall.id,
+					toolCallId: toolCall!.id,
 					toolName: "cursor",
 					content: toolResult.content,
 					details: toolResult.details,
@@ -547,7 +552,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 						callId: "c1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "running",
@@ -555,9 +560,9 @@ it("replays Cursor grep activity through native grep display", async () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			});
-			mockedCreate.mockResolvedValue({
+			mockCreatedAgent({
 				agentId: "agent-1",
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -567,11 +572,11 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const firstDone = getDoneEvent(firstEvents);
 			const toolCall = firstDone.message.content.find(isToolCallBlock);
 
-			expect(toolCall.name).toBe("edit");
-			expect(toolCall.arguments).toEqual({ path: targetPath, edits: [{ oldText: "old\n", newText: "new\n" }] });
+			expect(toolCall!.name).toBe("edit");
+			expect(toolCall!.arguments).toEqual({ path: targetPath, edits: [{ oldText: "old\n", newText: "new\n" }] });
 			const editTool = registeredTools.find((tool) => tool.name === "edit");
 			expect(editTool).toBeDefined();
-			const toolResult = await editTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+			const toolResult = await editTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
 				content: [{ type: "text", text: expect.stringContaining(`edit ${targetPath}`) }],
 				details: { cursorToolName: "edit", diff: expect.stringContaining("-old") },
@@ -587,7 +592,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 				firstDone.message,
 				{
 					role: "toolResult",
-					toolCallId: toolCall.id,
+					toolCallId: toolCall!.id,
 					toolName: "edit",
 					content: toolResult.content,
 					details: toolResult.details,
@@ -638,7 +643,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 						callId: "c1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "running",
@@ -646,9 +651,9 @@ it("replays Cursor grep activity through native grep display", async () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			});
-			mockedCreate.mockResolvedValue({
+			mockCreatedAgent({
 				agentId: "agent-1",
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -658,12 +663,12 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const firstDone = getDoneEvent(firstEvents);
 			const toolCall = firstDone.message.content.find(isToolCallBlock);
 
-			expect(toolCall.name).toBe("write");
-			expect(toolCall.name).not.toContain("cursor");
-			expect(toolCall.arguments).toEqual({ path: targetPath, content: "new\n" });
+			expect(toolCall!.name).toBe("write");
+			expect(toolCall!.name).not.toContain("cursor");
+			expect(toolCall!.arguments).toEqual({ path: targetPath, content: "new\n" });
 			const writeTool = registeredTools.find((tool) => tool.name === "write");
 			expect(writeTool).toBeDefined();
-			const toolResult = await writeTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+			const toolResult = await writeTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
 				content: [{ type: "text", text: expect.stringContaining(`write ${targetPath}`) }],
 				details: { cursorToolName: "write", fileContentAfterWrite: "new\n" },
@@ -672,7 +677,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
 
 			await expect(
-				writeTool!.execute("cursor-replay-1-1-tool-998", { path: targetPath, content: "mutated\n" }, undefined, undefined, {}),
+				writeTool!.execute("cursor-replay-1-1-tool-998", { path: targetPath, content: "mutated\n" }, undefined, undefined, createExtensionTestContext()),
 			).rejects.toThrow("replay-only call does not execute file mutations");
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
 
@@ -684,7 +689,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 				firstDone.message,
 				{
 					role: "toolResult",
-					toolCallId: toolCall.id,
+					toolCallId: toolCall!.id,
 					toolName: "write",
 					content: toolResult.content,
 					details: toolResult.details,

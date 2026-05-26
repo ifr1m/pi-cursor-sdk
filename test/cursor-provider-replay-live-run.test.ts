@@ -23,12 +23,15 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
-} from "./helpers/cursor-provider-harness.js";
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
+	createExtensionTestContext} from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { __testUtils as sessionAgentTestUtils } from "../src/cursor-session-agent.js";
 import { __testUtils as cursorSessionScopeTestUtils } from "../src/cursor-session-scope.js";
@@ -68,7 +71,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -76,9 +79,9 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -95,11 +98,11 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 		expect(firstDone.message.stopReason).toBe("toolUse");
 		expect(firstDone.message.content.map((block) => block.type)).toEqual(["text", "toolCall"]);
 		expect(firstDone.message.content[0]).toEqual({ type: "text", text: "I am checking files." });
-		expect(toolCall.name).toBe("read");
+		expect(toolCall!.name).toBe("read");
 		expect(hasEventType(firstEvents, "toolcall_delta")).toBe(true);
 
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const toolResult = await readTool.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		expect(toolResult).toEqual({
 			content: [{ type: "text", text: "# pi-cursor-sdk" }],
 			details: undefined,
@@ -114,7 +117,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "read",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -157,7 +160,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 					callId: "task-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -165,9 +168,9 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -206,7 +209,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 					callId: "read-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -214,9 +217,9 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -226,7 +229,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 		const firstDone = getDoneEvent(firstEvents);
 		const readCall = firstDone.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const readResult = await readTool!.execute(readCall!.id, readCall!.arguments, undefined, undefined, {});
+		const readResult = await readTool!.execute(readCall!.id, readCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		firstOnDelta?.({ update: { type: "tool-call-started", toolCall: { name: "grep", args: { pattern: "metric-link", path: "src/app/globals.css" } }, callId: "grep-1" } });
 		firstOnDelta?.({
@@ -289,7 +292,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 						callId: "c1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "running",
@@ -297,10 +300,10 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			}
 
-			return {
+			return asMockCursorRun({
 				id: "run-2",
 				agentId: "agent-1",
 				status: "finished",
@@ -308,9 +311,9 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -323,7 +326,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 		expect(firstDone.reason).toBe("toolUse");
 
 		const bashTool = registeredTools.find((tool) => tool.name === "bash");
-		const toolResult = await bashTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, {});
+		const toolResult = await bashTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const steerContext = makeContext();
 		steerContext.messages = [
@@ -385,7 +388,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -393,9 +396,9 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -446,7 +449,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -454,9 +457,9 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				cancel: cancelRun,
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -507,7 +510,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 						callId: "c1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "running",
@@ -515,10 +518,10 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 					cancel: cancelRun,
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			}
 
-			return {
+			return asMockCursorRun({
 				id: "run-2",
 				agentId: "agent-2",
 				status: "finished",
@@ -526,9 +529,9 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -538,7 +541,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 		const firstDone = getDoneEvent(firstEvents);
 		const firstToolCall = firstDone.message.content.find(isToolCallBlock);
 		const bashTool = registeredTools.find((tool) => tool.name === "bash");
-		const firstToolResult = await bashTool!.execute(firstToolCall!.id, firstToolCall!.arguments, undefined, undefined, {});
+		const firstToolResult = await bashTool!.execute(firstToolCall!.id, firstToolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const steerContext = makeContext();
 		steerContext.messages = [
@@ -603,7 +606,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -611,9 +614,9 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 				cancel: cancelRun,
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,

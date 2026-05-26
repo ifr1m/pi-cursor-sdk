@@ -22,7 +22,7 @@ import { type CursorPiBridgeToolRequest } from "./cursor-pi-tool-bridge.js";
 import { resetSessionCursorAgent } from "./cursor-session-agent.js";
 import { applyCursorApproximateUsage } from "./cursor-usage-accounting.js";
 import { CursorPartialContentEmitter } from "./cursor-partial-content-emitter.js";
-import { hasUsableText } from "./cursor-record-utils.js";
+import { trimCurrentTurnAlreadyEmittedCursorText } from "./cursor-run-final-text.js";
 import { formatCursorSdkAbortMessage, resolveCursorSdkAbortCause } from "./cursor-provider-errors.js";
 import { formatInactiveCursorReplayTrace } from "./cursor-native-replay-trace.js";
 import { partitionNativeToolsByActiveContext } from "./cursor-native-replay-routing.js";
@@ -150,57 +150,6 @@ function emitCursorLiveQueuedEvent(
 		if (run) run.emittedText += event.text;
 		turn.emitter.appendTextDelta(event.text);
 	}
-}
-
-function isCursorTextBoundary(text: string, index: number): boolean {
-	if (index <= 0 || index >= text.length) return true;
-	const before = text[index - 1];
-	const after = text[index];
-	return !/[\p{L}\p{N}_]/u.test(before) || !/[\p{L}\p{N}_]/u.test(after);
-}
-
-function trimAlreadyEmittedCursorText(text: string, emittedText: string, options?: { allowPartialPrefix?: boolean }): string {
-	if (!text || !emittedText) return text;
-	if (text === emittedText) return "";
-	if (text.startsWith(emittedText) && (options?.allowPartialPrefix || isCursorTextBoundary(text, emittedText.length))) {
-		return text.slice(emittedText.length);
-	}
-	if (emittedText.endsWith(text) && isCursorTextBoundary(emittedText, emittedText.length - text.length)) return "";
-	const trimmedText = text.trim();
-	const trimmedEmittedText = emittedText.trim();
-	if (trimmedText === trimmedEmittedText) return "";
-	if (trimmedText && trimmedEmittedText.endsWith(trimmedText)) {
-		const suffixStart = trimmedEmittedText.length - trimmedText.length;
-		if (isCursorTextBoundary(trimmedEmittedText, suffixStart)) return "";
-	}
-	return text;
-}
-
-function trimCurrentTurnAlreadyEmittedCursorText(text: string, currentTurnEmittedText: string, emittedText = currentTurnEmittedText): string {
-	if (!currentTurnEmittedText) return trimAlreadyEmittedCursorText(text, emittedText);
-	const currentTurnTrimmedText = trimAlreadyEmittedCursorText(text, currentTurnEmittedText, { allowPartialPrefix: true });
-	if (currentTurnTrimmedText !== text) return currentTurnTrimmedText;
-	if (emittedText.endsWith(currentTurnEmittedText)) {
-		const emittedTextTrimmedText = trimAlreadyEmittedCursorText(text, emittedText, { allowPartialPrefix: true });
-		if (emittedTextTrimmedText !== text) return emittedTextTrimmedText;
-	}
-	return trimAlreadyEmittedCursorText(text, emittedText);
-}
-
-export function selectCursorFinalText(
-	resultText: unknown,
-	textDeltas: readonly string[],
-	emittedText: string,
-	fallbackText?: string,
-	options?: { allowPartialPrefix?: boolean },
-): string {
-	const candidates = [typeof resultText === "string" ? resultText : undefined, fallbackText, textDeltas.join("")];
-	for (const candidate of candidates) {
-		if (!hasUsableText(candidate)) continue;
-		const trimmedCandidate = trimAlreadyEmittedCursorText(candidate, emittedText, options);
-		if (hasUsableText(trimmedCandidate)) return trimmedCandidate;
-	}
-	return "";
 }
 
 function emitCursorNativeToolUseTurn(

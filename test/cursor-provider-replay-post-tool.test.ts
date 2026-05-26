@@ -23,16 +23,19 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
-} from "./helpers/cursor-provider-harness.js";
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
+	createExtensionTestContext} from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { estimateCursorPromptMessageTokens } from "../src/context.js";
 import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display.js";
-import type { Context } from "@earendil-works/pi-ai";
+import type { AssistantMessageEvent, Context } from "@earendil-works/pi-ai";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -67,7 +70,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -75,9 +78,9 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -87,7 +90,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const toolResult = await readTool.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const replayContext = makeContext();
 		replayContext.messages = [
@@ -95,7 +98,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "read",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -167,7 +170,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -175,9 +178,9 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -187,7 +190,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const toolResult = await readTool.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const replayContext = makeContext();
 		replayContext.messages = [
@@ -195,7 +198,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "read",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -261,7 +264,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			opts.onDelta({ update: { type: "thinking-completed" } });
 			opts.onDelta({ update: { type: "text-delta", text: "Final " } });
 			opts.onDelta({ update: { type: "text-delta", text: "answer." } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -269,9 +272,9 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -281,7 +284,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const toolResult = await readTool.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		expect(firstDone.message.content.map((block) => block.type)).toEqual(["toolCall"]);
 
@@ -291,7 +294,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "read",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -357,7 +360,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -365,9 +368,9 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -377,7 +380,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstDone = getDoneEvent(firstEvents);
 		const firstToolCall = firstDone.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const firstToolResult = await readTool.execute(firstToolCall.id, firstToolCall.arguments, undefined, undefined, {});
+		const firstToolResult = await readTool!.execute(firstToolCall!.id, firstToolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const secondContext = makeContext();
 		secondContext.messages = [
@@ -385,7 +388,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: firstToolCall.id,
+				toolCallId: firstToolCall!.id,
 				toolName: "read",
 				content: firstToolResult.content,
 				details: firstToolResult.details,
@@ -433,7 +436,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			isToolCallBlock,
 		);
 		const grepTool = registeredTools.find((tool) => tool.name === "grep");
-		const secondToolResult = await grepTool.execute(secondToolCall.id, secondToolCall.arguments, undefined, undefined, {});
+		const secondToolResult = await grepTool!.execute(secondToolCall!.id, secondToolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const finalContext = makeContext();
 		finalContext.messages = [
@@ -441,7 +444,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: firstToolCall.id,
+				toolCallId: firstToolCall!.id,
 				toolName: "read",
 				content: firstToolResult.content,
 				details: firstToolResult.details,
@@ -451,7 +454,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			(getDoneEvent(secondEvents)).message,
 			{
 				role: "toolResult",
-				toolCallId: secondToolCall.id,
+				toolCallId: secondToolCall!.id,
 				toolName: "grep",
 				content: secondToolResult.content,
 				details: secondToolResult.details,
@@ -498,7 +501,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -506,9 +509,9 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -519,10 +522,10 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstEvents = await collectEvents(streamCursor(makeModel(), context, { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const firstToolCall = firstDone.message.content.find(isToolCallBlock);
-		const firstToolResult = await readTool.execute(firstToolCall.id, firstToolCall.arguments, undefined, undefined, {});
+		const firstToolResult = await readTool!.execute(firstToolCall!.id, firstToolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		const firstToolResultMessage = {
 			role: "toolResult" as const,
-			toolCallId: firstToolCall.id,
+			toolCallId: firstToolCall!.id,
 			toolName: "read",
 			content: firstToolResult.content,
 			details: firstToolResult.details,
@@ -549,10 +552,10 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const secondEvents = await secondDonePromise;
 		const secondDone = getDoneEvent(secondEvents);
 		const secondToolCall = secondDone.message.content.find(isToolCallBlock);
-		const secondToolResult = await readTool.execute(secondToolCall.id, secondToolCall.arguments, undefined, undefined, {});
+		const secondToolResult = await readTool!.execute(secondToolCall!.id, secondToolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		const secondToolResultMessage = {
 			role: "toolResult" as const,
-			toolCallId: secondToolCall.id,
+			toolCallId: secondToolCall!.id,
 			toolName: "read",
 			content: secondToolResult.content,
 			details: secondToolResult.details,
@@ -607,7 +610,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		);
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			onDelta = opts.onDelta;
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -615,9 +618,9 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -626,7 +629,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstEventsPromise = collectEvents(streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" }));
 		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
 		const createOptions = getCreatedAgentOptions();
-		const { client, transport } = await connectMcpClient(createOptions.mcpServers.pi_tools.url);
+		const { client, transport } = await connectMcpClient(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		try {
 			onDelta?.({ update: { type: "text-delta", text: "Disconnect" } });
 			const readCallPromise = client.callTool({ name: "pi__read", arguments: { path: "README.md" } });
@@ -636,7 +639,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			const [toolCall] = firstDone.message.content.filter(isToolCallBlock);
 
 			expect(firstText).toBe("Disconnect");
-			expect(toolCall.name).toBe("read");
+			expect(toolCall!.name).toBe("read");
 
 			const replayContext = makeContext();
 			replayContext.messages = [
@@ -644,7 +647,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 				firstDone.message,
 				{
 					role: "toolResult",
-					toolCallId: toolCall.id,
+					toolCallId: toolCall!.id,
 					toolName: "read",
 					content: [{ type: "text", text: "file contents" }],
 					isError: false,

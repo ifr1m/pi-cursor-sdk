@@ -23,17 +23,23 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../src/model-discovery.js";
 import { __testUtils as sdkEventDebugTestUtils } from "../src/cursor-sdk-event-debug.js";
+import type { SDKMessage, SendOptions } from "@cursor/sdk";
 import type { Context } from "@earendil-works/pi-ai";
+
+type CursorOnStepPayload = Parameters<NonNullable<SendOptions["onStep"]>>[0];
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -73,7 +79,7 @@ it("detects trailing user messages only after tool results", () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "text-delta", text: "Hello " } });
 			opts.onDelta({ update: { type: "text-delta", text: "world" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -81,9 +87,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -110,7 +116,7 @@ it("detects trailing user messages only after tool results", () => {
 		try {
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({ update: { type: "text-delta", text: "debugged" } });
-				return {
+				return asMockCursorRun({
 					id: "run-debug",
 					agentId: "agent-debug",
 					status: "finished",
@@ -119,11 +125,11 @@ it("detects trailing user messages only after tool results", () => {
 					supports: () => false,
 					unsupportedReason: () => "conversation unsupported",
 					stream: async function* () {
-						yield { type: "assistant", message: { content: [{ type: "text", text: "debugged" }] } };
+						yield { type: "assistant", message: { content: [{ type: "text", text: "debugged" }] } } as SDKMessage;
 					},
-				};
+				});
 			});
-			mockedCreate.mockResolvedValue({
+			mockCreatedAgent({
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
@@ -185,7 +191,7 @@ it("detects trailing user messages only after tool results", () => {
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -193,9 +199,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -275,7 +281,7 @@ it("detects trailing user messages only after tool results", () => {
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -283,9 +289,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -341,7 +347,7 @@ it("detects trailing user messages only after tool results", () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "text-delta", text: "Switching to plan mode.\n" } });
 			opts.onDelta({ update: { type: "tool-call-completed", toolCall: { name: "createPlan", args: { plan }, result: { status: "success", value: {} } }, callId: "plan-1" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -349,9 +355,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -372,7 +378,7 @@ it("detects trailing user messages only after tool results", () => {
 			opts.onDelta({ update: { type: "thinking-delta", text: " let me think" } });
 			opts.onDelta({ update: { type: "thinking-completed" } });
 			opts.onDelta({ update: { type: "text-delta", text: "answer" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -380,9 +386,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -402,7 +408,7 @@ it("detects trailing user messages only after tool results", () => {
 			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read_file" }, callId: "c1" } });
 			opts.onDelta({ update: { type: "tool-call-completed", toolCall: { name: "read_file" }, callId: "c1" } });
 			opts.onDelta({ update: { type: "text-delta", text: "done" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -410,9 +416,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -439,7 +445,7 @@ it("detects trailing user messages only after tool results", () => {
 			});
 			opts.onDelta({ update: { type: "summary", summary: "Inspected files" } });
 			opts.onDelta({ update: { type: "text-delta", text: "done" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -447,9 +453,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -479,9 +485,9 @@ it("detects trailing user messages only after tool results", () => {
 						args: { path: "README.md" },
 						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
 					},
-				},
+				} as CursorOnStepPayload["step"],
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -489,9 +495,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -515,9 +521,9 @@ it("detects trailing user messages only after tool results", () => {
 						args: { path: "README.md" },
 						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
 					},
-				},
+				} as CursorOnStepPayload["step"],
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -525,9 +531,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -544,7 +550,7 @@ it("detects trailing user messages only after tool results", () => {
 	it("surfaces incomplete started Cursor tool calls with neutral activity traces", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "shell", args: { command: "sleep 10" } }, callId: "c1" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -552,9 +558,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -579,7 +585,7 @@ it("detects trailing user messages only after tool results", () => {
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -587,9 +593,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -609,7 +615,7 @@ it("detects trailing user messages only after tool results", () => {
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -617,9 +623,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -634,7 +640,7 @@ it("detects trailing user messages only after tool results", () => {
 		process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR = artifactDir;
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "README.md" } }, callId: "c1" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -642,9 +648,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -669,7 +675,7 @@ it("detects trailing user messages only after tool results", () => {
 		process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR = artifactDir;
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "missing.txt" } }, callId: "c-missing" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -677,9 +683,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -720,7 +726,7 @@ it("detects trailing user messages only after tool results", () => {
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -728,9 +734,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -755,9 +761,9 @@ it("detects trailing user messages only after tool results", () => {
 						args: { path: "missing.txt" },
 						result: { status: "error", error: "missing.txt: No such file" },
 					},
-				},
+				} as CursorOnStepPayload["step"],
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -765,9 +771,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -792,7 +798,7 @@ it("detects trailing user messages only after tool results", () => {
 						args: { path: "README.md" },
 						result: { status: "success", value: { content: "# pi-cursor-sdk" } },
 					},
-				},
+				} as CursorOnStepPayload["step"],
 			});
 			opts.onDelta({
 				update: {
@@ -804,7 +810,7 @@ it("detects trailing user messages only after tool results", () => {
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -812,9 +818,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -831,7 +837,7 @@ it("detects trailing user messages only after tool results", () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "text-delta", text: "Final " } });
 			opts.onDelta({ update: { type: "text-delta", text: "answer." } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -839,9 +845,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -857,7 +863,7 @@ it("detects trailing user messages only after tool results", () => {
 	it("trims same-turn final text when streamed text is only a word prefix", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "text-delta", text: "Disconnect" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -865,9 +871,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -899,7 +905,7 @@ it("detects trailing user messages only after tool results", () => {
 					callId: "call_abc\nfc_secret",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -907,9 +913,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -940,7 +946,7 @@ it("detects trailing user messages only after tool results", () => {
 					},
 				});
 			}
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -948,9 +954,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -978,7 +984,7 @@ it("detects trailing user messages only after tool results", () => {
 					},
 				});
 			}
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -986,9 +992,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -1017,7 +1023,7 @@ it("detects trailing user messages only after tool results", () => {
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -1025,9 +1031,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -1047,7 +1053,7 @@ it("detects trailing user messages only after tool results", () => {
 			opts.onDelta({ update: { type: "text-delta", text: "Final answer" } });
 			opts.onDelta({ update: { type: "thinking-delta", text: "late trace" } });
 			opts.onDelta({ update: { type: "thinking-completed" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -1055,9 +1061,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -1086,7 +1092,7 @@ it("detects trailing user messages only after tool results", () => {
 				},
 			});
 			opts.onDelta({ update: { type: "text-delta", text: "done" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -1094,9 +1100,9 @@ it("detects trailing user messages only after tool results", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});

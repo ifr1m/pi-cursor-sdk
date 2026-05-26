@@ -8,12 +8,25 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 
 - `src/index.ts` registers the pi extension, provider, fallback warnings, Cursor fast controls, native replay wrappers, question tool, and pi tool bridge hooks.
 - `src/model-discovery.ts` discovers Cursor models, builds pi model metadata, stores per-model metadata, and defines fallback models.
-- `src/cursor-provider.ts` streams through local `@cursor/sdk` agents, injects local MCP bridge config, resumes live bridge runs, and sanitizes Cursor SDK errors.
+- `src/cursor-provider.ts` is a thin `streamCursor()` wrapper that delegates turn execution to the turn runner.
+- `src/cursor-provider-turn-runner.ts` orchestrates provider turns (pre-send drain, prepare, send, finalize, emit, cleanup).
+- `src/cursor-provider-turn-prepare.ts` owns turn prepare (auth, MCP timeout install, session agent, live-run setup, coordinator).
+- `src/cursor-provider-turn-send.ts` owns SDK `agent.send()` wiring and abort listener registration.
+- `src/cursor-provider-turn-finalize.ts` owns unified `awaitFinalizeCursorRunOutcome()` (wait, transcript replay, incomplete tools, artifacts, context cache).
+- `src/cursor-provider-turn-emit.ts` owns live vs direct emission from finalized outcomes.
+- `src/cursor-provider-turn-types.ts` owns immutable turn phase data and mutable per-turn runtime state.
+- `src/cursor-provider-run-outcome.ts` owns the discriminated `CursorRunOutcome` model and live vs direct emission classification.
+- `src/cursor-run-final-text.ts` owns final assistant text selection for run outcomes and live-run drain.
 - `src/cursor-provider-errors.ts` owns scrubbed Cursor SDK run failure detail, abort reason formatting, and provider error sanitization.
 - `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, send-state commits, and lifecycle invalidation on compaction/tree/shutdown.
 - `src/cursor-session-send-policy.ts` owns session send planning (`bootstrap` vs `incremental`), periodic agent rebootstrap threshold, and prompt mode selection.
 - `src/cursor-provider-live-run-drain.ts` owns live-run drain/replay mirroring, pre-send continuation, and native replay turn emission.
-- `src/cursor-provider-turn-coordinator.ts` owns SDK delta/step handling, tool completion routing, and trace/native-replay emission during a turn.
+- `src/cursor-provider-turn-coordinator.ts` orchestrates SDK delta/step handling during a turn over focused collaborators.
+- `src/cursor-provider-turn-shell-output.ts` owns shell-output-delta tracking and merging into completed shell tool calls.
+- `src/cursor-provider-turn-tool-ledger.ts` owns started/completed tool identities, fingerprints, and duplicate suppression.
+- `src/cursor-provider-turn-sdk-normalizer.ts` normalizes SDK delta/step completions via the ledger and shell tracker.
+- `src/cursor-provider-turn-display-router.ts` owns trace vs native-replay display routing during a turn.
+- `src/cursor-provider-turn-lifecycle-emitter.ts` owns deferred in-progress lifecycle labels during a turn.
 - `src/cursor-tool-lifecycle.ts` owns low-noise deferred in-progress lifecycle labels for long-running Cursor tools (coalesced with completed replay cards; bridge excluded).
 - `src/cursor-tool-visibility.ts` owns canonical Cursor tool visibility classification for lifecycle, incomplete-tool, and replay activity titles.
 - `src/cursor-incomplete-tool-visibility.ts` owns bounded user-visible labels/traces for started Cursor SDK tool calls discarded without completion.
@@ -54,6 +67,8 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-state.ts` owns `/cursor-fast`, `--cursor-fast`, `--cursor-no-fast`, session state, and global fast defaults.
 - `src/context.ts`, `src/context-window-cache.ts`, and `src/bundled-context-windows.ts` handle prompt conversion and context-window caches.
 - `test/**/*.test.ts` contains Vitest coverage for provider registration, discovery, state, context, bridge, replay, and streaming behavior.
+- `test/helpers/pi-harness.ts` is the canonical fake pi/extension harness (`createPiHarness`, shared model/context/event runners, tool factories).
+- `test/helpers/cursor-provider-harness.ts` owns Cursor SDK provider mocks/stream helpers and re-exports pi-harness fixtures for provider tests.
 - `docs/cursor-model-ux-spec.md` is the maintainer design source of truth for Cursor model UX. Keep it aligned with behavior changes.
 - `docs/cursor-testing-lessons.md` is the maintainer source of truth for regression testing lessons (auth.json, isolated smoke harnesses, JSONL replay scans, plan-mode replay traps).
 

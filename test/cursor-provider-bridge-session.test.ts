@@ -23,11 +23,15 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
+	mockCreatedAgent,
+	asMockSdkAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { estimateCursorPromptMessageTokens } from "../src/context.js";
@@ -55,7 +59,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
 		});
@@ -69,7 +73,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 	it("disposes the session agent after a send error", async () => {
 		const mockDispose = vi.fn().mockResolvedValue(undefined);
 		const mockSend = vi.fn().mockRejectedValue(new Error("boom"));
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
 		});
@@ -88,7 +92,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 			if (sendCallCount === 1) {
 				throw new Error("boom");
 			}
-			return {
+			return asMockCursorRun({
 				id: "run-2",
 				agentId: "agent-2",
 				status: "finished",
@@ -96,9 +100,9 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockImplementation(async () => ({
+		mockedCreate.mockImplementation(async () => asMockSdkAgent({
 			agentId: `agent-${mockedCreate.mock.calls.length + 1}`,
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
@@ -116,7 +120,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 
 	it("reuses the session agent and sends an incremental prompt on follow-up turns", async () => {
 		const mockSend = vi.fn().mockImplementation(async (message: { text?: string }) => {
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -124,9 +128,9 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -164,7 +168,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockImplementation(async () => ({
+		mockedCreate.mockImplementation(async () => asMockSdkAgent({
 			agentId: `agent-${mockedCreate.mock.calls.length + 1}`,
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
@@ -188,7 +192,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		}));
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -202,7 +206,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 				summary: "We explored approach A and rejected it.",
 				fromId: "entry-a",
 				timestamp: 2,
-			} as Context["messages"][number],
+			} as unknown as Context["messages"][number],
 			{ role: "user", content: "Continue on approach B", timestamp: 3 },
 		];
 
@@ -224,7 +228,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		}));
-		mockedCreate.mockImplementation(async () => ({
+		mockedCreate.mockImplementation(async () => asMockSdkAgent({
 			agentId: `agent-${mockedCreate.mock.calls.length + 1}`,
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
@@ -254,7 +258,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		}));
-		mockedCreate.mockImplementation(async () => ({
+		mockedCreate.mockImplementation(async () => asMockSdkAgent({
 			agentId: `agent-${mockedCreate.mock.calls.length + 1}`,
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
@@ -300,7 +304,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -327,7 +331,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 			sendCallCount += 1;
 			if (sendCallCount === 1) {
 				opts.onDelta({ update: { type: "text-delta", text: "Hello" } });
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "finished",
@@ -335,11 +339,11 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			}
 
 			turn2OnDelta = opts.onDelta;
-			return {
+			return asMockCursorRun({
 				id: "run-2",
 				agentId: "agent-1",
 				status: "running",
@@ -352,9 +356,9 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -374,7 +378,7 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 		await vi.waitFor(() => expect(mockSend).toHaveBeenCalledTimes(2));
 
 		const createOptions = getCreatedAgentOptions();
-		const { client, transport } = await connectMcpClient(createOptions.mcpServers.pi_tools.url);
+		const { client, transport } = await connectMcpClient(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		try {
 			const readCallPromise = client.callTool({ name: "pi__read", arguments: { path: "README.md" } });
 			turn2OnDelta?.({ update: { type: "tool-call-started", callId: "mcp-read", toolCall: { name: "mcp", args: { toolName: "pi__read" } } } });

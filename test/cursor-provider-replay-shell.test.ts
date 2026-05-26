@@ -23,12 +23,15 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
-} from "./helpers/cursor-provider-harness.js";
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
+	createExtensionTestContext} from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { estimateCursorPromptMessageTokens } from "../src/context.js";
 import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display.js";
@@ -67,7 +70,7 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 					callId: "shell-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -75,9 +78,9 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -88,11 +91,11 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 
 		expect(firstDone.reason).toBe("toolUse");
-		expect(toolCall.name).toBe("bash");
-		expect(toolCall.arguments).toEqual({ command });
+		expect(toolCall!.name).toBe("bash");
+		expect(toolCall!.arguments).toEqual({ command });
 
 		const bashTool = registeredTools.find((tool) => tool.name === "bash");
-		const toolResult = await bashTool.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await bashTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		expect(toolResult).toMatchObject({
 			content: [{ type: "text", text: "background job done" }],
 			terminate: false,
@@ -105,7 +108,7 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "bash",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -141,7 +144,7 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 					},
 				});
 			}
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -149,9 +152,9 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -181,7 +184,7 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 					callId: "shell-1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -189,9 +192,9 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),

@@ -1,29 +1,13 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { afterEach, describe, expect, it } from "vitest";
 import {
 	__testUtils as cursorSessionCwdTestUtils,
 	getCursorSessionCwd,
 	registerCursorSessionCwd,
 } from "../src/cursor-session-cwd.js";
-
-function createMockPi() {
-	const handlers = new Map<string, Array<(event: unknown, ctx: { cwd: string }) => void>>();
-	return {
-		on: vi.fn((event: string, handler: (event: unknown, ctx: { cwd: string }) => void) => {
-			const list = handlers.get(event) ?? [];
-			list.push(handler);
-			handlers.set(event, list);
-		}),
-		emitSessionStart(cwd: string) {
-			for (const handler of handlers.get("session_start") ?? []) {
-				handler({ reason: "startup" }, { cwd });
-			}
-		},
-	} satisfies Pick<ExtensionAPI, "on"> & { emitSessionStart(cwd: string): void };
-}
+import { createEventHarness } from "./helpers/pi-harness.js";
 
 describe("cursor-session-cwd", () => {
 	afterEach(() => {
@@ -34,12 +18,12 @@ describe("cursor-session-cwd", () => {
 		expect(getCursorSessionCwd()).toBe(process.cwd());
 	});
 
-	it("syncs cwd from session_start", () => {
+	it("syncs cwd from session_start", async () => {
 		const sessionDir = mkdtempSync(join(tmpdir(), "pi-cursor-session-cwd-"));
 		try {
-			const pi = createMockPi();
+			const pi = createEventHarness();
 			registerCursorSessionCwd(pi);
-			pi.emitSessionStart(sessionDir);
+			await pi.runSessionStart({ cwd: sessionDir });
 
 			expect(getCursorSessionCwd()).toBe(sessionDir);
 		} finally {
@@ -47,17 +31,17 @@ describe("cursor-session-cwd", () => {
 		}
 	});
 
-	it("updates cwd on subsequent session_start events", () => {
+	it("updates cwd on subsequent session_start events", async () => {
 		const firstDir = mkdtempSync(join(tmpdir(), "pi-cursor-session-cwd-a-"));
 		const secondDir = mkdtempSync(join(tmpdir(), "pi-cursor-session-cwd-b-"));
 		try {
-			const pi = createMockPi();
+			const pi = createEventHarness();
 			registerCursorSessionCwd(pi);
 
-			pi.emitSessionStart(firstDir);
+			await pi.runSessionStart({ cwd: firstDir });
 			expect(getCursorSessionCwd()).toBe(firstDir);
 
-			pi.emitSessionStart(secondDir);
+			await pi.runSessionStart({ cwd: secondDir });
 			expect(getCursorSessionCwd()).toBe(secondDir);
 		} finally {
 			rmSync(firstDir, { recursive: true, force: true });

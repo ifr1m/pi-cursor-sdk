@@ -10,13 +10,7 @@ import { registerCursorSessionAgent } from "./cursor-session-agent.js";
 import { streamCursor } from "./cursor-provider.js";
 
 type CursorExtensionApi =
-	& Pick<ExtensionAPI, "registerProvider">
-	& {
-		registerCommand(name: string, options: {
-			description?: string;
-			handler: (args: string, ctx: Pick<ExtensionContext, "hasUI"> & { ui: Pick<ExtensionContext["ui"], "notify"> }) => Promise<void> | void;
-		}): void;
-	}
+	& Pick<ExtensionAPI, "registerProvider" | "registerCommand">
 	& Parameters<typeof registerCursorSessionCwd>[0]
 	& Parameters<typeof registerCursorSessionAgent>[0]
 	& Parameters<typeof registerCursorFastControls>[0]

@@ -23,11 +23,14 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
@@ -52,7 +55,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -85,7 +88,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -125,7 +128,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -170,7 +173,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 				supports: () => true,
 				unsupportedReason: () => undefined,
 			});
-			mockedCreate.mockResolvedValue({
+			mockCreatedAgent({
 				agentId: "agent-ctx",
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -222,7 +225,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -254,7 +257,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -291,7 +294,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -328,7 +331,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -371,7 +374,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -408,7 +411,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -440,7 +443,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -465,7 +468,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});

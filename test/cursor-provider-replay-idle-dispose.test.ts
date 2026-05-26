@@ -23,12 +23,15 @@ import {
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
 	createBuiltinToolInfo,
-	createBridgeToolInfo,
+	createTestToolInfo,
 	cursorModelItems,
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
-} from "./helpers/cursor-provider-harness.js";
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
+	createExtensionTestContext} from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { estimateCursorPromptMessageTokens } from "../src/context.js";
 import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display.js";
@@ -61,7 +64,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -69,9 +72,9 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
@@ -116,7 +119,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -124,9 +127,9 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
@@ -136,7 +139,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const toolResult = await readTool.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(1);
 		expect(mockDispose).not.toHaveBeenCalled();
@@ -147,7 +150,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "read",
 				content: toolResult.content,
 				details: toolResult.details,
@@ -200,7 +203,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 					callId: "c1",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -208,9 +211,9 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
@@ -220,7 +223,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 		const readTool = registeredTools.find((tool) => tool.name === "read");
-		const toolResult = await readTool!.execute(toolCall.id, toolCall.arguments, undefined, undefined, {});
+		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(1);
 
 		const replayContext = makeContext();
@@ -229,7 +232,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 			firstDone.message,
 			{
 				role: "toolResult",
-				toolCallId: toolCall.id,
+				toolCallId: toolCall!.id,
 				toolName: "read",
 				content: toolResult.content,
 				details: toolResult.details,

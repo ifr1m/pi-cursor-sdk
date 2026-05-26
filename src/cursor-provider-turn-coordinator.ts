@@ -2,109 +2,39 @@ import type { AssistantMessage, AssistantMessageEventStream } from "@earendil-wo
 import type { InteractionUpdate } from "@cursor/sdk";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
 import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
-import { formatInactiveCursorReplayTrace } from "./cursor-native-replay-trace.js";
-import { resolveNativeReplayDisposition } from "./cursor-native-replay-routing.js";
 import { truncateCursorDisplayLine } from "./cursor-display-text.js";
-import { CursorPartialContentEmitter } from "./cursor-partial-content-emitter.js";
-import { asRecord, getField, hasUsableText } from "./cursor-record-utils.js";
-import { scrubPiToolDisplay, scrubSensitiveText } from "./cursor-sensitive-text.js";
-import { buildCursorPiToolDisplay, formatCursorToolTranscript, getCursorCreatePlanText, mergeCursorToolCalls } from "./cursor-tool-transcript.js";
 import {
 	recordDiscardedIncompleteStartedToolCall,
 	type CursorSdkEventDebugRecorder,
-	DISCARDED_INCOMPLETE_TOOL_CALL_REASON,
 } from "./cursor-sdk-event-debug.js";
 import {
-	buildIncompleteCursorToolDisplay,
 	buildIncompleteCursorToolRunOutcome,
-	formatIncompleteCursorToolTrace,
 	resolveIncompleteCursorToolVisibility,
 	type IncompleteCursorToolRunOutcome,
-	type IncompleteCursorToolDiscardReason,
 } from "./cursor-incomplete-tool-visibility.js";
 import { getToolName } from "./cursor-transcript-utils.js";
-import {
-	CURSOR_TOOL_LIFECYCLE_DEFER_MS,
-	formatCursorToolLifecycleProgressText,
-	isCursorToolLifecycleEligible,
-} from "./cursor-tool-lifecycle.js";
 import { classifyCursorToolVisibility } from "./cursor-tool-visibility.js";
-
-function formatCursorToolName(toolCall: unknown): string {
-	return truncateCursorDisplayLine(getToolName(toolCall), 80) || "unknown";
-}
-
-interface CursorShellOutputDelta {
-	stream: "stdout" | "stderr";
-	data: string;
-}
-
-interface CursorShellOutputDeltas {
-	stdout: string[];
-	stderr: string[];
-}
+import { buildCursorPiToolDisplay } from "./cursor-tool-transcript.js";
+import { getField } from "./cursor-record-utils.js";
+import { CursorTurnDisplayRouter } from "./cursor-provider-turn-display-router.js";
+import {
+	createTurnCoordinatorContentEmitter,
+	CursorToolLifecycleEmitter,
+} from "./cursor-provider-turn-lifecycle-emitter.js";
+import { resolveCursorToolCompletion } from "./cursor-provider-turn-sdk-normalizer.js";
+import {
+	CursorShellOutputTracker,
+	getCursorShellOutputDelta,
+	isCursorShellToolCall,
+} from "./cursor-provider-turn-shell-output.js";
+import {
+	CursorToolCompletionLedger,
+	getToolFingerprint,
+} from "./cursor-provider-turn-tool-ledger.js";
 
 function getNormalizedCursorToolName(toolCall: unknown): string {
 	return classifyCursorToolVisibility(toolCall).normalizedName;
 }
-
-function isCursorShellToolCall(toolCall: unknown): boolean {
-	return classifyCursorToolVisibility(toolCall).normalizedKey === "shell";
-}
-
-function getCursorShellOutputDelta(update: InteractionUpdate): CursorShellOutputDelta | undefined {
-	if (update.type !== "shell-output-delta") return undefined;
-	const event = getField(update, "event");
-	const eventCase = getField(event, "case");
-	if (eventCase !== "stdout" && eventCase !== "stderr") return undefined;
-	const value = getField(event, "value");
-	const data = getField(value, "data");
-	if (typeof data !== "string" || data.length === 0) return undefined;
-	return { stream: eventCase, data };
-}
-
-function mergeShellOutputDeltasIntoCursorToolCall(toolCall: unknown, deltas: CursorShellOutputDeltas | undefined): unknown {
-	if (!deltas) return toolCall;
-	const stdout = deltas.stdout.join("");
-	const stderr = deltas.stderr.join("");
-	if (!hasUsableText(stdout) && !hasUsableText(stderr)) return toolCall;
-
-	const toolRecord = asRecord(toolCall);
-	const result = getField(toolRecord, "result");
-	const resultRecord = asRecord(result);
-	if (!toolRecord || !resultRecord || resultRecord.status !== "success") return toolCall;
-
-	const value = getField(resultRecord, "value");
-	const valueRecord = asRecord(value);
-	const completedStdout = getField(valueRecord, "stdout");
-	const completedStderr = getField(valueRecord, "stderr");
-	if (hasUsableText(typeof completedStdout === "string" ? completedStdout : undefined)) return toolCall;
-	if (hasUsableText(typeof completedStderr === "string" ? completedStderr : undefined)) return toolCall;
-
-	return {
-		...toolRecord,
-		result: {
-			...resultRecord,
-			value: {
-				...(valueRecord ?? {}),
-				stdout,
-				stderr,
-			},
-		},
-	};
-}
-
-type CursorToolDisplaySource = "started" | "fallback" | "transcript";
-
-type ToolCompletionResolution =
-	| { action: "ignore-bridge"; identity?: string }
-	| {
-			action: "handle";
-			toolCall: unknown;
-			identity?: string;
-			source?: CursorToolDisplaySource;
-			matchedStartedCallId?: string;
-	  };
 
 export interface CursorSdkTurnCoordinatorOptions {
 	stream: AssistantMessageEventStream;
@@ -130,21 +60,12 @@ export class CursorSdkTurnCoordinator {
 	readonly nativeReplayId: string;
 	readonly textDeltas: string[];
 
-	private readonly contentEmitter: CursorPartialContentEmitter;
 	private readonly debugRecorder?: CursorSdkEventDebugRecorder;
-	private nativeToolDisplayCounter = 0;
-	private nativeToolReplayStarted = false;
-	private cursorPlanTextCandidate: string | undefined;
-	private readonly startedToolCalls = new Map<string, unknown>();
-	private readonly bridgeStartedToolCallIds = new Set<string>();
-	private readonly activeShellCallIds = new Set<string>();
-	private readonly ambiguousShellOutputCallIds = new Set<string>();
-	private readonly shellOutputDeltasByCallId = new Map<string, CursorShellOutputDeltas>();
-	private readonly completedToolIdentities = new Set<string>();
-	private readonly completedStartedToolFingerprints = new Set<string>();
-	private readonly completedFallbackToolFingerprints = new Set<string>();
-	private readonly emittedLifecycleCallIds = new Set<string>();
-	private readonly lifecycleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	private readonly ledger = new CursorToolCompletionLedger();
+	private readonly shellOutput = new CursorShellOutputTracker();
+	private readonly displayRouter: CursorTurnDisplayRouter;
+	private readonly lifecycleEmitter: CursorToolLifecycleEmitter;
+	private readonly contentEmitter;
 
 	constructor(options: CursorSdkTurnCoordinatorOptions) {
 		this.stream = options.stream;
@@ -157,22 +78,39 @@ export class CursorSdkTurnCoordinator {
 		this.nativeReplayId = options.nativeReplayId;
 		this.textDeltas = options.textDeltas;
 		this.debugRecorder = options.debugRecorder;
-		this.contentEmitter = new CursorPartialContentEmitter(options.stream, options.partial, undefined, false);
+		this.contentEmitter = createTurnCoordinatorContentEmitter(options.stream, options.partial);
+		this.displayRouter = new CursorTurnDisplayRouter({
+			cwd: options.cwd,
+			resolvedApiKey: options.resolvedApiKey,
+			liveRun: options.liveRun,
+			useNativeToolReplay: options.useNativeToolReplay,
+			activeToolNames: options.activeToolNames,
+			nativeReplayId: options.nativeReplayId,
+			contentEmitter: this.contentEmitter,
+			debugRecorder: options.debugRecorder,
+		});
+		this.lifecycleEmitter = new CursorToolLifecycleEmitter({
+			liveRun: options.liveRun,
+			resolvedApiKey: options.resolvedApiKey,
+			contentEmitter: this.contentEmitter,
+			debugRecorder: options.debugRecorder,
+			hasStartedToolCall: (callId) => this.ledger.hasStartedToolCall(callId),
+			isBridgeMcpToolCall: (toolCall) => options.liveRun?.bridgeRun?.isBridgeMcpToolCall(toolCall) ?? false,
+		});
 	}
 
 	get planTextCandidate(): string | undefined {
-		return this.cursorPlanTextCandidate;
+		return this.displayRouter.planTextCandidate;
 	}
 
 	get replayStarted(): boolean {
-		return this.nativeToolReplayStarted;
+		return this.displayRouter.nativeToolReplayStarted;
 	}
 
 	discardIncompleteStartedToolCalls(
 		outcome: IncompleteCursorToolRunOutcome = buildIncompleteCursorToolRunOutcome(),
 	): void {
-		for (const [callId, toolCall] of this.startedToolCalls) {
-			if (typeof callId !== "string") continue;
+		for (const [callId, toolCall] of this.ledger.startedToolCallEntries()) {
 			const toolName = getNormalizedCursorToolName(toolCall);
 			recordDiscardedIncompleteStartedToolCall(this.debugRecorder, process.env, {
 				toolName,
@@ -181,27 +119,20 @@ export class CursorSdkTurnCoordinator {
 			});
 			const visibilityDecision = resolveIncompleteCursorToolVisibility(toolCall, outcome);
 			if (visibilityDecision !== "emit") {
-				this.recordDisplayDecision({
-					action: "skip-incomplete-fast-local",
+				this.displayRouter.recordIncompleteSkip(
 					toolName,
-					source: "started",
-					reason:
-						visibilityDecision === "debugOnly" && outcome.assistantTextProduced
-							? "successful-run-text-produced"
-							: visibilityDecision,
-				});
+					visibilityDecision === "debugOnly" && outcome.assistantTextProduced
+						? "successful-run-text-produced"
+						: visibilityDecision,
+				);
 				continue;
 			}
-			this.emitIncompleteStartedToolCall(toolCall, outcome.reason);
+			const action = this.displayRouter.routeIncompleteStartedToolCall(toolCall, outcome.reason);
+			if (action) this.displayRouter.emitDisplayAction(action);
 		}
-		this.startedToolCalls.clear();
-		this.bridgeStartedToolCallIds.clear();
-		this.activeShellCallIds.clear();
-		this.ambiguousShellOutputCallIds.clear();
-		this.shellOutputDeltasByCallId.clear();
-		this.emittedLifecycleCallIds.clear();
-		for (const timer of this.lifecycleTimers.values()) clearTimeout(timer);
-		this.lifecycleTimers.clear();
+		this.ledger.clearStartedToolCalls();
+		this.shellOutput.clear();
+		this.lifecycleEmitter.clear();
 	}
 
 	closeTraceBlock(): void {
@@ -239,28 +170,37 @@ export class CursorSdkTurnCoordinator {
 			return;
 		}
 		if (update.type === "partial-tool-call") {
-			this.maybeScheduleCursorToolLifecycle(update.callId, update.toolCall);
+			this.lifecycleEmitter.maybeSchedule(update.callId, update.toolCall);
 			return;
 		}
 		if (update.type === "tool-call-started") {
 			if (this.liveRun?.bridgeRun?.isBridgeMcpToolCall(update.toolCall)) {
-				if (typeof update.callId === "string") this.bridgeStartedToolCallIds.add(update.callId);
+				if (typeof update.callId === "string") this.ledger.markBridgeStarted(update.callId);
 			} else {
-				this.maybeScheduleCursorToolLifecycle(update.callId, update.toolCall);
-				this.startedToolCalls.set(update.callId, update.toolCall);
-				if (isCursorShellToolCall(update.toolCall)) this.activeShellCallIds.add(update.callId);
+				this.lifecycleEmitter.maybeSchedule(update.callId, update.toolCall);
+				this.ledger.registerStartedToolCall(update.callId, update.toolCall);
+				if (isCursorShellToolCall(update.toolCall) && typeof update.callId === "string") {
+					this.shellOutput.onShellToolStarted(update.callId);
+				}
 			}
 			return;
 		}
 		if (update.type === "tool-call-completed") {
-			const resolution = this.resolveToolCompletion({
+			const resolution = resolveCursorToolCompletion({
 				source: "delta",
 				callId: update.callId,
 				toolCall: update.toolCall,
-				startedToolCall: this.startedToolCalls.get(update.callId),
+				startedToolCall: this.ledger.getStartedToolCall(update.callId),
+				liveRun: this.liveRun,
+				ledger: this.ledger,
+				shellOutput: this.shellOutput,
+				onClearStartedCallId: (callId) => {
+					this.lifecycleEmitter.cancel(callId);
+					this.shellOutput.onShellToolCleared(callId);
+				},
 			});
 			if (resolution.action === "ignore-bridge") {
-				this.recordIgnoreBridgeDecision(resolution.identity, getToolName(update.toolCall), "delta");
+				this.displayRouter.recordIgnoreBridgeDecision(resolution.identity, getToolName(update.toolCall), "delta");
 				return;
 			}
 			this.handleCompletedToolCall(resolution.toolCall, {
@@ -271,7 +211,7 @@ export class CursorSdkTurnCoordinator {
 		}
 		if (update.type === "shell-output-delta") {
 			const delta = getCursorShellOutputDelta(update);
-			if (delta) this.appendShellOutputDelta(delta);
+			if (delta) this.shellOutput.appendShellOutputDelta(delta);
 			return;
 		}
 		if (update.type === "summary") {
@@ -293,13 +233,20 @@ export class CursorSdkTurnCoordinator {
 		const stepId = getField(stepEnvelope, "id") ?? getField(toolCall, "id") ?? getField(toolCall, "callId");
 		if (!toolCall) return;
 
-		const resolution = this.resolveToolCompletion({
+		const resolution = resolveCursorToolCompletion({
 			source: "step",
 			callId: stepId,
 			toolCall,
+			liveRun: this.liveRun,
+			ledger: this.ledger,
+			shellOutput: this.shellOutput,
+			onClearStartedCallId: (callId) => {
+				this.lifecycleEmitter.cancel(callId);
+				this.shellOutput.onShellToolCleared(callId);
+			},
 		});
 		if (resolution.action === "ignore-bridge") {
-			this.recordIgnoreBridgeDecision(resolution.identity, getToolName(toolCall), "step");
+			this.displayRouter.recordIgnoreBridgeDecision(resolution.identity, getToolName(toolCall), "step");
 			return;
 		}
 		this.handleCompletedToolCall(resolution.toolCall, {
@@ -307,66 +254,8 @@ export class CursorSdkTurnCoordinator {
 			source: resolution.source,
 		});
 		if (resolution.matchedStartedCallId && resolution.matchedStartedCallId !== stepId) {
-			this.completedToolIdentities.add(`cursor-tool:${resolution.matchedStartedCallId}`);
+			this.ledger.recordCompletedIdentity(`cursor-tool:${resolution.matchedStartedCallId}`);
 		}
-	}
-
-	private resolveToolCompletion(options: {
-		source: "delta" | "step";
-		callId: unknown;
-		toolCall: unknown;
-		startedToolCall?: unknown;
-	}): ToolCompletionResolution {
-		const bridgeStartedCallId = this.takeBridgeStartedToolCallId(options.callId);
-		if (bridgeStartedCallId) {
-			this.completedToolIdentities.add(`cursor-tool:${bridgeStartedCallId}`);
-			return { action: "ignore-bridge", identity: `cursor-tool:${bridgeStartedCallId}` };
-		}
-
-		let matchedStartedCallId: string | undefined;
-		let resolvedToolCall: unknown;
-		let identity: string | undefined;
-		let source: "started" | "fallback" | undefined;
-
-		if (options.source === "delta") {
-			const callId = options.callId;
-			identity = typeof callId === "string" ? `cursor-tool:${callId}` : undefined;
-			resolvedToolCall = mergeCursorToolCalls(options.startedToolCall, options.toolCall);
-			if (typeof callId === "string") {
-				this.clearStartedToolCall(callId);
-			}
-			resolvedToolCall = mergeShellOutputDeltasIntoCursorToolCall(
-				resolvedToolCall,
-				typeof callId === "string" ? this.takeShellOutputDeltas(callId) : undefined,
-			);
-			source = identity ? "started" : "fallback";
-		} else {
-			matchedStartedCallId = this.removeStartedToolCallForStep(options.toolCall, options.callId);
-			resolvedToolCall = mergeShellOutputDeltasIntoCursorToolCall(
-				options.toolCall,
-				matchedStartedCallId ? this.takeShellOutputDeltas(matchedStartedCallId) : undefined,
-			);
-			const identityId = typeof options.callId === "string" ? options.callId : matchedStartedCallId;
-			identity = identityId ? `cursor-tool:${identityId}` : undefined;
-		}
-
-		if (this.liveRun?.bridgeRun?.isBridgeMcpToolCall(resolvedToolCall)) {
-			const bridgeIdentity = options.source === "step" && matchedStartedCallId
-				? `cursor-tool:${matchedStartedCallId}`
-				: identity;
-			if (bridgeIdentity) this.completedToolIdentities.add(bridgeIdentity);
-			return { action: "ignore-bridge", identity: bridgeIdentity };
-		}
-
-		if (options.source === "delta") {
-			return { action: "handle", toolCall: resolvedToolCall, identity, source };
-		}
-		return {
-			action: "handle",
-			toolCall: resolvedToolCall,
-			identity,
-			matchedStartedCallId,
-		};
 	}
 
 	handleTranscriptCompletedToolCalls(toolCalls: readonly { identity: string; toolCall: unknown }[]): void {
@@ -377,271 +266,34 @@ export class CursorSdkTurnCoordinator {
 
 	private handleCompletedToolCall(
 		toolCall: unknown,
-		options: { identity?: string; source?: CursorToolDisplaySource } = {},
+		options: { identity?: string; source?: "started" | "fallback" | "transcript" } = {},
 	): void {
-		const planText = getCursorCreatePlanText(toolCall);
-		if (planText) this.cursorPlanTextCandidate = scrubSensitiveText(planText, this.resolvedApiKey);
-
-		const transcript = scrubSensitiveText(formatCursorToolTranscript(toolCall, { cwd: this.cwd }), this.resolvedApiKey);
 		const display = buildCursorPiToolDisplay(toolCall, { cwd: this.cwd });
-		const toolName = display.toolName;
-		const fingerprint = this.getToolFingerprint({ toolName: display.toolName, args: display.args, result: display.result });
-		if (options.identity && this.completedToolIdentities.has(options.identity)) {
-			this.recordDisplayDecision({
-				action: "skip-duplicate",
-				toolName,
-				identity: options.identity,
-				source: options.source,
-				reason: "identity-already-completed",
-			});
-			return;
-		}
-		if (options.source === "started") {
-			if (this.completedFallbackToolFingerprints.has(fingerprint)) {
-				this.recordDisplayDecision({
-					action: "skip-duplicate",
-					toolName,
-					identity: options.identity,
-					source: options.source,
-					reason: "fallback-fingerprint-already-completed",
-				});
-				return;
-			}
-		} else if (this.completedStartedToolFingerprints.has(fingerprint) || this.completedFallbackToolFingerprints.has(fingerprint)) {
-			this.recordDisplayDecision({
-				action: "skip-duplicate",
-				toolName,
-				identity: options.identity,
-				source: options.source,
-				reason: "fingerprint-already-completed",
-			});
-			return;
-		}
-		if (options.identity) this.completedToolIdentities.add(options.identity);
-		if (options.source === "started") {
-			this.completedStartedToolFingerprints.add(fingerprint);
-		} else {
-			this.completedFallbackToolFingerprints.add(fingerprint);
-		}
-
-		const disposition = resolveNativeReplayDisposition({
+		const fingerprint = getToolFingerprint({
 			toolName: display.toolName,
-			useNativeToolReplay: this.useNativeToolReplay,
-			activeToolNames: this.activeToolNames,
-			hasLiveRun: this.liveRun !== undefined,
+			args: display.args,
+			result: display.result,
 		});
-
-		if (disposition === "queue_replay" && this.liveRun) {
-			this.nativeToolReplayStarted = true;
-			const id = `${this.nativeReplayId}-tool-${++this.nativeToolDisplayCounter}`;
-			const scrubbedDisplay = scrubPiToolDisplay(display, this.resolvedApiKey);
-			this.recordDisplayDecision({
-				action: "queue_replay",
-				disposition,
-				toolName,
-				identity: options.identity,
-				source: options.source,
-				transcript,
-				replayToolId: id,
-			});
-			cursorLiveRuns.queueEvent(this.liveRun, {
-				type: "tool",
-				tool: { ...scrubbedDisplay, id },
-			});
-			return;
-		}
-
-		const traceText =
-			disposition === "inactive_trace"
-				? formatInactiveCursorReplayTrace(scrubPiToolDisplay(display, this.resolvedApiKey))
-				: transcript || `Cursor tool: ${formatCursorToolName(toolCall)} completed`;
-		this.recordDisplayDecision({
-			action: "emit_trace",
-			disposition,
-			toolName,
+		const duplicateReason = this.ledger.shouldSkipDuplicateCompletion({
 			identity: options.identity,
 			source: options.source,
-			transcript,
-			traceText,
+			fingerprint,
 		});
-		this.emitCursorToolTrace(traceText);
-	}
-
-	private emitIncompleteStartedToolCall(toolCall: unknown, reason: IncompleteCursorToolDiscardReason): void {
-		const display = scrubPiToolDisplay(
-			buildIncompleteCursorToolDisplay(toolCall, reason, { apiKey: this.resolvedApiKey }),
-			this.resolvedApiKey,
-		);
-		const toolName = display.toolName;
-		const disposition = resolveNativeReplayDisposition({
-			toolName,
-			useNativeToolReplay: this.useNativeToolReplay,
-			activeToolNames: this.activeToolNames,
-			hasLiveRun: this.liveRun !== undefined,
-		});
-
-		// Aborted live runs emit trace visibility only; do not synthesize a toolUse replay turn.
-		if (disposition === "queue_replay" && this.liveRun && reason !== "abort") {
-			this.nativeToolReplayStarted = true;
-			const id = `${this.nativeReplayId}-tool-${++this.nativeToolDisplayCounter}`;
-			this.recordDisplayDecision({
-				action: "queue_replay",
-				disposition,
-				toolName,
-				source: "started",
-				reason: "incomplete-started-tool-call",
-				replayToolId: id,
-			});
-			cursorLiveRuns.queueEvent(this.liveRun, {
-				type: "tool",
-				tool: { ...display, id },
+		if (duplicateReason) {
+			this.displayRouter.recordDuplicateSkip(display.toolName, {
+				identity: options.identity,
+				source: options.source,
+				reason: duplicateReason,
 			});
 			return;
 		}
-
-		const traceText =
-			disposition === "inactive_trace"
-				? formatInactiveCursorReplayTrace(display)
-				: formatIncompleteCursorToolTrace(display);
-		this.recordDisplayDecision({
-			action: "emit_trace",
-			disposition,
-			toolName,
-			source: "started",
-			reason: "incomplete-started-tool-call",
-			traceText,
+		this.ledger.recordCompletedTool({
+			identity: options.identity,
+			source: options.source,
+			fingerprint,
 		});
-		this.emitCursorToolTrace(traceText);
-	}
 
-	private recordIgnoreBridgeDecision(
-		identity: string | undefined,
-		toolName: string,
-		source: "delta" | "step",
-	): void {
-		this.debugRecorder?.recordDisplayDecision({
-			action: "ignore-bridge",
-			toolName,
-			identity,
-			source,
-		});
-	}
-
-	private recordDisplayDecision(decision: Parameters<CursorSdkEventDebugRecorder["recordDisplayDecision"]>[0]): void {
-		this.debugRecorder?.recordDisplayDecision(decision);
-	}
-
-	private emitCursorToolTrace(text: string): void {
-		const traceText = text.endsWith("\n") ? text : `${text}\n`;
-		if (this.liveRun) {
-			cursorLiveRuns.queueEvent(this.liveRun, { type: "thinking-delta", text: traceText });
-			cursorLiveRuns.queueEvent(this.liveRun, { type: "thinking-completed" });
-			return;
-		}
-		this.contentEmitter.appendThinkingBlock(traceText);
-	}
-
-	private maybeScheduleCursorToolLifecycle(callId: unknown, toolCall: unknown): void {
-		if (typeof callId !== "string" || this.emittedLifecycleCallIds.has(callId)) return;
-		if (this.liveRun?.bridgeRun?.isBridgeMcpToolCall(toolCall)) return;
-		if (!isCursorToolLifecycleEligible(toolCall)) return;
-
-		this.cancelCursorToolLifecycleTimer(callId);
-		const timer = setTimeout(() => {
-			this.lifecycleTimers.delete(callId);
-			if (!this.startedToolCalls.has(callId)) return;
-			if (this.emittedLifecycleCallIds.has(callId)) return;
-			this.emitCursorToolLifecycle(callId, toolCall);
-		}, CURSOR_TOOL_LIFECYCLE_DEFER_MS);
-		timer.unref?.();
-		this.lifecycleTimers.set(callId, timer);
-	}
-
-	private cancelCursorToolLifecycleTimer(callId: string): void {
-		const timer = this.lifecycleTimers.get(callId);
-		if (!timer) return;
-		clearTimeout(timer);
-		this.lifecycleTimers.delete(callId);
-	}
-
-	private emitCursorToolLifecycle(callId: string, toolCall: unknown): void {
-		const progressText = formatCursorToolLifecycleProgressText(toolCall, this.resolvedApiKey);
-		if (!progressText) return;
-		this.emittedLifecycleCallIds.add(callId);
-		this.debugRecorder?.recordCoordinatorEvent("tool_lifecycle", {
-			callId,
-			toolName: getNormalizedCursorToolName(toolCall),
-			progressText,
-			liveRun: this.liveRun !== undefined,
-		});
-		if (this.liveRun) {
-			cursorLiveRuns.queueEvent(this.liveRun, { type: "thinking-delta", text: progressText });
-			return;
-		}
-		this.contentEmitter.appendThinkingDelta(progressText);
-	}
-
-	private getToolFingerprint(value: unknown): string {
-		try {
-			return JSON.stringify(value);
-		} catch {
-			return String(value);
-		}
-	}
-
-	private getStartedToolCallFingerprint(toolCall: unknown): string {
-		return this.getToolFingerprint({ toolName: getToolName(toolCall), args: getField(toolCall, "args") });
-	}
-
-	private clearStartedToolCall(callId: string): void {
-		this.cancelCursorToolLifecycleTimer(callId);
-		this.startedToolCalls.delete(callId);
-		this.bridgeStartedToolCallIds.delete(callId);
-		this.activeShellCallIds.delete(callId);
-		this.ambiguousShellOutputCallIds.delete(callId);
-	}
-
-	private takeBridgeStartedToolCallId(callId: unknown): string | undefined {
-		if (typeof callId !== "string" || !this.bridgeStartedToolCallIds.has(callId)) return undefined;
-		this.bridgeStartedToolCallIds.delete(callId);
-		return callId;
-	}
-
-	private takeShellOutputDeltas(callId: string): CursorShellOutputDeltas | undefined {
-		const deltas = this.shellOutputDeltasByCallId.get(callId);
-		this.shellOutputDeltasByCallId.delete(callId);
-		return deltas;
-	}
-
-	private appendShellOutputDelta(delta: CursorShellOutputDelta): void {
-		if (this.activeShellCallIds.size !== 1) {
-			for (const activeCallId of this.activeShellCallIds) {
-				this.ambiguousShellOutputCallIds.add(activeCallId);
-				this.shellOutputDeltasByCallId.delete(activeCallId);
-			}
-			return;
-		}
-		const [callId] = this.activeShellCallIds;
-		if (!callId || this.ambiguousShellOutputCallIds.has(callId)) return;
-		let deltas = this.shellOutputDeltasByCallId.get(callId);
-		if (!deltas) {
-			deltas = { stdout: [], stderr: [] };
-			this.shellOutputDeltasByCallId.set(callId, deltas);
-		}
-		deltas[delta.stream].push(delta.data);
-	}
-
-	private removeStartedToolCallForStep(toolCall: unknown, stepId: unknown): string | undefined {
-		if (typeof stepId === "string" && this.startedToolCalls.has(stepId)) {
-			this.clearStartedToolCall(stepId);
-			return stepId;
-		}
-		const fingerprint = this.getStartedToolCallFingerprint(toolCall);
-		for (const [callId, startedToolCall] of this.startedToolCalls) {
-			if (this.getStartedToolCallFingerprint(startedToolCall) !== fingerprint) continue;
-			this.clearStartedToolCall(callId);
-			return callId;
-		}
-		return undefined;
+		const action = this.displayRouter.routeCompletedToolCall(toolCall, options);
+		if (action) this.displayRouter.emitDisplayAction(action);
 	}
 }

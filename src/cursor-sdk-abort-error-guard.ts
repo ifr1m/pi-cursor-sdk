@@ -88,6 +88,10 @@ function uninstallProcessEmitPatchIfIdle(): void {
 	originalProcessEmit = undefined;
 }
 
+export const __testUtils = {
+	activeSuppressionCount: (): number => activeSuppressions.size,
+};
+
 export function installCursorSdkAbortErrorSuppression(): CursorSdkAbortErrorSuppression {
 	installProcessEmitPatch();
 	const token: CursorSdkAbortErrorSuppressionToken = { suppress: false };

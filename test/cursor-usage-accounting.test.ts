@@ -1,25 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AssistantMessage, Context, Model } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
 import {
 	applyCursorApproximateUsage,
 	estimateCursorAssistantSessionOutputTokens,
 	estimateCursorContextTotalTokens,
 } from "../src/cursor-usage-accounting.js";
-
-function makeModel(): Model<"cursor-sdk"> {
-	return {
-		id: "test-model",
-		name: "Test Model",
-		api: "cursor-sdk" as const,
-		provider: "cursor",
-		baseUrl: "",
-		reasoning: false,
-		input: ["text", "image"],
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 128000,
-		maxTokens: 16384,
-	};
-}
+import { makeModel } from "./helpers/pi-harness.js";
 
 function makeAssistantMessage(content: AssistantMessage["content"]): AssistantMessage {
 	return {

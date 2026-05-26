@@ -38,51 +38,97 @@ import { __testUtils as cursorSessionCwdTestUtils } from "../../src/cursor-sessi
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../../src/cursor-provider.js";
 import { registerCursorPiToolBridge, __testUtils as cursorPiToolBridgeTestUtils } from "../../src/cursor-pi-tool-bridge.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../../src/model-discovery.js";
-import { __testUtils as nativeToolDisplayTestUtils, registerCursorNativeToolDisplay } from "../../src/cursor-native-tool-display.js";
-import type { ModelListItem, SendOptions } from "@cursor/sdk";
-import type { AssistantMessage, AssistantMessageEvent, Context, Model, ToolCall } from "@earendil-works/pi-ai";
-import type { ExtensionContext, ToolDefinition, ToolInfo } from "@earendil-works/pi-coding-agent";
-import { Type, type TSchema } from "typebox";
+import {
+	__testUtils as nativeToolDisplayTestUtils,
+	registerCursorNativeToolDisplay,
+} from "../../src/cursor-native-tool-display.js";
+import type { CursorNativeToolDisplayExtensionApi } from "../../src/cursor-native-tool-display-registration.js";
+import type { ModelListItem, Run, SDKAgent, SendOptions } from "@cursor/sdk";
+import type { AssistantMessage, AssistantMessageEvent, TextContent, ImageContent, ToolCall } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
+import {
+	collectAssistantEvents,
+	createBridgePiHarness,
+	createBuiltinToolInfo,
+	createExtensionCommandContext,
+	createExtensionTestContext,
+	createPiHarness,
+	getCursorPiBridgeMcpUrl,
+	makeAssistantMessage,
+	makeContext,
+	makeModel,
+	type ExtensionContextOverrides,
+	type RegisteredTool,
+} from "./pi-harness.js";
+
+export {
+	collectAssistantEvents,
+	createBridgePiHarness,
+	createBuiltinToolInfo,
+	createExtensionCommandContext,
+	createExtensionTestContext,
+	createPiHarness,
+	createTestToolInfo,
+	getCursorPiBridgeMcpUrl,
+	makeAssistantMessage,
+	makeContext,
+	makeModel,
+	type ExtensionContextOverrides,
+	type RegisteredTool,
+} from "./pi-harness.js";
 
 // Access the mocks via the module
 export const mockedCreate = vi.mocked(Agent.create);
 export const mockedMessagesList = vi.mocked(Agent.messages.list);
 export const mockedCreateAgentPlatform = vi.mocked(createAgentPlatform);
 
-export type RegisteredTool = ToolDefinition<TSchema, unknown, unknown>;
-export type TestExtensionContext = Pick<ExtensionContext, "cwd" | "hasUI"> & { ui: Pick<ExtensionContext["ui"], "notify"> };
-export type TestEventHandler = (event: unknown, ctx: TestExtensionContext) => Promise<void> | void;
+export type MockSdkAgent = Awaited<ReturnType<typeof Agent.create>>;
 
-export function createBuiltinToolInfo(name: string, parameters: TSchema = Type.Object({}), description = ""): ToolInfo {
+export function asMockSdkAgent(
+	agent: Pick<MockSdkAgent, "send"> & Partial<Omit<MockSdkAgent, "send">>,
+): MockSdkAgent {
 	return {
-		name,
-		description,
-		parameters,
-		sourceInfo: { source: "builtin", path: `<builtin:${name}>`, scope: "temporary", origin: "top-level" },
-	};
+		agentId: "agent-1",
+		[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		...agent,
+	} as MockSdkAgent;
 }
 
-export function createBridgeToolInfo(name: string, parameters: TSchema = Type.Object({}), description = `${name} tool`): ToolInfo {
+export function mockCreatedAgent(
+	agent: Pick<MockSdkAgent, "send"> & Partial<Omit<MockSdkAgent, "send">>,
+): void {
+	mockedCreate.mockResolvedValue(asMockSdkAgent(agent));
+}
+
+export function asMockCursorRun(
+	run: Pick<Run, "id" | "agentId" | "status" | "wait"> & Partial<Run>,
+): Run {
 	return {
-		name,
-		description,
-		parameters,
-		sourceInfo: { source: "test", path: `test:${name}`, scope: "temporary", origin: "top-level" },
-	};
+		cancel: vi.fn(),
+		supports: () => true,
+		unsupportedReason: () => undefined,
+		stream: {} as Run["stream"],
+		conversation: {} as Run["conversation"],
+		onDidChangeStatus: vi.fn(),
+		...run,
+	} as Run;
+}
+
+export function getPiToolsMcpUrlFromAgentCreateOptions(options: CursorAgentCreateOptions): string {
+	if (!options.mcpServers?.pi_tools) {
+		throw new Error("Expected pi_tools MCP server in Agent.create options");
+	}
+	return getCursorPiBridgeMcpUrl({ mcpServers: options.mcpServers });
+}
+
+export function textFromToolResultBlock(block: TextContent | ImageContent | undefined): string {
+	return block?.type === "text" ? block.text : "";
 }
 
 export function registerBridgeForProviderTest(options: { active: string[]; tools: ToolInfo[] }) {
-	const sessionShutdownHandlers: Array<(event: { reason: string }) => Promise<void> | void> = [];
-	const pi = {
-		getActiveTools: vi.fn(() => [...options.active]),
-		getAllTools: vi.fn(() => [...options.tools]),
-		setActiveTools: vi.fn(),
-		on: vi.fn((event: string, handler: (event: { reason: string }) => Promise<void> | void) => {
-			if (event === "session_shutdown") sessionShutdownHandlers.push(handler);
-		}),
-	};
+	const pi = createBridgePiHarness(options);
 	registerCursorPiToolBridge(pi);
-	return { pi, sessionShutdownHandlers };
+	return { pi, runSessionShutdown: pi.runSessionShutdown.bind(pi) };
 }
 
 export async function connectMcpClient(url: string) {
@@ -92,49 +138,10 @@ export async function connectMcpClient(url: string) {
 	return { client, transport };
 }
 
-export function makeModel(id = "test-model"): Model<"cursor-sdk"> {
-	return {
-		id,
-		name: "Test Model",
-		api: "cursor-sdk" as const,
-		provider: "cursor",
-		baseUrl: "",
-		reasoning: false,
-		input: ["text", "image"],
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: 128000,
-		maxTokens: 16384,
-	};
-}
-
 export const delayBeforeToolCompletion = () => new Promise((resolve) => setTimeout(resolve, 120));
 
-export function makeContext(): Context {
-	return {
-		systemPrompt: "Be helpful.",
-		messages: [{ role: "user", content: "Hello", timestamp: 1 }],
-	};
-}
-
-export function makeAssistantMessage(text = "Done", timestamp = 2): AssistantMessage {
-	return {
-		role: "assistant",
-		content: [{ type: "text", text }],
-		api: "cursor-sdk",
-		provider: "cursor",
-		model: "test-model",
-		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-		stopReason: "stop",
-		timestamp,
-	};
-}
-
 export async function collectEvents(stream: ReturnType<typeof streamCursor>): Promise<AssistantMessageEvent[]> {
-	const events: AssistantMessageEvent[] = [];
-	for await (const event of stream) {
-		events.push(event);
-	}
-	return events;
+	return collectAssistantEvents(stream);
 }
 
 export type AssistantStreamEventType = AssistantMessageEvent["type"];
@@ -220,57 +227,35 @@ export function createMockAgentPlatform(
 }
 
 export interface NativeToolDisplayTestPi {
-	getActiveTools: ReturnType<typeof vi.fn>;
-	setActiveTools: ReturnType<typeof vi.fn>;
-	runEventHandlers: (event: string, ctx?: Record<string, unknown>) => Promise<void>;
+	getActiveTools: ExtensionAPI["getActiveTools"];
+	setActiveTools: ExtensionAPI["setActiveTools"];
+	runTurnStart: (ctxOverrides?: ExtensionContextOverrides) => Promise<void>;
 }
 
 export async function createNativeToolDisplayPiForTest(registeredTools: RegisteredTool[] = []): Promise<NativeToolDisplayTestPi> {
-	const handlers = new Map<string, TestEventHandler[]>();
-	let activeToolNames = ["read", "bash", "edit", "write"];
-	const notify = vi.fn();
-	const baseCtx = { cwd: process.cwd(), hasUI: false, ui: { notify } };
-	const pi = {
-		on: vi.fn((event: string, handler: TestEventHandler) => {
-			const list = handlers.get(event) ?? [];
-			list.push(handler);
-			handlers.set(event, list);
-		}),
-		registerTool: vi.fn((tool: RegisteredTool) => {
-			registeredTools.push(tool);
-		}),
-		getAllTools: vi.fn(() => {
-			const toolsByName = new Map<string, ToolInfo>();
-			for (const name of ["read", "bash", "grep", "find", "ls", "edit", "write", "cursor"]) {
-				toolsByName.set(name, createBuiltinToolInfo(name));
-			}
-			for (const tool of registeredTools) {
-				toolsByName.set(tool.name, {
-					name: tool.name,
-					description: tool.description,
-					parameters: tool.parameters,
-					sourceInfo: { source: "test", path: "cursor-native-tool-display-test", scope: "temporary", origin: "top-level" },
-				});
-			}
-			return [...toolsByName.values()];
-		}),
-		getActiveTools: vi.fn(() => [...activeToolNames]),
-		setActiveTools: vi.fn((toolNames: string[]) => {
-			activeToolNames = [...toolNames];
-		}),
-	};
-	registerCursorNativeToolDisplay(pi as never);
-	for (const handler of handlers.get("session_start") ?? []) {
-		await handler({ reason: "startup" }, baseCtx);
-	}
-	return {
+	const pi = createPiHarness({
+		initialTools: ["read", "bash", "grep", "find", "ls", "edit", "write", "cursor"].map((name) =>
+			createBuiltinToolInfo(name),
+		),
+	});
+	const nativePi: CursorNativeToolDisplayExtensionApi = {
+		on: pi.on as CursorNativeToolDisplayExtensionApi["on"],
+		registerTool: (tool) => {
+			registeredTools.push(tool as RegisteredTool);
+			pi.registerTool(tool as RegisteredTool);
+		},
+		getAllTools: pi.getAllTools,
 		getActiveTools: pi.getActiveTools,
 		setActiveTools: pi.setActiveTools,
-		runEventHandlers: async (event, ctx = {}) => {
-			for (const handler of handlers.get(event) ?? []) {
-				await handler({ type: event }, { ...baseCtx, ...ctx });
-			}
+	};
+	registerCursorNativeToolDisplay(nativePi);
+	await pi.runSessionStart({ hasUI: false });
+	return {
+		getActiveTools: () => pi.getActiveTools(),
+		setActiveTools: (toolNames) => {
+			pi.setActiveTools(toolNames);
 		},
+		runTurnStart: (ctxOverrides = {}) => pi.runTurnStart({ hasUI: false, ...ctxOverrides }),
 	};
 }
 
@@ -366,11 +351,7 @@ export async function resetCursorProviderTestState(): Promise<void> {
 	cursorSessionCwdTestUtils.reset();
 	nativeToolDisplayTestUtils.reset();
 	modelDiscoveryTestUtils.registerModelItems(cursorModelItems);
-	mockedCreate.mockResolvedValue({
-		agentId: "agent-1",
-		send: vi.fn(),
-		[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-	});
+	mockCreatedAgent({ send: vi.fn() });
 	mockedMessagesList.mockResolvedValue([]);
 	mockedCreateAgentPlatform.mockResolvedValue(createMockAgentPlatform());
 }

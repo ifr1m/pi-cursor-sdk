@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { isCursorModel } from "./cursor-model.js";
 import { getCursorModelMetadata } from "./model-discovery.js";
@@ -17,25 +17,10 @@ interface CursorGlobalConfig {
 	fastDefaults?: Record<string, boolean>;
 }
 
-type CursorFastControlsModel =
-	| Pick<NonNullable<ExtensionContext["model"]>, "id" | "provider" | "api">
-	| undefined;
-
-type CursorFastControlsContext = {
-	model: CursorFastControlsModel;
-	ui: Pick<ExtensionContext["ui"], "notify" | "setStatus">;
-	sessionManager: Pick<ExtensionContext["sessionManager"], "getBranch">;
-};
-
-interface CursorFastControlsExtensionApi extends Pick<ExtensionAPI, "appendEntry" | "getFlag" | "registerFlag"> {
-	registerCommand(name: string, options: {
-		description?: string;
-		handler: (args: string, ctx: CursorFastControlsContext) => Promise<void> | void;
-	}): void;
-	on(event: "session_start", handler: (event: SessionStartEvent, ctx: CursorFastControlsContext) => Promise<void> | void): void;
-	on(event: "model_select", handler: (event: { model: ExtensionContext["model"] }, ctx: CursorFastControlsContext) => Promise<void> | void): void;
-	on(event: "turn_start", handler: (event: unknown, ctx: CursorFastControlsContext) => Promise<void> | void): void;
-}
+type CursorFastControlsExtensionApi = Pick<
+	ExtensionAPI,
+	"appendEntry" | "getFlag" | "registerFlag" | "registerCommand" | "on"
+>;
 
 const sessionFastPreferences = new Map<string, boolean>();
 let globalFastPreferences = new Map<string, boolean>();
@@ -94,7 +79,7 @@ function getEffectiveFast(baseModelId: string, modelId: string): boolean | undef
 	return sessionFastPreferences.get(baseModelId) ?? globalFastPreferences.get(baseModelId) ?? metadata.defaultFast;
 }
 
-function updateCursorStatus(ctx: { model: CursorFastControlsModel; ui: Pick<ExtensionContext["ui"], "setStatus"> }, model = ctx.model): void {
+function updateCursorStatus(ctx: Pick<ExtensionContext, "model" | "ui">, model = ctx.model): void {
 	if (!model || !isCursorModel(model)) {
 		ctx.ui.setStatus("cursor", undefined);
 		return;
@@ -108,7 +93,7 @@ function updateCursorStatus(ctx: { model: CursorFastControlsModel; ui: Pick<Exte
 	ctx.ui.setStatus("cursor", fast === true ? "cursor fast" : undefined);
 }
 
-function getCurrentCursorMetadata(ctx: { model: CursorFastControlsModel }) {
+function getCurrentCursorMetadata(ctx: Pick<ExtensionContext, "model">) {
 	const model = ctx.model;
 	if (!model || !isCursorModel(model)) return undefined;
 	return getCursorModelMetadata(model.id);

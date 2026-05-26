@@ -10,6 +10,9 @@ import {
 	hasEventType,
 	createNativeToolDisplayPiForTest,
 	type CursorDeltaHandler,
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 
@@ -28,7 +31,7 @@ function mockFinishedGrepSend() {
 				callId: "grep-1",
 			},
 		});
-		return {
+		return asMockCursorRun({
 			id: "run-1",
 			agentId: "agent-1",
 			status: "finished",
@@ -36,7 +39,7 @@ function mockFinishedGrepSend() {
 			cancel: vi.fn(),
 			supports: () => true,
 			unsupportedReason: () => undefined,
-		};
+		});
 	});
 }
 
@@ -56,7 +59,7 @@ function mockFinishedTaskSend() {
 				callId: "task-1",
 			},
 		});
-		return {
+		return asMockCursorRun({
 			id: "run-1",
 			agentId: "agent-1",
 			status: "finished",
@@ -64,7 +67,7 @@ function mockFinishedTaskSend() {
 			cancel: vi.fn(),
 			supports: () => true,
 			unsupportedReason: () => undefined,
-		};
+		});
 	});
 }
 
@@ -83,11 +86,11 @@ describe("native replay stress", () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const pi = await createNativeToolDisplayPiForTest();
 		pi.setActiveTools(["read", "bash", "edit", "write"]);
-		await pi.runEventHandlers("turn_start", { model: CURSOR_MODEL });
+		await pi.runTurnStart({ model: CURSOR_MODEL });
 		expect(pi.getActiveTools()).toContain("grep");
 		expect(pi.getActiveTools()).toContain("cursor");
 
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockFinishedGrepSend(),
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -103,10 +106,10 @@ describe("native replay stress", () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const pi = await createNativeToolDisplayPiForTest();
 		pi.setActiveTools(["read", "bash", "edit", "write"]);
-		await pi.runEventHandlers("turn_start", { model: CURSOR_MODEL });
+		await pi.runTurnStart({ model: CURSOR_MODEL });
 		expect(pi.getActiveTools()).toContain("cursor");
 
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockFinishedTaskSend(),
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -121,7 +124,7 @@ describe("native replay stress", () => {
 	it("stale context.tools without grep still avoids toolUse (coordinator guard)", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		await createNativeToolDisplayPiForTest();
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: vi.fn(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({
@@ -135,7 +138,7 @@ describe("native replay stress", () => {
 						callId: "grep-1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "finished",
@@ -143,7 +146,7 @@ describe("native replay stress", () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			}),
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -158,7 +161,7 @@ describe("native replay stress", () => {
 	it("inactive cursor edit maps to trace text, not broken toolUse", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		await createNativeToolDisplayPiForTest();
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: vi.fn(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({
@@ -172,7 +175,7 @@ describe("native replay stress", () => {
 						callId: "edit-1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "finished",
@@ -180,7 +183,7 @@ describe("native replay stress", () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			}),
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -195,7 +198,7 @@ describe("native replay stress", () => {
 	it("find inactive in context uses trace fallback", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		await createNativeToolDisplayPiForTest();
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: vi.fn(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({
@@ -205,7 +208,7 @@ describe("native replay stress", () => {
 						callId: "find-1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "finished",
@@ -213,7 +216,7 @@ describe("native replay stress", () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			}),
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -229,7 +232,7 @@ describe("native replay stress", () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		await createNativeToolDisplayPiForTest();
 		const secret = "super-secret-key-12345";
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: vi.fn(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({
@@ -248,7 +251,7 @@ describe("native replay stress", () => {
 						callId: "mcp-1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "finished",
@@ -256,7 +259,7 @@ describe("native replay stress", () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			}),
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -276,7 +279,7 @@ describe("native replay stress", () => {
 	it("incomplete started external tool uses inactive trace when cursor is not in context", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		await createNativeToolDisplayPiForTest();
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: vi.fn(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({
@@ -286,7 +289,7 @@ describe("native replay stress", () => {
 						callId: "mcp-incomplete-1",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "finished",
@@ -294,7 +297,7 @@ describe("native replay stress", () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			}),
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -312,7 +315,7 @@ describe("native replay stress", () => {
 	it("incomplete started external tool uses transcript trace when native replay is unavailable", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		process.env.PI_CURSOR_REGISTER_NATIVE_TOOLS = "0";
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: vi.fn(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({
@@ -322,7 +325,7 @@ describe("native replay stress", () => {
 						callId: "mcp-incomplete-2",
 					},
 				});
-				return {
+				return asMockCursorRun({
 					id: "run-1",
 					agentId: "agent-1",
 					status: "finished",
@@ -330,7 +333,7 @@ describe("native replay stress", () => {
 					cancel: vi.fn(),
 					supports: () => true,
 					unsupportedReason: () => undefined,
-				};
+				});
 			}),
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
