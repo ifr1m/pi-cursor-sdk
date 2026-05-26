@@ -9,14 +9,14 @@ describe("pi-harness event map types", () => {
 
 // Negative compile tests: invalid harness payloads must not type-check.
 // @ts-expect-error session_start requires type and reason
-const _invalidSessionStart: HarnessEventMap["session_start"] = {};
+const _invalidSessionStart = {} satisfies HarnessEventMap["session_start"];
 
-// @ts-expect-error model_select requires a concrete model
-const _invalidModelSelect: HarnessEventMap["model_select"] = {
+const _invalidModelSelect = {
 	type: "model_select",
+	// @ts-expect-error model_select requires a concrete model
 	model: undefined,
 	previousModel: undefined,
 	source: "set",
-};
+} satisfies HarnessEventMap["model_select"];
 
 export {};
