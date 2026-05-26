@@ -28,6 +28,9 @@ import {
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
+	mockCreatedAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { estimateCursorPromptMessageTokens } from "../src/context.js";
@@ -47,7 +50,7 @@ describe("streamCursor bridge MCP", () => {
 	it("surfaces empty live-run error status with run metadata", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "text-delta", text: "partial" } });
-			return {
+			return asMockCursorRun({
 				id: "run-abc123456789",
 				agentId: "agent-1",
 				status: "error",
@@ -61,9 +64,9 @@ describe("streamCursor bridge MCP", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -82,7 +85,7 @@ describe("streamCursor bridge MCP", () => {
 	it("surfaces live-run wait error status as a provider error", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({ update: { type: "text-delta", text: "partial" } });
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "error",
@@ -90,9 +93,9 @@ describe("streamCursor bridge MCP", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -122,7 +125,7 @@ describe("streamCursor bridge MCP", () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -131,7 +134,7 @@ describe("streamCursor bridge MCP", () => {
 		await collectEvents(streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" }));
 
 		const createOptions = getCreatedAgentOptions();
-		const { client, transport } = await connectMcpClient(createOptions.mcpServers!.pi_tools.url);
+		const { client, transport } = await connectMcpClient(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		try {
 			const callPromise = client.callTool({ name: "pi__read", arguments: { path: "README.md" } });
 			const error = await callPromise.catch((callError: unknown) => callError);
@@ -149,7 +152,7 @@ describe("streamCursor bridge MCP", () => {
 				'request failed {"apiKey":"super-secret-key-12345","token":"token-value","session_id":"session-value"} cookie: foo=bar; baz=qux',
 			),
 		);
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
@@ -184,7 +187,7 @@ describe("streamCursor bridge MCP", () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -195,7 +198,7 @@ describe("streamCursor bridge MCP", () => {
 		const createOptions = getCreatedAgentOptions();
 		expect(createOptions.local).toEqual({ cwd: process.cwd(), settingSources: ["all"] });
 		expect(createOptions.mcpServers?.pi_tools?.type).toBe("http");
-		const url = new URL(createOptions.mcpServers.pi_tools.url);
+		const url = new URL(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		expect(url.hostname).toBe("127.0.0.1");
 		expect(url.pathname).toContain("/cursor-pi-tool-bridge/");
 	});
@@ -218,7 +221,7 @@ describe("streamCursor bridge MCP", () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -238,7 +241,7 @@ describe("streamCursor bridge MCP", () => {
 				createBuiltinToolInfo("bash", Type.Object({ command: Type.String() }), "Run commands"),
 			],
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-2",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -263,7 +266,7 @@ describe("streamCursor bridge MCP", () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -283,7 +286,7 @@ describe("streamCursor bridge MCP", () => {
 			active: ["cursor", "cursor_edit"],
 			tools: [createTestToolInfo("cursor"), createTestToolInfo("cursor_edit")],
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-2",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -318,7 +321,7 @@ describe("streamCursor bridge MCP", () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler; onStep: CursorStepHandler }) => {
 			onDelta = opts.onDelta;
 			onStep = opts.onStep;
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -326,9 +329,9 @@ describe("streamCursor bridge MCP", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -337,7 +340,7 @@ describe("streamCursor bridge MCP", () => {
 		const firstEventsPromise = collectEvents(streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" }));
 		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
 		const createOptions = getCreatedAgentOptions();
-		const { client, transport } = await connectMcpClient(createOptions.mcpServers.pi_tools.url);
+		const { client, transport } = await connectMcpClient(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		try {
 			const readCallPromise = client.callTool({ name: "pi__read", arguments: { path: "README.md" } });
 			const bashCallPromise = client.callTool({ name: "pi__bash", arguments: { command: "pwd" } });
@@ -361,7 +364,7 @@ describe("streamCursor bridge MCP", () => {
 						name: "mcp",
 						result: { status: "success", value: { content: "duplicate bridge onStep replay should be suppressed" } },
 					},
-				},
+				} as unknown as Parameters<NonNullable<import("@cursor/sdk").SendOptions["onStep"]>>[0]["step"],
 			});
 			onDelta?.({ update: { type: "tool-call-started", callId: "mcp-bash-start-only", toolCall: { name: "mcp", args: { toolName: "pi__bash" } } } });
 
@@ -446,7 +449,7 @@ describe("streamCursor bridge MCP", () => {
 					},
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -454,9 +457,9 @@ describe("streamCursor bridge MCP", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
@@ -488,7 +491,7 @@ describe("streamCursor bridge MCP", () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: mockDispose,
@@ -497,7 +500,7 @@ describe("streamCursor bridge MCP", () => {
 		const firstEventsPromise = collectEvents(streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" }));
 		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
 		const createOptions = getCreatedAgentOptions();
-		const { client, transport } = await connectMcpClient(createOptions.mcpServers.pi_tools.url);
+		const { client, transport } = await connectMcpClient(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		try {
 			const callErrorPromise = client.callTool({ name: "pi__read", arguments: { path: "README.md" } }).catch((error: unknown) => error);
 			const firstEvents = await firstEventsPromise;
@@ -532,7 +535,7 @@ describe("streamCursor bridge MCP", () => {
 					callId: "c-incomplete",
 				},
 			});
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "finished",
@@ -540,9 +543,9 @@ describe("streamCursor bridge MCP", () => {
 				cancel: vi.fn(),
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			agentId: "agent-1",
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),

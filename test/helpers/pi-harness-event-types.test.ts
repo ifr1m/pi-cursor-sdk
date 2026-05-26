@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createEventHarness, type HarnessEventMap } from "./pi-harness.js";
+import {
+	createEventHarness,
+	type HarnessEventInvokeResult,
+	type HarnessEventMap,
+} from "./pi-harness.js";
 
 describe("pi-harness event map types", () => {
 	it("keeps compile-time negative fixtures for invalid harness payloads", () => {
@@ -63,6 +67,32 @@ describe("pi-harness before_agent_start results", () => {
 
 		expect(result).toBeUndefined();
 	});
+
+	it("aggregates handler messages into plural messages on invoke", async () => {
+		const pi = createEventHarness();
+		const firstMessage = {
+			customType: "notice",
+			content: [{ type: "text" as const, text: "first" }],
+			display: false,
+		};
+		const secondMessage = {
+			customType: "notice",
+			content: [{ type: "text" as const, text: "second" }],
+			display: false,
+		};
+		pi.on("before_agent_start", () => ({ message: firstMessage }));
+		pi.on("before_agent_start", () => ({ message: secondMessage }));
+
+		const result = await pi.invokeEvent("before_agent_start", {
+			type: "before_agent_start",
+			prompt: "hello",
+			systemPrompt: "base",
+			systemPromptOptions: { cwd: "/repo", selectedTools: [] },
+		});
+
+		expect(result?.messages).toEqual([firstMessage, secondMessage]);
+		expect(result?.systemPrompt).toBeUndefined();
+	});
 });
 
 describe("pi-harness tool_call results", () => {
@@ -99,5 +129,28 @@ const _invalidModelSelect = {
 	previousModel: undefined,
 	source: "set",
 } satisfies HarnessEventMap["model_select"];
+
+const _validBeforeAgentStartInvoke: HarnessEventInvokeResult<"before_agent_start"> = {
+	messages: [
+		{
+			customType: "notice",
+			content: [{ type: "text", text: "hello" }],
+			display: false,
+		},
+	],
+	systemPrompt: "updated",
+};
+
+const _invalidBeforeAgentStartInvoke = {
+	// @ts-expect-error invoke combines handler message into messages[], not message
+	message: {
+		customType: "notice",
+		content: [{ type: "text", text: "hello" }],
+		display: false,
+	},
+} satisfies HarnessEventInvokeResult<"before_agent_start">;
+
+void _validBeforeAgentStartInvoke;
+void _invalidBeforeAgentStartInvoke;
 
 export {};

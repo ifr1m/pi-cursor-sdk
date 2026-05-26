@@ -82,14 +82,6 @@ export type HarnessEventMap = {
 	tool_result: ToolResultEvent;
 };
 
-/** Per-handler result types for harness events that return values to the caller. */
-export type HarnessEventResultMap = {
-	tool_call: ToolCallEventResult;
-	before_agent_start: BeforeAgentStartEventResult;
-	tool_result: HarnessToolResultCombinedResult;
-	session_before_tree: HarnessSessionBeforeTreeCombinedResult;
-};
-
 /** Combined invoke result for before_agent_start (matches installed pi ExtensionRunner). */
 export type HarnessBeforeAgentStartCombinedResult = {
 	messages?: NonNullable<BeforeAgentStartEventResult["message"]>[];
@@ -113,6 +105,14 @@ export type HarnessSessionBeforeTreeCombinedResult = {
 	customInstructions?: string;
 	replaceInstructions?: boolean;
 	label?: string;
+};
+
+/** Invoke result types for harness events that return values to the caller (combined shapes where pi aggregates). */
+export type HarnessEventResultMap = {
+	tool_call: ToolCallEventResult;
+	before_agent_start: HarnessBeforeAgentStartCombinedResult;
+	tool_result: HarnessToolResultCombinedResult;
+	session_before_tree: HarnessSessionBeforeTreeCombinedResult;
 };
 
 /** @deprecated Use ExtensionContextOverrides */

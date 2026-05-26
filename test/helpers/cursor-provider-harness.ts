@@ -43,9 +43,9 @@ import {
 	registerCursorNativeToolDisplay,
 } from "../../src/cursor-native-tool-display.js";
 import type { CursorNativeToolDisplayExtensionApi } from "../../src/cursor-native-tool-display-registration.js";
-import type { ModelListItem, SendOptions } from "@cursor/sdk";
-import type { AssistantMessage, AssistantMessageEvent, ToolCall } from "@earendil-works/pi-ai";
-import type { ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { ModelListItem, Run, SDKAgent, SendOptions } from "@cursor/sdk";
+import type { AssistantMessage, AssistantMessageEvent, TextContent, ImageContent, ToolCall } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
 import {
 	collectAssistantEvents,
 	createBridgePiHarness,
@@ -53,6 +53,7 @@ import {
 	createExtensionCommandContext,
 	createExtensionTestContext,
 	createPiHarness,
+	getCursorPiBridgeMcpUrl,
 	makeAssistantMessage,
 	makeContext,
 	makeModel,
@@ -68,6 +69,7 @@ export {
 	createExtensionTestContext,
 	createPiHarness,
 	createTestToolInfo,
+	getCursorPiBridgeMcpUrl,
 	makeAssistantMessage,
 	makeContext,
 	makeModel,
@@ -79,6 +81,49 @@ export {
 export const mockedCreate = vi.mocked(Agent.create);
 export const mockedMessagesList = vi.mocked(Agent.messages.list);
 export const mockedCreateAgentPlatform = vi.mocked(createAgentPlatform);
+
+export type MockSdkAgent = Awaited<ReturnType<typeof Agent.create>>;
+
+export function asMockSdkAgent(
+	agent: Pick<MockSdkAgent, "send"> & Partial<Omit<MockSdkAgent, "send">>,
+): MockSdkAgent {
+	return {
+		agentId: "agent-1",
+		[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		...agent,
+	} as MockSdkAgent;
+}
+
+export function mockCreatedAgent(
+	agent: Pick<MockSdkAgent, "send"> & Partial<Omit<MockSdkAgent, "send">>,
+): void {
+	mockedCreate.mockResolvedValue(asMockSdkAgent(agent));
+}
+
+export function asMockCursorRun(
+	run: Pick<Run, "id" | "agentId" | "status" | "wait"> & Partial<Run>,
+): Run {
+	return {
+		cancel: vi.fn(),
+		supports: () => true,
+		unsupportedReason: () => undefined,
+		stream: {} as Run["stream"],
+		conversation: {} as Run["conversation"],
+		onDidChangeStatus: vi.fn(),
+		...run,
+	} as Run;
+}
+
+export function getPiToolsMcpUrlFromAgentCreateOptions(options: CursorAgentCreateOptions): string {
+	if (!options.mcpServers?.pi_tools) {
+		throw new Error("Expected pi_tools MCP server in Agent.create options");
+	}
+	return getCursorPiBridgeMcpUrl({ mcpServers: options.mcpServers });
+}
+
+export function textFromToolResultBlock(block: TextContent | ImageContent | undefined): string {
+	return block?.type === "text" ? block.text : "";
+}
 
 export function registerBridgeForProviderTest(options: { active: string[]; tools: ToolInfo[] }) {
 	const pi = createBridgePiHarness(options);
@@ -182,8 +227,8 @@ export function createMockAgentPlatform(
 }
 
 export interface NativeToolDisplayTestPi {
-	getActiveTools: ReturnType<typeof vi.fn>;
-	setActiveTools: ReturnType<typeof vi.fn>;
+	getActiveTools: ExtensionAPI["getActiveTools"];
+	setActiveTools: ExtensionAPI["setActiveTools"];
 	runTurnStart: (ctxOverrides?: ExtensionContextOverrides) => Promise<void>;
 }
 
@@ -206,8 +251,10 @@ export async function createNativeToolDisplayPiForTest(registeredTools: Register
 	registerCursorNativeToolDisplay(nativePi);
 	await pi.runSessionStart({ hasUI: false });
 	return {
-		getActiveTools: pi.getActiveTools,
-		setActiveTools: pi.setActiveTools,
+		getActiveTools: () => pi.getActiveTools(),
+		setActiveTools: (toolNames) => {
+			pi.setActiveTools(toolNames);
+		},
 		runTurnStart: (ctxOverrides = {}) => pi.runTurnStart({ hasUI: false, ...ctxOverrides }),
 	};
 }
@@ -304,11 +351,7 @@ export async function resetCursorProviderTestState(): Promise<void> {
 	cursorSessionCwdTestUtils.reset();
 	nativeToolDisplayTestUtils.reset();
 	modelDiscoveryTestUtils.registerModelItems(cursorModelItems);
-	mockedCreate.mockResolvedValue({
-		agentId: "agent-1",
-		send: vi.fn(),
-		[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-	} as unknown as Awaited<ReturnType<typeof Agent.create>>);
+	mockCreatedAgent({ send: vi.fn() });
 	mockedMessagesList.mockResolvedValue([]);
 	mockedCreateAgentPlatform.mockResolvedValue(createMockAgentPlatform());
 }

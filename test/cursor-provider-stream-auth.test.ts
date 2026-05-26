@@ -28,6 +28,10 @@ import {
 	type CursorDeltaHandler,
 	type CursorStepHandler,
 	type RegisteredTool,
+	mockCreatedAgent,
+	asMockSdkAgent,
+	asMockCursorRun,
+	getPiToolsMcpUrlFromAgentCreateOptions,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
@@ -48,10 +52,10 @@ it("aborts after agent creation without sending a prompt when already cancelled"
 		const mockSend = vi.fn();
 		mockedCreate.mockImplementation(async () => {
 			controller.abort();
-			return {
+			return asMockSdkAgent({
 				send: mockSend,
 				[Symbol.asyncDispose]: mockDispose,
-			};
+			});
 		});
 
 		const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key", signal: controller.signal });
@@ -110,7 +114,7 @@ it("aborts after agent creation without sending a prompt when already cancelled"
 				supports: () => true,
 				unsupportedReason: () => undefined,
 			});
-			mockedCreate.mockResolvedValue({
+			mockCreatedAgent({
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
@@ -164,7 +168,7 @@ it("aborts after agent creation without sending a prompt when already cancelled"
 			resolveWait = () => resolve({ id: "run-1", status: "cancelled" });
 		});
 		const mockSend = vi.fn().mockImplementation(async () => {
-			return {
+			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
 				status: "running",
@@ -172,9 +176,9 @@ it("aborts after agent creation without sending a prompt when already cancelled"
 				cancel: mockCancel,
 				supports: () => true,
 				unsupportedReason: () => undefined,
-			};
+			});
 		});
-		mockedCreate.mockResolvedValue({
+		mockCreatedAgent({
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
