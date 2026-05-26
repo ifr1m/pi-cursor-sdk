@@ -2,6 +2,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=scripts/lib/cursor-smoke-shell.sh
+. "$ROOT/scripts/lib/cursor-smoke-shell.sh"
+
 SMOKE_DIR="${SMOKE_DIR:-/tmp/pi-cursor-sdk-live-smoke-$(date +%Y%m%dT%H%M%S)}"
 SHELL_BIN="${SHELL:-/bin/bash}"
 
@@ -59,62 +62,10 @@ Exit codes:
 EOF
 }
 
-log() {
-	printf '[smoke] %s\n' "$*"
-}
-
-fail() {
-	printf '[smoke] FAIL: %s\n' "$*" >&2
-	exit 1
-}
-
-require_cmd() {
-	command -v "$1" >/dev/null 2>&1 || fail "missing required command: $1"
-}
-
-run_with_timeout() {
-	local timeout_secs="$1"
-	shift
-	if command -v timeout >/dev/null 2>&1; then
-		timeout "$timeout_secs" "$@"
-		return $?
-	fi
-	if command -v gtimeout >/dev/null 2>&1; then
-		gtimeout "$timeout_secs" "$@"
-		return $?
-	fi
-
-	local restore_monitor=0
-	case $- in
-		*m*) ;;
-		*)
-			restore_monitor=1
-			set -m
-			;;
-	esac
-
-	"$@" &
-	local pid=$!
-	(
-		sleep "$timeout_secs"
-		kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
-		sleep 2
-		kill -KILL "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-	) &
-	local watcher=$!
-	local code=0
-	if wait "$pid"; then
-		code=0
-	else
-		code=$?
-	fi
-	kill "$watcher" 2>/dev/null || true
-	wait "$watcher" 2>/dev/null || true
-	if (( restore_monitor )); then
-		set +m
-	fi
-	return "$code"
-}
+log() { smoke_log "$@"; }
+fail() { smoke_fail "$@"; }
+require_cmd() { smoke_require_cmd "$@"; }
+run_with_timeout() { smoke_run_with_timeout "$@"; }
 
 tail_file() {
 	local file="$1"

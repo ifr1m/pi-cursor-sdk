@@ -5,6 +5,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=scripts/lib/cursor-smoke-shell.sh
+. "$ROOT/scripts/lib/cursor-smoke-shell.sh"
+SMOKE_LOG_PREFIX=isolated-smoke
+
 REAL_HOME="${REAL_HOME:-$HOME}"
 PI_AGENT_DIR="${PI_AGENT_DIR:-$REAL_HOME/.pi/agent}"
 AUTH_JSON="${AUTH_JSON:-$PI_AGENT_DIR/auth.json}"
@@ -54,79 +58,11 @@ Exit codes:
 EOF
 }
 
-log() {
-	printf '[isolated-smoke] %s\n' "$*"
-}
-
-fail() {
-	printf '[isolated-smoke] FAIL: %s\n' "$*" >&2
-	exit 1
-}
-
-seed_pi_agent_home() {
-	local home="$1"
-	mkdir -p "$home/.pi/agent"
-	if [[ -f "$AUTH_JSON" ]]; then
-		cp "$AUTH_JSON" "$home/.pi/agent/auth.json"
-		chmod 600 "$home/.pi/agent/auth.json"
-		log "seeded $home/.pi/agent/auth.json"
-	else
-		log "WARN: no auth.json at $AUTH_JSON"
-	fi
-	if [[ -f "$PI_AGENT_DIR/models.json" ]]; then
-		cp "$PI_AGENT_DIR/models.json" "$home/.pi/agent/models.json"
-	fi
-}
-
-has_auth_provider() {
-	local provider="$1"
-	python3 - "$provider" "$HOME_DIR/.pi/agent/auth.json" <<'PY'
-import json, sys
-provider, path = sys.argv[1], sys.argv[2]
-try:
-    data = json.load(open(path))
-except FileNotFoundError:
-    sys.exit(1)
-sys.exit(0 if provider in data and data[provider] else 1)
-PY
-}
-
-run_with_timeout() {
-	local label="$1"
-	local seconds="$2"
-	shift 2
-	log "$label (timeout ${seconds}s)"
-	if command -v timeout >/dev/null 2>&1; then
-		timeout --foreground "${seconds}s" "$@" || {
-			local rc=$?
-			[[ $rc -eq 124 ]] && fail "$label timed out after ${seconds}s"
-			fail "$label exited $rc"
-		}
-		return
-	fi
-	if command -v gtimeout >/dev/null 2>&1; then
-		gtimeout "${seconds}s" "$@" || {
-			local rc=$?
-			[[ $rc -eq 124 ]] && fail "$label timed out after ${seconds}s"
-			fail "$label exited $rc"
-		}
-		return
-	fi
-	"$@" &
-	local pid=$!
-	local waited=0
-	while kill -0 "$pid" 2>/dev/null; do
-		if (( waited >= seconds )); then
-			kill -TERM "$pid" 2>/dev/null || true
-			sleep 1
-			kill -KILL "$pid" 2>/dev/null || true
-			fail "$label timed out after ${seconds}s"
-		fi
-		sleep 1
-		waited=$((waited + 1))
-	done
-	wait "$pid" || fail "$label exited $?"
-}
+log() { smoke_log "$@"; }
+fail() { smoke_fail "$@"; }
+seed_pi_agent_home() { smoke_seed_pi_agent_home "$@"; }
+has_auth_provider() { smoke_has_auth_provider "$1" "$HOME_DIR/.pi/agent/auth.json"; }
+run_with_timeout() { smoke_run_with_timeout_or_fail "$@"; }
 
 validate_replay_jsonl() {
 	local dir="$1"
@@ -145,10 +81,10 @@ if [[ -f "${SECRETS_FILE:-$REAL_HOME/.secrets}" ]]; then
 	set -u
 fi
 
-command -v node >/dev/null || fail "missing node"
-command -v npm >/dev/null || fail "missing npm"
-command -v rg >/dev/null || fail "missing rg"
-command -v python3 >/dev/null || fail "missing python3"
+smoke_require_cmd node
+smoke_require_cmd npm
+smoke_require_cmd rg
+smoke_require_cmd python3
 
 mkdir -p "$PACK_DIR" "$EXTRACT_DIR" "$PROJECT_DIR" "$SESSION_ROOT" "$HOME_DIR"
 seed_pi_agent_home "$HOME_DIR"

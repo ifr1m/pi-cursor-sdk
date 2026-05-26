@@ -10,7 +10,9 @@ import {
 	installCursorMcpToolTimeoutOverride,
 	restoreCursorMcpToolTimeoutOverride,
 } from "../src/cursor-mcp-timeout-override.ts";
-import { scrubSensitiveText } from "./lib/cursor-probe-utils.mjs";
+import { defaultApiKeyFromEnv, parseArgv } from "./lib/cursor-cli-args.mjs";
+import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
+import { createScriptFail } from "./lib/cursor-script-fail.mjs";
 import { installCursorSdkOutputFilter, suppressCursorSdkOutput } from "./lib/cursor-sdk-output-filter.mjs";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
@@ -47,9 +49,10 @@ Safety:
   - Error messages are scrubbed for API keys, bearer tokens, cookies, and bridge endpoints.`);
 }
 
+const exitWithFailure = createScriptFail("probe-mcp-coldstart");
+
 function fail(message, apiKey) {
-	console.error(`probe-mcp-coldstart: ${scrubSensitiveText(message, apiKey)}`);
-	process.exit(1);
+	exitWithFailure(message, apiKey ? [apiKey] : []);
 }
 
 function findScenario(label) {
@@ -57,39 +60,17 @@ function findScenario(label) {
 }
 
 function parseArgs(argv, env = process.env) {
-	const args = {
-		apiKey: env.CURSOR_API_KEY?.trim() || undefined,
-		help: false,
-		scenario: undefined,
-	};
-	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index];
-		if (arg === "-h" || arg === "--help") {
-			args.help = true;
-			continue;
-		}
-		if (arg === "--api-key") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--api-key requires a value", args.apiKey);
-			args.apiKey = value.trim();
-			continue;
-		}
-		if (arg.startsWith("--api-key=")) {
-			args.apiKey = arg.slice("--api-key=".length).trim();
-			continue;
-		}
-		if (arg === "--scenario") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--scenario requires a value", args.apiKey);
-			args.scenario = value.trim();
-			continue;
-		}
-		if (arg.startsWith("--scenario=")) {
-			args.scenario = arg.slice("--scenario=".length).trim();
-			continue;
-		}
-		fail(`unknown argument: ${arg}`, args.apiKey);
-	}
+	const args = parseArgv(argv, {
+		defaults: {
+			apiKey: defaultApiKeyFromEnv(env),
+			scenario: undefined,
+		},
+		flags: {
+			apiKey: { names: ["--api-key"], assign: (value) => value.trim() },
+			scenario: { names: ["--scenario"], assign: (value) => value.trim() },
+		},
+		fail: (message) => fail(message, defaultApiKeyFromEnv(env)),
+	});
 	if (args.scenario && !findScenario(args.scenario)) {
 		fail(`unknown scenario: ${args.scenario}`, args.apiKey);
 	}

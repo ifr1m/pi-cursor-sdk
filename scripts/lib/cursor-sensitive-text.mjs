@@ -1,19 +1,7 @@
-export const CURSOR_SETTING_SOURCES_ENV = "PI_CURSOR_SETTING_SOURCES";
+/** Canonical secret/bridge scrubbing (parity-tested; re-exported from src/cursor-sensitive-text.ts). */
 
 function escapeRegExp(value) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-export function resolveCursorSettingSources(raw) {
-	const trimmed = raw?.trim();
-	if (!trimmed) return ["all"];
-	const normalized = trimmed.toLowerCase();
-	if (["0", "false", "off", "none", "omit", "disabled"].includes(normalized)) return undefined;
-	if (["1", "true", "on", "all"].includes(normalized)) return ["all"];
-	return trimmed
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter(Boolean);
 }
 
 const BRIDGE_ENDPOINT_ROOT = "/cursor-pi-tool-bridge";

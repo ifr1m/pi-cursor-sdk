@@ -5,20 +5,25 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-	CURSOR_SETTING_SOURCES_ENV,
-	resolveCursorSettingSources,
-	scrubSensitiveText,
-} from "./lib/cursor-probe-utils.mjs";
+	commonProbeFlags,
+	defaultApiKeyFromEnv,
+	defaultSettingSourcesFromEnv,
+	parseArgv,
+	requireApiKey,
+} from "./lib/cursor-cli-args.mjs";
+import { parseJsonLines, terminateChild, waitForChildClose } from "./lib/cursor-child-process.mjs";
+import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
+import { createScriptFail } from "./lib/cursor-script-fail.mjs";
+import { serializeCursorSettingSources } from "./lib/cursor-setting-sources.mjs";
 
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL("..", import.meta.url));
 const packageJson = require("../package.json");
 const DEFAULT_MODEL = "cursor/composer-2.5";
 const DEFAULT_OUT_BASE = ".debug/cursor-sdk-events";
-const CHILD_SHUTDOWN_GRACE_MS = 2_000;
 const SDK_EVENT_DEBUG_LOG_PREFIX = "[pi-cursor-sdk:sdk-events]";
 const PI_SESSION_SNAPSHOT_ARTIFACT = "pi-session-snapshot.jsonl";
 const SESSION_PI_SESSION_SNAPSHOT = "pi-session.jsonl";
@@ -72,167 +77,37 @@ Safety:
   - Raw artifact files may contain local paths, tool args/results, or secrets. Do not commit or share them.`);
 }
 
-function fail(message, secrets = []) {
-	const scrubbed = scrubSensitiveText(message, secrets[0]);
-	console.error(`debug-provider-events: ${scrubbed}`);
-	process.exit(1);
-}
+const fail = createScriptFail("debug-provider-events");
 
 export function parseDebugProviderEventsArgs(argv, env = process.env) {
-	const args = {
-		cwd: root,
-		model: DEFAULT_MODEL,
-		prompt: undefined,
-		promptFile: undefined,
-		out: undefined,
-		settingSources: resolveCursorSettingSources(env[CURSOR_SETTING_SOURCES_ENV]),
-		sessionDir: undefined,
-		apiKey: env.CURSOR_API_KEY?.trim() || undefined,
-		help: false,
-	};
-	for (let index = 0; index < argv.length; index++) {
-		const arg = argv[index];
-		if (arg === "-h" || arg === "--help") {
-			args.help = true;
-			continue;
-		}
-		if (arg === "--cwd") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--cwd requires a path");
-			args.cwd = resolve(value);
-			continue;
-		}
-		if (arg.startsWith("--cwd=")) {
-			args.cwd = resolve(arg.slice("--cwd=".length));
-			continue;
-		}
-		if (arg === "--model") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--model requires a value");
-			args.model = value.trim();
-			continue;
-		}
-		if (arg.startsWith("--model=")) {
-			args.model = arg.slice("--model=".length).trim();
-			continue;
-		}
-		if (arg === "--prompt") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--prompt requires a value");
-			args.prompt = value;
-			continue;
-		}
-		if (arg.startsWith("--prompt=")) {
-			args.prompt = arg.slice("--prompt=".length);
-			continue;
-		}
-		if (arg === "--prompt-file") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--prompt-file requires a path");
-			args.promptFile = resolve(value);
-			continue;
-		}
-		if (arg.startsWith("--prompt-file=")) {
-			args.promptFile = resolve(arg.slice("--prompt-file=".length));
-			continue;
-		}
-		if (arg === "--out") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--out requires a directory path");
-			args.out = resolve(value);
-			continue;
-		}
-		if (arg.startsWith("--out=")) {
-			args.out = resolve(arg.slice("--out=".length));
-			continue;
-		}
-		if (arg === "--session-dir") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--session-dir requires a path");
-			args.sessionDir = resolve(value);
-			continue;
-		}
-		if (arg.startsWith("--session-dir=")) {
-			args.sessionDir = resolve(arg.slice("--session-dir=".length));
-			continue;
-		}
-		if (arg === "--setting-sources") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--setting-sources requires a value");
-			args.settingSources = resolveCursorSettingSources(value);
-			continue;
-		}
-		if (arg.startsWith("--setting-sources=")) {
-			args.settingSources = resolveCursorSettingSources(arg.slice("--setting-sources=".length));
-			continue;
-		}
-		if (arg === "--api-key") {
-			const value = argv[++index];
-			if (!value || value.startsWith("--")) fail("--api-key requires a value");
-			args.apiKey = value.trim();
-			continue;
-		}
-		if (arg.startsWith("--api-key=")) {
-			args.apiKey = arg.slice("--api-key=".length).trim();
-			continue;
-		}
-		fail(`unknown argument: ${arg}`);
-	}
-	return args;
+	return parseArgv(argv, {
+		defaults: {
+			cwd: root,
+			model: DEFAULT_MODEL,
+			prompt: undefined,
+			promptFile: undefined,
+			out: undefined,
+			settingSources: defaultSettingSourcesFromEnv(env),
+			sessionDir: undefined,
+			apiKey: defaultApiKeyFromEnv(env),
+		},
+		flags: {
+			cwd: commonProbeFlags.cwd,
+			model: commonProbeFlags.model,
+			prompt: commonProbeFlags.prompt,
+			promptFile: commonProbeFlags.promptFile,
+			out: commonProbeFlags.out,
+			sessionDir: commonProbeFlags.sessionDir,
+			apiKey: commonProbeFlags.apiKey,
+			settingSources: commonProbeFlags.settingSources,
+		},
+		fail,
+	});
 }
 
 function defaultOutDir(cwd) {
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
 	return join(cwd, DEFAULT_OUT_BASE, stamp);
-}
-
-function parseEvents(stdout) {
-	const events = [];
-	for (const line of stdout.split("\n")) {
-		if (!line.trim()) continue;
-		try {
-			events.push(JSON.parse(line));
-		} catch {
-			// ignore partial lines
-		}
-	}
-	return events;
-}
-
-function waitForChildClose(child) {
-	if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode ?? 1);
-	return new Promise((resolve) => {
-		child.once("close", (code) => resolve(code ?? 1));
-	});
-}
-
-function signalChild(child, signal) {
-	if (!child.pid) return;
-	try {
-		if (process.platform === "win32") {
-			child.kill(signal);
-		} else {
-			process.kill(-child.pid, signal);
-		}
-	} catch {
-		try {
-			child.kill(signal);
-		} catch {
-			// child already exited
-		}
-	}
-}
-
-async function terminateChild(child) {
-	child.stdin.destroy();
-	if (child.exitCode !== null || child.signalCode !== null) return;
-	signalChild(child, "SIGTERM");
-	const killTimer = setTimeout(() => signalChild(child, "SIGKILL"), CHILD_SHUTDOWN_GRACE_MS);
-	try {
-		await waitForChildClose(child);
-	} finally {
-		clearTimeout(killTimer);
-	}
 }
 
 function readCaptureSummary(artifactDir, stderr) {
@@ -284,7 +159,7 @@ export async function runDebugProviderEvents(args) {
 		args.prompt = readFileSync(args.promptFile, "utf8");
 	}
 	if (!args.prompt?.trim()) fail("--prompt or --prompt-file is required");
-	if (!args.apiKey) fail("CURSOR_API_KEY or --api-key is required");
+	args.apiKey = requireApiKey(args, process.env, fail);
 
 	const artifactDir = args.out ?? defaultOutDir(args.cwd);
 	const sessionDir = args.sessionDir ?? join(artifactDir, "session");
@@ -307,7 +182,7 @@ export async function runDebugProviderEvents(args) {
 		CURSOR_API_KEY: args.apiKey,
 		PI_CURSOR_SDK_EVENT_DEBUG: "1",
 		PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR: artifactDir,
-		PI_CURSOR_SETTING_SOURCES: args.settingSources?.join(",") ?? "all",
+		PI_CURSOR_SETTING_SOURCES: serializeCursorSettingSources(args.settingSources),
 		PI_CURSOR_NATIVE_TOOL_DISPLAY: envFlag(process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY, "1"),
 		PI_CURSOR_PI_TOOL_BRIDGE: envFlag(process.env.PI_CURSOR_PI_TOOL_BRIDGE, "1"),
 	};
@@ -339,7 +214,7 @@ export async function runDebugProviderEvents(args) {
 			const timeoutMs = Number(process.env.PI_PROVIDER_EVENT_DEBUG_TIMEOUT_MS ?? 600_000);
 			const start = Date.now();
 			const tick = () => {
-				const events = parseEvents(stdout);
+				const events = parseJsonLines(stdout);
 				if (events.some((event) => event.type === "agent_end")) {
 					resolve(events);
 					return;
