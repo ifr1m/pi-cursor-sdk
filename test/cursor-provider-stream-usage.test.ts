@@ -78,11 +78,11 @@ describe("streamCursor usage accounting", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
 			const events = await collectEvents(stream);
 			const done = getDoneEvent(events);
-	
+
 			expect(done.message.usage.input).toBeGreaterThan(0);
 			expect(done.message.usage.output).toBe(1);
 			expect(done.message.usage.cacheRead).toBe(0);

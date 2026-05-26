@@ -60,7 +60,7 @@ describe("streamCursor stream events", () => {
 				isError: false,
 				timestamp: 3,
 			};
-	
+
 			expect(cursorProviderTestUtils.hasTrailingUserMessagesAfterToolResults(base)).toBe(false);
 			expect(
 				cursorProviderTestUtils.hasTrailingUserMessagesAfterToolResults({
@@ -75,7 +75,7 @@ describe("streamCursor stream events", () => {
 				}),
 			).toBe(true);
 		});
-	
+
 		it("emits text deltas as pi text stream events", async () => {
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({ update: { type: "text-delta", text: "Hello " } });
@@ -94,19 +94,19 @@ describe("streamCursor stream events", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
 			const events = await collectEvents(stream);
-	
+
 			const textDeltas = getEventsOfType(events, "text_delta");
 			expect(textDeltas).toHaveLength(2);
 			expect(textDeltas[0].delta).toBe("Hello ");
 			expect(textDeltas[1].delta).toBe("world");
-	
+
 			const done = getDoneEvent(events);
 			expect(done).toBeDefined();
 		});
-	
+
 		it("emits createPlan args as final visible text when native replay is unavailable", async () => {
 			const plan = "Plan:\n1. Create calculator UI.\n2. Implement addition and subtraction.\n3. Add tests.";
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
@@ -126,17 +126,17 @@ describe("streamCursor stream events", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 			const text = collectTextDeltas(events);
 			const trace = collectThinkingDeltas(events);
 			const done = getDoneEvent(events);
-	
+
 			expect(text).toBe(`Switching to plan mode.\n${plan}`);
 			expect(trace).toContain("Create calculator UI");
 			expect(done.message.content[0]).toEqual({ type: "text", text: `Switching to plan mode.\n${plan}` });
 		});
-	
+
 		it("emits thinking deltas as pi thinking stream events", async () => {
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({ update: { type: "thinking-delta", text: "hmm" } });
@@ -157,17 +157,17 @@ describe("streamCursor stream events", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
 			const events = await collectEvents(stream);
-	
+
 			const thinkingDeltas = getEventsOfType(events, "thinking_delta");
 			expect(thinkingDeltas).toHaveLength(2);
-	
+
 			const thinkingEnd = events.find((event) => event.type === "thinking_end");
 			expect(thinkingEnd).toBeDefined();
 		});
-	
+
 		it("keeps late cursor thinking in the saved content order after live text", async () => {
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({ update: { type: "text-delta", text: "Final answer" } });
@@ -187,11 +187,11 @@ describe("streamCursor stream events", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
 			const events = await collectEvents(stream);
 			const done = getDoneEvent(events);
-	
+
 			expect(done.message.content).toEqual([
 				{ type: "text", text: "Final answer" },
 				{ type: "thinking", thinking: "late trace" },

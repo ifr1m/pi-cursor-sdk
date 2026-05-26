@@ -56,7 +56,7 @@ describe("streamCursor debug artifacts", () => {
 			const previousRunDir = process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR;
 			process.env.PI_CURSOR_SDK_EVENT_DEBUG = "1";
 			process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR = artifactDir;
-	
+
 			try {
 				const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 					opts.onDelta({ update: { type: "text-delta", text: "debugged" } });
@@ -77,9 +77,9 @@ describe("streamCursor debug artifacts", () => {
 					send: mockSend,
 					[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 				});
-	
+
 				await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
-	
+
 				expect(readFileSync(join(artifactDir, "on-delta.jsonl"), "utf8")).toContain('"text-delta"');
 				expect(readFileSync(join(artifactDir, "pi-stream-events.jsonl"), "utf8")).toContain('"text_delta"');
 				expect(readFileSync(join(artifactDir, "stream-events.jsonl"), "utf8")).toContain('"assistant"');
@@ -95,25 +95,25 @@ describe("streamCursor debug artifacts", () => {
 				rmSync(artifactDir, { recursive: true, force: true });
 			}
 		});
-	
+
 		it("records continuation drain artifacts on the next turn debug sink", async () => {
 			const previousNativeDisplay = process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY;
 			process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 			const registeredTools: RegisteredTool[] = [];
 			await registerNativeToolDisplayForTest(registeredTools);
-	
+
 			const baseDir = mkdtempSync(join(tmpdir(), "pi-cursor-provider-debug-continuation-"));
 			const sessionFile = join(baseDir, "session.jsonl");
 			const eventsDir = join(baseDir, "events");
 			const previousDebug = process.env.PI_CURSOR_SDK_EVENT_DEBUG;
 			const previousDebugDir = process.env.PI_CURSOR_SDK_EVENT_DEBUG_DIR;
 			const { __testUtils: scopeTestUtils } = await import("../src/cursor-session-scope.js");
-	
+
 			sdkEventDebugTestUtils.resetSessionDebugState();
 			scopeTestUtils.set(baseDir, sessionFile);
 			process.env.PI_CURSOR_SDK_EVENT_DEBUG = "1";
 			process.env.PI_CURSOR_SDK_EVENT_DEBUG_DIR = eventsDir;
-	
+
 			let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
 			const runWait = vi.fn(
 				() =>
@@ -150,30 +150,30 @@ describe("streamCursor debug artifacts", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			try {
 				const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 				expect(getDoneEvent(firstEvents).reason).toBe("toolUse");
-	
+
 				firstOnDelta?.({ update: { type: "text-delta", text: "Late scoped text." } });
 				const secondEventsPromise = collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 				await Promise.resolve();
 				resolveRun({ id: "run-1", status: "finished", result: "Late scoped final." });
 				await secondEventsPromise;
-	
+
 				const sessionSlug = sdkEventDebugTestUtils.slugSessionKey(sessionFile);
 				const manifest = JSON.parse(
 					readFileSync(join(eventsDir, "sessions", sessionSlug, sdkEventDebugTestUtils.SESSION_MANIFEST), "utf8"),
 				);
 				expect(manifest.turns).toHaveLength(2);
-	
+
 				const parseDrainPhases = (artifactDir: string): string[] =>
 					readFileSync(join(artifactDir, sdkEventDebugTestUtils.ARTIFACTS.drainEvents), "utf8")
 						.trim()
 						.split("\n")
 						.filter(Boolean)
 						.map((line) => JSON.parse(line).phase as string);
-	
+
 				expect(parseDrainPhases(manifest.turns[0].artifactDir)).toContain("turn_end");
 				expect(parseDrainPhases(manifest.turns[1].artifactDir)).toEqual(
 					expect.arrayContaining(["pre_send_start", "turn_start", "turn_end", "pre_send_end"]),
@@ -190,25 +190,25 @@ describe("streamCursor debug artifacts", () => {
 				rmSync(baseDir, { recursive: true, force: true });
 			}
 		});
-	
+
 		it("records turn_end and pre_send_end when aborting during live-run progress wait", async () => {
 			const previousNativeDisplay = process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY;
 			process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 			const registeredTools: RegisteredTool[] = [];
 			await registerNativeToolDisplayForTest(registeredTools);
-	
+
 			const baseDir = mkdtempSync(join(tmpdir(), "pi-cursor-provider-debug-abort-"));
 			const sessionFile = join(baseDir, "session.jsonl");
 			const eventsDir = join(baseDir, "events");
 			const previousDebug = process.env.PI_CURSOR_SDK_EVENT_DEBUG;
 			const previousDebugDir = process.env.PI_CURSOR_SDK_EVENT_DEBUG_DIR;
 			const { __testUtils: scopeTestUtils } = await import("../src/cursor-session-scope.js");
-	
+
 			sdkEventDebugTestUtils.resetSessionDebugState();
 			scopeTestUtils.set(baseDir, sessionFile);
 			process.env.PI_CURSOR_SDK_EVENT_DEBUG = "1";
 			process.env.PI_CURSOR_SDK_EVENT_DEBUG_DIR = eventsDir;
-	
+
 			const controller = new AbortController();
 			let firstOnDelta: CursorDeltaHandler | undefined;
 			const runWait = vi.fn(() => new Promise<{ id: string; status: "finished"; result: string }>(() => {}));
@@ -240,18 +240,18 @@ describe("streamCursor debug artifacts", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const parseDrainEvents = (artifactDir: string): Array<{ phase: string; payload?: { outcome?: string; reason?: string } }> =>
 				readFileSync(join(artifactDir, sdkEventDebugTestUtils.ARTIFACTS.drainEvents), "utf8")
 					.trim()
 					.split("\n")
 					.filter(Boolean)
 					.map((line) => JSON.parse(line));
-	
+
 			try {
 				const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 				expect(getDoneEvent(firstEvents).reason).toBe("toolUse");
-	
+
 				firstOnDelta?.({ update: { type: "text-delta", text: "Late scoped text." } });
 				const secondEventsPromise = collectEvents(
 					streamCursor(makeModel(), makeContext(), { apiKey: "test-key", signal: controller.signal }),
@@ -260,13 +260,13 @@ describe("streamCursor debug artifacts", () => {
 				controller.abort();
 				const secondEvents = await secondEventsPromise;
 				expect(getErrorEvent(secondEvents).reason).toBe("aborted");
-	
+
 				const sessionSlug = sdkEventDebugTestUtils.slugSessionKey(sessionFile);
 				const manifest = JSON.parse(
 					readFileSync(join(eventsDir, "sessions", sessionSlug, sdkEventDebugTestUtils.SESSION_MANIFEST), "utf8"),
 				);
 				expect(manifest.turns).toHaveLength(2);
-	
+
 				const drainEvents = parseDrainEvents(manifest.turns[1].artifactDir);
 				expect(drainEvents.map((event) => event.phase)).toEqual(
 					expect.arrayContaining(["pre_send_start", "turn_start", "turn_end", "pre_send_end"]),

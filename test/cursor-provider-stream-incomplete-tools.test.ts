@@ -67,18 +67,18 @@ describe("streamCursor incomplete tools", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
 			const events = await collectEvents(stream);
 			const trace = collectThinkingDeltas(events);
 			const text = collectTextDeltas(events);
-	
+
 			expect(trace).toContain("Cursor shell did not complete");
 			expect(trace).toContain("missing completion");
 			expect(text).toBe("done");
 			expect(hasEventType(events, "toolcall_start")).toBe(false);
 		});
-	
+
 		it("surfaces incomplete Cursor web search MCP activity with a distinct label", async () => {
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({
@@ -102,13 +102,13 @@ describe("streamCursor incomplete tools", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 			const trace = collectThinkingDeltas(events);
 			expect(trace).toContain("Cursor web search did not complete");
 			expect(trace).not.toContain("Cursor MCP did not complete");
 		});
-	
+
 		it("surfaces incomplete generic Cursor MCP activity", async () => {
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({
@@ -132,11 +132,11 @@ describe("streamCursor incomplete tools", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 			expect(collectThinkingDeltas(events)).toContain("Cursor MCP did not complete");
 		});
-	
+
 		it("records discarded incomplete started tool calls to coordinator-events.jsonl when PI_CURSOR_SDK_EVENT_DEBUG is enabled", async () => {
 			const artifactDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-provider-discarded-debug-"));
 			process.env.PI_CURSOR_SDK_EVENT_DEBUG = "1";
@@ -157,7 +157,7 @@ describe("streamCursor incomplete tools", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			try {
 				await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 				const coordinatorEvents = readFileSync(join(artifactDir, "coordinator-events.jsonl"), "utf8");
@@ -171,7 +171,7 @@ describe("streamCursor incomplete tools", () => {
 				rmSync(artifactDir, { recursive: true, force: true });
 			}
 		});
-	
+
 		it("suppresses incomplete missing-file reads with final error text while keeping debug evidence", async () => {
 			const artifactDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-provider-missing-read-debug-"));
 			process.env.PI_CURSOR_SDK_EVENT_DEBUG = "1";
@@ -192,14 +192,14 @@ describe("streamCursor incomplete tools", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			try {
 				const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 				const trace = collectThinkingDeltas(events);
 				const text = collectTextDeltas(events);
 				const coordinatorEvents = readFileSync(join(artifactDir, "coordinator-events.jsonl"), "utf8");
 				const displayDecisions = readFileSync(join(artifactDir, "display-decisions.jsonl"), "utf8");
-	
+
 				expect(text).toBe("Error: File not found");
 				expect(trace).not.toContain("Cursor read did not complete");
 				expect(hasEventType(events, "toolcall_start")).toBe(false);
@@ -214,7 +214,7 @@ describe("streamCursor incomplete tools", () => {
 				rmSync(artifactDir, { recursive: true, force: true });
 			}
 		});
-	
+
 		it("still surfaces explicit completed Cursor tool errors", async () => {
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "shell", args: { command: "cat missing.txt" } }, callId: "c1" } });
@@ -243,15 +243,15 @@ describe("streamCursor incomplete tools", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
 			const events = await collectEvents(stream);
 			const trace = collectThinkingDeltas(events);
-	
+
 			expect(trace).toContain("$ cat missing.txt");
 			expect(trace).toContain("Error: missing.txt: No such file");
 		});
-	
+
 		it("still surfaces explicit onStep Cursor tool errors", async () => {
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler; onStep: CursorStepHandler }) => {
 				opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "read", args: { path: "missing.txt" } }, callId: "c1" } });
@@ -280,14 +280,14 @@ describe("streamCursor incomplete tools", () => {
 				send: mockSend,
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
-	
+
 			const stream = streamCursor(makeModel(), makeContext(), { apiKey: "test-key" });
 			const events = await collectEvents(stream);
 			const trace = collectThinkingDeltas(events);
-	
+
 			expect(trace).toContain("read missing.txt");
 			expect(trace).toContain("Error: missing.txt: No such file");
 			expect(trace).not.toContain("Cursor tool started without a completion event");
 		});
-	
+
 });
