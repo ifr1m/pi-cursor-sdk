@@ -89,7 +89,6 @@ describe("buildCursorPrompt", () => {
 			messages: [
 				{
 					role: "assistant",
-					// @ts-expect-error Exercises defensive formatting for legacy runtime data from older pi transcripts.
 					content: "Legacy assistant text",
 					api: "cursor-sdk",
 					provider: "cursor",
@@ -97,7 +96,7 @@ describe("buildCursorPrompt", () => {
 					usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
 					stopReason: "stop",
 					timestamp: 2,
-				},
+				} as unknown as Context["messages"][number],
 			],
 		};
 		const result = buildCursorPrompt(ctx);
@@ -656,7 +655,7 @@ describe("cursor session prompt assembly", () => {
 					summary: "We explored approach A and decided against it.",
 					fromId: "entry-a",
 					timestamp: 2,
-				} as Context["messages"][number],
+				} as unknown as Context["messages"][number],
 				{ role: "user", content: "Continue on approach B", timestamp: 3 },
 			],
 		};
@@ -680,7 +679,7 @@ describe("cursor session prompt assembly", () => {
 					summary: "Abandoned branch details",
 					fromId: "entry-a",
 					timestamp: 2,
-				} as Context["messages"][number],
+				} as unknown as Context["messages"][number],
 			],
 		};
 		const sendState = {
@@ -701,7 +700,7 @@ describe("cursor session prompt assembly", () => {
 					summary: "Earlier work covered auth setup.",
 					tokensBefore: 12000,
 					timestamp: 1,
-				} as Context["messages"][number],
+				} as unknown as Context["messages"][number],
 				{ role: "user", content: "Continue", timestamp: 2 },
 			],
 		};

@@ -20,7 +20,7 @@ function renderReplayResult(details: unknown, text = "ok", isError = false): str
 		{ content: [{ type: "text", text }], details },
 		{ expanded: false, isPartial: false },
 		theme,
-		{ isError, showImages: false },
+		{ isError, showImages: false } as never,
 		isError,
 	)
 		.render(120)
@@ -111,7 +111,7 @@ describe("cursor replay tool details contract", () => {
 			rawName: "generateImage",
 			name: "generateImage",
 			args: { prompt: "a red circle" },
-			result: { status: "success", value: { filePath: "/tmp/generated.png" } },
+			result: { status: "success", value: { filePath: "/tmp/generated.png" }, error: undefined },
 			options: { cwd: "/tmp", maxChars: 4000 },
 		});
 		const details = parseCursorReplayToolDetails(display.result.details);
@@ -128,7 +128,7 @@ describe("cursor replay tool details contract", () => {
 			rawName: "generateImage",
 			name: "generateImage",
 			args: { prompt: "a red circle" },
-			result: { status: "success", value: { filePath: "/tmp/generated.png" } },
+			result: { status: "success", value: { filePath: "/tmp/generated.png" }, error: undefined },
 			options: { cwd: "/tmp", maxChars: 4000 },
 		});
 		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "");
@@ -141,7 +141,7 @@ describe("cursor replay tool details contract", () => {
 			rawName: "edit",
 			name: "edit",
 			args: { path: "src/a.ts" },
-			result: { status: "error", error: "no match" },
+			result: { status: "error", value: undefined, error: "no match" },
 			options: { cwd: "/repo", maxChars: 4000 },
 		});
 		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "", true);
@@ -160,7 +160,7 @@ describe("cursor replay tool details contract", () => {
 			rawName: "edit",
 			name: "edit",
 			args: { path: "src/a.ts" },
-			result: { status: "success", value: { linesAdded: 0, linesRemoved: 0 } },
+			result: { status: "success", value: { linesAdded: 0, linesRemoved: 0 }, error: undefined },
 			options: { cwd: "/repo", maxChars: 4000 },
 		});
 		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "");
@@ -178,7 +178,7 @@ describe("cursor replay tool details contract", () => {
 			rawName: "write",
 			name: "write",
 			args: { path: "src/a.ts" },
-			result: { status: "error", error: "permission denied" },
+			result: { status: "error", value: undefined, error: "permission denied" },
 			options: { cwd: "/repo", maxChars: 4000 },
 		});
 		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "", true);
@@ -197,7 +197,7 @@ describe("cursor replay tool details contract", () => {
 			rawName: "generateImage",
 			name: "generateImage",
 			args: { prompt: "a red circle" },
-			result: { status: "error", error: "image generation failed" },
+			result: { status: "error", value: undefined, error: "image generation failed" },
 			options: { cwd: "/tmp", maxChars: 4000 },
 		});
 		const rendered = renderCursorReplayResult(
@@ -207,7 +207,7 @@ describe("cursor replay tool details contract", () => {
 			},
 			{ expanded: false, isPartial: false },
 			theme,
-			{ isError: true, showImages: false },
+			{ isError: true, showImages: false } as never,
 			true,
 		)
 			.render(120)

@@ -531,7 +531,8 @@ describe("debug-provider-events maintainer probe", () => {
 
 			const updated = backfillPiSessionSnapshot(summary, artifactDir, sessionDir);
 
-			expect(updated.piSessionSnapshot).toMatchObject({
+			expect(updated).toBeDefined();
+			expect(updated!.piSessionSnapshot).toMatchObject({
 				copied: true,
 				sessionFile,
 				recoveredAfterChildExit: true,

@@ -6,31 +6,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "test/helpers/pi-harness.ts",
-    "test/helpers/pi-harness-event-types.test.ts",
-    "test/helpers/cursor-provider-harness.ts",
-    "test/cursor-state.test.ts",
-    "test/cursor-session-agent.test.ts",
-    "test/index.test.ts",
-    "test/index-session-cwd-integration.test.ts",
-    "test/cursor-session-cwd.test.ts",
-    "test/cursor-pi-tool-bridge.test.ts",
-    "test/cursor-agents-context.test.ts",
-    "test/cursor-live-run-coordinator.test.ts",
-    "test/cursor-provider-bridge-mcp.test.ts",
-    "test/cursor-native-replay-stress.test.ts",
-    "test/cursor-usage-accounting.test.ts",
-    "test/cursor-provider-bridge-session.test.ts",
-    "test/cursor-provider-bridge-settings.test.ts",
-    "test/cursor-provider-replay-idle-dispose.test.ts",
-    "test/cursor-provider-replay-live-run.test.ts",
-    "test/cursor-provider-replay-post-tool.test.ts",
-    "test/cursor-provider-replay-shell.test.ts",
-    "test/cursor-provider-replay-text.test.ts",
-    "test/cursor-provider-replay-tool-display.test.ts",
-    "test/cursor-provider-stream-auth.test.ts",
-    "test/cursor-provider-stream-config.test.ts",
-    "test/cursor-provider-stream-trace.test.ts",
-    "test/cursor-provider-tool-lifecycle.test.ts"
+    "test/**/*.ts"
   ]
 }

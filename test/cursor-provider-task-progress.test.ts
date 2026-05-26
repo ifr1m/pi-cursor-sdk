@@ -9,6 +9,8 @@ import {
 	getDoneEvent,
 	isToolCallBlock,
 	registerNativeToolDisplayForTest,
+	createExtensionTestContext,
+	mockCreatedAgent,
 	type CursorDeltaHandler,
 	type RegisteredTool,
 } from "./helpers/cursor-provider-harness.js";
@@ -61,11 +63,7 @@ describe("streamCursor Cursor task progress", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			agentId: "agent-1",
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const trace = collectThinkingDeltas(firstEvents);
@@ -79,7 +77,13 @@ describe("streamCursor Cursor task progress", () => {
 
 		resolveRun({ id: "run-1", status: "finished", result: "Final answer." });
 		const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
-		const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, {});
+		const toolResult = await cursorTool!.execute(
+			toolCall!.id,
+			toolCall!.arguments,
+			undefined,
+			undefined,
+			createExtensionTestContext(),
+		);
 
 		const replayContext = makeContext();
 		replayContext.messages = [
@@ -128,10 +132,7 @@ describe("streamCursor Cursor task progress", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const trace = collectThinkingDeltas(events);
@@ -191,10 +192,7 @@ describe("streamCursor Cursor task progress", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const trace = collectThinkingDeltas(events);
@@ -238,10 +236,7 @@ describe("streamCursor Cursor task progress", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: secretKey }));
 		const trace = collectThinkingDeltas(events);
@@ -289,10 +284,7 @@ describe("streamCursor Cursor task progress", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const trace = collectThinkingDeltas(events);

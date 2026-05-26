@@ -15,6 +15,7 @@ import {
 	registerNativeToolDisplayForTest,
 	type CursorDeltaHandler,
 	type RegisteredTool,
+	mockCreatedAgent,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display.js";
@@ -55,11 +56,7 @@ describe("streamCursor incomplete native replay tools", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			agentId: "agent-1",
-			send: mockSend,
-			[Symbol.asyncDispose]: mockDispose,
-		});
+		mockCreatedAgent({ send: mockSend, [Symbol.asyncDispose]: mockDispose });
 
 		const eventsPromise = collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key", signal: controller.signal }));
 		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
@@ -96,11 +93,7 @@ describe("streamCursor incomplete native replay tools", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			agentId: "agent-1",
-			send: mockSend,
-			[Symbol.asyncDispose]: mockDispose,
-		});
+		mockCreatedAgent({ send: mockSend, [Symbol.asyncDispose]: mockDispose });
 
 		const eventsPromise = collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key", signal: controller.signal }));
 		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
@@ -140,11 +133,7 @@ describe("streamCursor incomplete native replay tools", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			agentId: "agent-1",
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		const firstEventsPromise = collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
@@ -205,11 +194,7 @@ describe("streamCursor incomplete native replay tools", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			agentId: "agent-1",
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		const firstEventsPromise = collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
@@ -248,11 +233,7 @@ describe("streamCursor incomplete native replay tools", () => {
 				unsupportedReason: () => undefined,
 			};
 		});
-		mockedCreate.mockResolvedValue({
-			agentId: "agent-1",
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		const firstEventsPromise = collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());

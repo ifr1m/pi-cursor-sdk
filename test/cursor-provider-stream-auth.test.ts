@@ -3,47 +3,24 @@ import { Type } from "typebox";
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
-	mockedCreateAgentPlatform,
 	mockedMessagesList,
 	makeModel,
 	makeContext,
-	makeAssistantMessage,
 	collectEvents,
-	collectTextDeltas,
-	collectThinkingDeltas,
-	getEventsOfType,
-	getDoneEvent,
 	getErrorEvent,
-	getTextEndEvent,
 	hasEventType,
-	isToolCallBlock,
-	isCursorToolStreamEvent,
-	getCreatedAgentOptions,
-	createMockAgentPlatform,
 	registerBridgeForProviderTest,
-	registerNativeToolDisplayForTest,
-	connectMcpClient,
-	createBuiltinToolInfo,
 	createTestToolInfo,
-	cursorModelItems,
-	type CursorDeltaHandler,
-	type CursorStepHandler,
-	type RegisteredTool,
 	mockCreatedAgent,
 	asMockSdkAgent,
 	asMockCursorRun,
-	getPiToolsMcpUrlFromAgentCreateOptions,
 } from "./helpers/cursor-provider-harness.js";
 import { CursorPiToolBridgeRunImpl } from "../src/cursor-pi-tool-bridge-run.js";
 import { __testUtils as cursorSdkAbortErrorGuardTestUtils } from "../src/cursor-sdk-abort-error-guard.js";
-import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
-import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
-import { __testUtils as modelDiscoveryTestUtils } from "../src/model-discovery.js";
-import type { Context } from "@earendil-works/pi-ai";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { streamCursor } from "../src/cursor-provider.js";
+import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
 
 
 describe("streamCursor auth and abort", () => {
@@ -201,11 +178,7 @@ describe("streamCursor auth and abort", () => {
 					// Intentionally never resolves so abort during offset probing is observable.
 				}),
 		);
-		mockCreatedAgent({
-			agentId: "agent-1",
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		const stream = streamCursor(makeModel("composer-2"), makeContext(), {
 			apiKey: "test-key",

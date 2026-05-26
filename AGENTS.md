@@ -86,7 +86,9 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 
 - Install dependencies: `npm install`
 - Run tests: `npm test`
-- Typecheck: `npm run typecheck`
+- Typecheck (src + tests): `npm run typecheck`
+- Typecheck src only: `npm run typecheck:src`
+- Typecheck tests/helpers: `npm run typecheck:tests`
 - Package-readiness check: `npm pack --dry-run`
 - Watch tests while developing: `npm run test:watch`
 - Local development run, requires a Cursor key: `CURSOR_API_KEY="your-key" pi -e . --model cursor/composer-2.5`
@@ -109,7 +111,7 @@ There is no lint or format script in `package.json` at this time.
 Done means:
 
 - The intended behavior or documentation change is complete.
-- `npm test` and `npm run typecheck` pass, unless the change is docs-only and the user asked for minimal validation.
+- `npm test`, `npm run typecheck`, and `npm run typecheck:tests` pass, unless the change is docs-only and the user asked for minimal validation.
 - `npm pack --dry-run` passes when package metadata, publishable docs, dependencies, or ignored artifacts change.
 - Related README/docs/tests are updated when behavior, commands, user-visible model IDs, flags, or troubleshooting change.
 - No secrets, local API keys, or noisy local state are added.
