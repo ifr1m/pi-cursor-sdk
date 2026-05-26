@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.20 - 2026-05-26
+
 ### Added
 
 - Shorten known Cursor SDK MCP initialize/listTools timeouts to 10 seconds by default so unavailable configured MCP servers fail fast on first send instead of blocking for the SDK's 60-second protocol default; unknown MCP protocol timeout stacks keep the SDK default. Override with `PI_CURSOR_MCP_CONNECT_TIMEOUT_MS` or `PI_CURSOR_MCP_CONNECT_TIMEOUT_SECONDS`.
@@ -10,10 +12,15 @@
 ### Changed
 
 - Document first-send MCP cold-start behavior and initialize/listTools timeout defaults in README troubleshooting.
+- Centralize Cursor started-tool visibility classification across incomplete-tool cards, lifecycle progress, fast local discovery suppression, and completed replay titles.
+- Rework the cold-start probe to run each scenario in a fresh child process before the first Cursor SDK import.
 
 ### Fixed
 
 - Make pooled Cursor session agents idle before send planning/reuse by awaiting fire-and-forget live-run `run.wait()` cleanup in `acquireSessionCursorAgent()`, scoped to the pooled agent instance id, so pi auto-compaction summarization does not hit Cursor SDK `AgentBusyError` (`already has active run`) or plan against stale send state while manual `/compact` after idle still works.
+- Fix stale busy pooled-agent waits so reset, terminal disposal, and pool-key replacement wake blocked acquires even when an old SDK `run.wait()` never settles.
+- Remove test-only live-run coordinator detachment hooks and keep race invariants inside the session-agent lease/pool contract.
+- Keep non-60-second timer scheduling on the cheap path by only capturing timeout stack traces for Cursor SDK's 60-second MCP protocol default.
 
 ## 0.1.19 - 2026-05-25
 
