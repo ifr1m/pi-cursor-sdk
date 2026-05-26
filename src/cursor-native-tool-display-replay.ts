@@ -408,9 +408,24 @@ function firstContentText(result: Parameters<CursorReplayRenderResult>[0]): stri
 	return content?.type === "text" ? content.text : "";
 }
 
+type CursorReplayExpandableResultDetails = {
+	summary?: string;
+	expandedText?: string;
+	collapseDetailsByDefault?: boolean;
+	imagePath?: string;
+	imageMimeType?: string;
+};
+
+function hasCursorReplayDisplayTitle(details: CursorReplayToolDetails | undefined): boolean {
+	if (!details) return false;
+	if (isCursorReplayTitledActivityDetails(details) || isCursorReplayGenerateImageDetails(details)) return true;
+	const title = isCursorReplayEditDetails(details) || isCursorReplayWriteDetails(details) ? details.title?.trim() : undefined;
+	return Boolean(title);
+}
+
 function renderExpandableCursorReplayResult(
 	title: string,
-	details: CursorReplayTitledActivityDetails | CursorReplayGenerateImageDetails,
+	details: CursorReplayExpandableResultDetails,
 	result: Parameters<CursorReplayRenderResult>[0],
 	options: Parameters<CursorReplayRenderResult>[1],
 	theme: Parameters<CursorReplayRenderResult>[2],
@@ -425,7 +440,7 @@ function renderExpandableCursorReplayResult(
 		const preview = options.expanded ? formatMutedBlock(expandedText, theme) : formatCursorReplayPreview(expandedText, theme);
 		if (preview) rendered += `\n${preview}`;
 	}
-	if (isCursorReplayGenerateImageDetails(details) && !isError && context.showImages) {
+	if (details.imagePath && !isError && context.showImages) {
 		const imageData = readImageFileForReplay(details.imagePath);
 		const mimeType = details.imageMimeType ?? inferImageMimeTypeFromPath(details.imagePath);
 		if (imageData && mimeType) return buildImageReplayComponent(rendered, imageData, mimeType, basename(details.imagePath ?? "generated-image"), theme);
@@ -493,11 +508,16 @@ function renderCursorReplayDetails(
 	text: string,
 ): Component {
 	switch (details.variant) {
-		case "edit":
+		case "edit": {
 			if (hasCursorEditChanges(details)) {
 				return renderCursorReplayEditResult(details, options, theme);
 			}
+			const title = details.title?.trim();
+			if (title) {
+				return renderExpandableCursorReplayResult(title, details, result, options, theme, context, isError);
+			}
 			break;
+		}
 		case "write":
 			return renderCursorReplayWriteResult(details, result, options, theme);
 		case "generateImage":
@@ -524,11 +544,7 @@ export function renderCursorReplayResult(
 	if (options.isPartial) return new Text(theme.fg("warning", "Replaying Cursor tool result..."), 0, 0);
 	const details = parseCursorReplayToolDetails(result.details);
 	const text = firstContentText(result);
-	if (
-		isError &&
-		(!details ||
-			(!isCursorReplayTitledActivityDetails(details) && !isCursorReplayGenerateImageDetails(details)))
-	) {
+	if (isError && !hasCursorReplayDisplayTitle(details)) {
 		return new Text(theme.fg("error", text.split("\n")[0] || "Cursor replay failed"), 0, 0);
 	}
 	if (!details) return new Text(text || theme.fg("success", "Cursor tool result replayed"), 0, 0);

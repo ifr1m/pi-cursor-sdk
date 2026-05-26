@@ -15,13 +15,13 @@ const theme = {
 	bold: (value: string) => value,
 } as CursorReplayRenderTheme;
 
-function renderReplayResult(details: unknown, text = "ok"): string {
+function renderReplayResult(details: unknown, text = "ok", isError = false): string {
 	return renderCursorReplayResult(
 		{ content: [{ type: "text", text }], details },
 		{ expanded: false, isPartial: false },
 		theme,
-		{ isError: false, showImages: false },
-		false,
+		{ isError, showImages: false },
+		isError,
 	)
 		.render(120)
 		.join("\n");
@@ -134,6 +134,62 @@ describe("cursor replay tool details contract", () => {
 		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "");
 		expect(rendered).toContain(`${CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE} saved generated.png`);
 		expect(rendered).not.toContain("Cursor image generation");
+	});
+
+	it("renders path-only edit errors with the title-backed error body", () => {
+		const display = buildCursorPiToolDisplayFromSpec({
+			rawName: "edit",
+			name: "edit",
+			args: { path: "src/a.ts" },
+			result: { status: "error", error: "no match" },
+			options: { cwd: "/repo", maxChars: 4000 },
+		});
+		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "", true);
+
+		expect(display.result.details).toMatchObject({
+			cursorToolName: "edit",
+			title: "Cursor edit",
+		});
+		expect(rendered).toContain("Cursor edit");
+		expect(rendered).toContain("Error: no match");
+		expect(rendered).not.toMatch(/^edit src\/a\.ts$/m);
+	});
+
+	it("renders path-only edit no-change results with the Cursor edit replay title", () => {
+		const display = buildCursorPiToolDisplayFromSpec({
+			rawName: "edit",
+			name: "edit",
+			args: { path: "src/a.ts" },
+			result: { status: "success", value: { linesAdded: 0, linesRemoved: 0 } },
+			options: { cwd: "/repo", maxChars: 4000 },
+		});
+		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "");
+
+		expect(display.result.details).toMatchObject({
+			cursorToolName: "edit",
+			title: "Cursor edit",
+		});
+		expect(rendered).toContain("Cursor edit");
+		expect(rendered).not.toMatch(/^edit src\/a\.ts$/m);
+	});
+
+	it("renders path-only write errors with the title-backed error body", () => {
+		const display = buildCursorPiToolDisplayFromSpec({
+			rawName: "write",
+			name: "write",
+			args: { path: "src/a.ts" },
+			result: { status: "error", error: "permission denied" },
+			options: { cwd: "/repo", maxChars: 4000 },
+		});
+		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "", true);
+
+		expect(display.result.details).toMatchObject({
+			cursorToolName: "write",
+			title: "Cursor write",
+		});
+		expect(rendered).toContain("write src/a.ts");
+		expect(rendered).toContain("Error: permission denied");
+		expect(rendered).not.toMatch(/^write src\/a\.ts$/m);
 	});
 
 	it("renders generateImage producer error details with the legacy visible title", () => {
