@@ -86,49 +86,7 @@ export function getToolResult(toolCall: unknown): unknown {
 	return record?.result;
 }
 
-export function normalizeToolName(name: string): string {
-	const normalized = name.replace(/\s+/g, " ").trim();
-	const normalizedKey = normalized.toLowerCase();
-	switch (normalizedKey) {
-		case "read_file":
-			return "read";
-		case "list_dir":
-			return "ls";
-		case "run_terminal_cmd":
-		case "terminal":
-		case "bash":
-		case "shell":
-			return "shell";
-		case "grep_search":
-		case "search":
-			return "grep";
-		case "file_search":
-			return "glob";
-		case "write_file":
-		case "writefile":
-			return "write";
-		case "strreplace":
-		case "str_replace":
-		case "str-replace":
-		case "edit_file":
-		case "editfile":
-		case "edit_notebook":
-		case "editnotebook":
-		case "notebook_edit":
-		case "notebookedit":
-			return "edit";
-		case "websearch":
-		case "web_search":
-		case "web-search":
-			return "webSearch";
-		case "webfetch":
-		case "web_fetch":
-		case "web-fetch":
-			return "webFetch";
-		default:
-			return normalized || "unknown";
-	}
-}
+export { normalizeCursorToolName as normalizeToolName } from "./cursor-tool-presentation-registry.js";
 
 export function normalizeResult(result: unknown): NormalizedResult {
 	const record = asRecord(result);

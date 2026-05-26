@@ -1,5 +1,6 @@
 import { truncateCursorDisplayLine } from "./cursor-display-text.js";
 import { scrubSensitiveText } from "./cursor-sensitive-text.js";
+import { getCursorToolLifecycleLabelKind } from "./cursor-tool-presentation-registry.js";
 import { extractWebSearchQuery } from "./cursor-web-tool-activity.js";
 import { firstNonEmptyLine, getArray, getString, truncateArg } from "./cursor-transcript-utils.js";
 import { classifyCursorToolVisibility } from "./cursor-tool-visibility.js";
@@ -39,7 +40,7 @@ export function buildCursorToolLifecycleLabel(toolCall: unknown, apiKey?: string
 	const visibility = classifyCursorToolVisibility(toolCall);
 	const args = visibility.args;
 
-	switch (visibility.normalizedKey) {
+	switch (getCursorToolLifecycleLabelKind(visibility.normalizedKey)) {
 		case "task": {
 			return scrubLifecycleDetail(getString(args, "description"), apiKey) ?? "task";
 		}
@@ -49,26 +50,26 @@ export function buildCursorToolLifecycleLabel(toolCall: unknown, apiKey?: string
 		case "mcp": {
 			return scrubLifecycleDetail(getString(args, "toolName"), apiKey) ?? "mcp";
 		}
-		case "generateimage": {
+		case "generateImage": {
 			return scrubLifecycleDetail(getString(args, "prompt") ?? getString(args, "description"), apiKey) ?? "image generation";
 		}
-		case "recordscreen": {
+		case "recordScreen": {
 			return scrubLifecycleDetail(getString(args, "mode"), apiKey) ?? "screen recording";
 		}
-		case "semsearch": {
+		case "semSearch": {
 			return scrubLifecycleDetail(getString(args, "query"), apiKey) ?? "semantic search";
 		}
-		case "websearch": {
+		case "webSearch": {
 			return scrubLifecycleDetail(extractWebSearchQuery(args), apiKey) ?? "web search";
 		}
-		case "webfetch": {
+		case "webFetch": {
 			return "web fetch";
 		}
-		case "createplan": {
+		case "createPlan": {
 			const plan = getString(args, "plan");
 			return scrubLifecycleDetail(plan ? firstNonEmptyLine(plan) ?? plan : undefined, apiKey) ?? "plan";
 		}
-		case "updatetodos": {
+		case "updateTodos": {
 			const todos = getArray(args, "todos") ?? getArray(args, "items");
 			if (todos && todos.length > 0) return truncateArg(`${todos.length} item${todos.length === 1 ? "" : "s"}`);
 			return "todos";

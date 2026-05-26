@@ -9,8 +9,9 @@ import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 	getCursorReplayDisplayLabel,
 	getCursorReplaySourceToolName,
+	getCursorReplaySummaryKind,
 	type CursorReplayToolName,
-} from "./cursor-tool-names.js";
+} from "./cursor-tool-presentation-registry.js";
 
 export const CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES = 8;
 export const CURSOR_REPLAY_PREVIEW_MAX_CHARS = 4000;
@@ -289,37 +290,46 @@ function getCursorReplayCallSummary(toolName: CursorReplayToolName, args: Record
 	const diagnosticCount = typeof args?.diagnosticCount === "number" ? args.diagnosticCount : undefined;
 	const paths = Array.isArray(args?.paths) ? args.paths.filter((entry): entry is string => typeof entry === "string") : [];
 
-	if (toolName === "cursor_edit" || toolName === "cursor_write" || toolName === "cursor_delete") return path ?? "unknown";
-	if (toolName === "cursor_read_lints") {
-		const target = paths.length > 0 ? paths.join(", ") : path;
-		if (target && diagnosticCount !== undefined) {
-			return `${diagnosticCount} diagnostic${diagnosticCount === 1 ? "" : "s"} in ${target}`;
+	switch (getCursorReplaySummaryKind(toolName)) {
+		case "path":
+			return path ?? "unknown";
+		case "read_lints": {
+			const target = paths.length > 0 ? paths.join(", ") : path;
+			if (target && diagnosticCount !== undefined) {
+				return `${diagnosticCount} diagnostic${diagnosticCount === 1 ? "" : "s"} in ${target}`;
+			}
+			return target;
 		}
-		return target;
+		case "todo_count":
+			return totalCount !== undefined ? `${totalCount} item${totalCount === 1 ? "" : "s"}` : undefined;
+		case "description":
+			return description;
+		case "generate_image":
+			return path ?? prompt;
+		case "mcp_tool_name":
+			return typeof args?.toolName === "string" ? args.toolName : undefined;
+		case "sem_search":
+			return formatReplaySemSearchQuery(args);
+		case "record_screen": {
+			const duration = formatReplayRecordingDurationMs(
+				typeof args?.recordingDurationMs === "number" ? args.recordingDurationMs : undefined,
+			);
+			if (path && duration) return `${path} · ${duration}`;
+			if (path) return path;
+			if (typeof args?.mode === "string") return args.mode;
+			return undefined;
+		}
+		case "web_query":
+			return typeof args?.query === "string" ? args.query : undefined;
+		case "web_url":
+			return typeof args?.url === "string" ? args.url : undefined;
+		case "activity_generic":
+			if (path) return path;
+			if (typeof args?.toolName === "string") return args.toolName;
+			return formatReplaySemSearchQuery(args);
+		default:
+			return undefined;
 	}
-	if (toolName === "cursor_update_todos" || toolName === "cursor_create_plan") {
-		return totalCount !== undefined ? `${totalCount} item${totalCount === 1 ? "" : "s"}` : undefined;
-	}
-	if (toolName === "cursor_task") return description;
-	if (toolName === "cursor_generate_image") return path ?? prompt;
-	if (toolName === "cursor_mcp") return typeof args?.toolName === "string" ? args.toolName : undefined;
-	if (toolName === "cursor_sem_search") return formatReplaySemSearchQuery(args);
-	if (toolName === "cursor_record_screen") {
-		const duration = formatReplayRecordingDurationMs(
-			typeof args?.recordingDurationMs === "number" ? args.recordingDurationMs : undefined,
-		);
-		if (path && duration) return `${path} · ${duration}`;
-		if (path) return path;
-		if (typeof args?.mode === "string") return args.mode;
-	}
-	if (toolName === "cursor_web_search") return typeof args?.query === "string" ? args.query : undefined;
-	if (toolName === "cursor_web_fetch") return typeof args?.url === "string" ? args.url : undefined;
-	if (toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME) {
-		if (path) return path;
-		if (typeof args?.toolName === "string") return args.toolName;
-		return formatReplaySemSearchQuery(args);
-	}
-	return undefined;
 }
 
 export function renderCursorReplayCall(

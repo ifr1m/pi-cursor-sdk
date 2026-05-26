@@ -26,7 +26,8 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-record-utils.ts` owns shared record/string-key parsing helpers used across bridge and transcript layers.
 - `src/cursor-partial-content-emitter.ts` owns shared thinking/text block emission for live-run drain and turn coordinator paths.
 - `src/cursor-sensitive-text.ts` owns canonical secret scrubbing for provider errors and native replay display.
-- `src/cursor-transcript-tool-specs.ts` owns the unified per-tool transcript and replay display spec registry.
+- `src/cursor-tool-presentation-registry.ts` is the canonical typed registry for Cursor tool names, labels, visibility, lifecycle, replay, web remapping, and alias normalization; sibling modules derive from it.
+- `src/cursor-transcript-tool-specs.ts` owns per-tool transcript formatters and pi display builders keyed by normalized tool name from the presentation registry.
 - `src/cursor-pi-tool-bridge-types.ts` owns shared bridge/MCP type contracts.
 - `src/cursor-env-boolean.ts` owns canonical env boolean parsing (default and tri-state optional) for bridge diagnostics, flags, and native replay gating.
 - `src/cursor-live-run-coordinator.ts` owns live Cursor run registry/scope matching, queued events, drain leases, idle disposal timers, and release cleanup.

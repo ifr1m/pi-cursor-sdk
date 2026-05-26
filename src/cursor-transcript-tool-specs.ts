@@ -4,7 +4,7 @@ import {
 	getCursorReplayActivityTitle,
 	getCursorReplayDisplayLabel,
 	type CursorReplayLegacyToolName,
-} from "./cursor-tool-names.js";
+} from "./cursor-tool-presentation-registry.js";
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
 import {
 	asRecord,
