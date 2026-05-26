@@ -13,36 +13,41 @@ import {
 	getCursorReplayWrapperLabel,
 	type CursorReplayToolName,
 } from "./cursor-tool-presentation-registry.js";
+import {
+	type CursorReplayEditDetails,
+	type CursorReplayGenerateImageDetails,
+	type CursorReplayTitledActivityDetails,
+	type CursorReplayToolDetails,
+	type CursorReplayWriteDetails,
+	isCursorReplayEditDetails,
+	isCursorReplayGenerateImageDetails,
+	isCursorReplayTitledActivityDetails,
+	isCursorReplayWriteDetails,
+	parseCursorReplayToolDetails,
+} from "./cursor-replay-tool-details.js";
+
+export type {
+	CursorReplayEditDetails,
+	CursorReplayGenerateImageDetails,
+	CursorReplayGenericFallbackDetails,
+	CursorReplayTitledActivityDetails,
+	CursorReplayToolDetails,
+	CursorReplayWriteDetails,
+} from "./cursor-replay-tool-details.js";
+export {
+	asCursorReplayToolDetails,
+	isCursorReplayEditDetails,
+	isCursorReplayGenerateImageDetails,
+	isCursorReplayTitledActivityDetails,
+	isCursorReplayWriteDetails,
+	parseCursorReplayToolDetails,
+} from "./cursor-replay-tool-details.js";
 
 export const CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES = 8;
 export const CURSOR_REPLAY_PREVIEW_MAX_CHARS = 4000;
 export const CURSOR_REPLAY_PREVIEW_MAX_LINE_CHARS = 240;
 const CURSOR_REPLAY_HIGHLIGHT_MAX_CHARS = 12000;
 export const cursorReplayToolSchema = Type.Object({}, { additionalProperties: true });
-
-export interface CursorReplayToolDetails {
-	cursorToolName?: string;
-	title?: string;
-	summary?: string;
-	path?: string;
-	imagePath?: string;
-	imageDisplayPath?: string;
-	imageMimeType?: string;
-	linesAdded?: number;
-	linesRemoved?: number;
-	linesCreated?: number;
-	fileSize?: number;
-	fileContentAfterWrite?: string;
-	diffString?: string;
-	diff?: string;
-	firstChangedLine?: number;
-	expandedText?: string;
-	collapseDetailsByDefault?: boolean;
-}
-
-export function asCursorReplayToolDetails(value: unknown): CursorReplayToolDetails | undefined {
-	return value && typeof value === "object" ? (value as CursorReplayToolDetails) : undefined;
-}
 
 type CursorReplayRenderCall = NonNullable<ToolDefinition<typeof cursorReplayToolSchema, unknown>["renderCall"]>;
 type CursorReplayRenderResult = NonNullable<ToolDefinition<typeof cursorReplayToolSchema, unknown>["renderResult"]>;
@@ -89,7 +94,10 @@ function buildImageReplayComponent(text: string, imageData: string, mimeType: st
 	};
 }
 
-export function getCursorReplayPath(args: Record<string, unknown> | undefined, details: CursorReplayToolDetails | undefined): string {
+export function getCursorReplayPath(
+	args: Record<string, unknown> | undefined,
+	details: Pick<CursorReplayEditDetails, "path"> | Pick<CursorReplayWriteDetails, "path"> | undefined,
+): string {
 	const argPath = args?.path;
 	return details?.path ?? (typeof argPath === "string" && argPath.trim() ? argPath : "unknown");
 }
@@ -366,15 +374,15 @@ function pluralize(count: number, noun: string): string {
 	return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-function getCursorEditDiff(details: CursorReplayToolDetails): string | undefined {
+function getCursorEditDiff(details: CursorReplayEditDetails): string | undefined {
 	return resolveCursorEditDiff(details);
 }
 
-function hasCursorEditChanges(details: CursorReplayToolDetails): boolean {
+function hasCursorEditChanges(details: CursorReplayEditDetails): boolean {
 	return Boolean(getCursorEditDiff(details)) || Boolean(details.linesAdded) || Boolean(details.linesRemoved);
 }
 
-function classifyCursorEditOperation(details: CursorReplayToolDetails): "created" | "deleted" | "updated" | "unchanged" {
+function classifyCursorEditOperation(details: CursorReplayEditDetails): "created" | "deleted" | "updated" | "unchanged" {
 	if (!hasCursorEditChanges(details)) return "unchanged";
 	const diff = getCursorEditDiff(details);
 	if (diff?.startsWith("--- /dev/null")) return "created";
@@ -382,7 +390,7 @@ function classifyCursorEditOperation(details: CursorReplayToolDetails): "created
 	return "updated";
 }
 
-function formatCursorEditSummary(details: CursorReplayToolDetails): string {
+function formatCursorEditSummary(details: CursorReplayEditDetails): string {
 	const operation = classifyCursorEditOperation(details);
 	if (operation === "unchanged") return "no changes needed";
 	if (operation === "created" && details.linesAdded !== undefined) return `created ${pluralize(details.linesAdded, "line")}`;
@@ -401,22 +409,22 @@ function firstContentText(result: Parameters<CursorReplayRenderResult>[0]): stri
 
 function renderExpandableCursorReplayResult(
 	title: string,
+	details: CursorReplayTitledActivityDetails | CursorReplayGenerateImageDetails,
 	result: Parameters<CursorReplayRenderResult>[0],
 	options: Parameters<CursorReplayRenderResult>[1],
 	theme: Parameters<CursorReplayRenderResult>[2],
 	context: Parameters<CursorReplayRenderResult>[3],
 	isError: boolean,
 ): Component {
-	const details = asCursorReplayToolDetails(result.details);
 	const text = firstContentText(result);
-	const summary = details?.summary ?? text.split("\n").find((line) => line.trim()) ?? "completed";
+	const summary = details.summary ?? text.split("\n").find((line) => line.trim()) ?? "completed";
 	let rendered = `${theme.fg("toolTitle", theme.bold(title))} ${theme.fg(isError ? "error" : "success", summary)}`;
-	const expandedText = details?.expandedText ?? (text.includes("\n") ? text : undefined);
-	if (expandedText && (options.expanded || !details?.collapseDetailsByDefault)) {
+	const expandedText = details.expandedText ?? (text.includes("\n") ? text : undefined);
+	if (expandedText && (options.expanded || !details.collapseDetailsByDefault)) {
 		const preview = options.expanded ? formatMutedBlock(expandedText, theme) : formatCursorReplayPreview(expandedText, theme);
 		if (preview) rendered += `\n${preview}`;
 	}
-	if (details?.cursorToolName === "generateImage" && !isError && context.showImages) {
+	if (isCursorReplayGenerateImageDetails(details) && !isError && context.showImages) {
 		const imageData = readImageFileForReplay(details.imagePath);
 		const mimeType = details.imageMimeType ?? inferImageMimeTypeFromPath(details.imagePath);
 		if (imageData && mimeType) return buildImageReplayComponent(rendered, imageData, mimeType, basename(details.imagePath ?? "generated-image"), theme);
@@ -424,14 +432,78 @@ function renderExpandableCursorReplayResult(
 	return new Text(rendered, 0, 0);
 }
 
+function renderCursorReplayEditResult(
+	details: CursorReplayEditDetails,
+	options: Parameters<CursorReplayRenderResult>[1],
+	theme: Parameters<CursorReplayRenderResult>[2],
+): Component {
+	const summary = formatCursorEditSummary(details);
+	const title = details.title ?? "edit";
+	let rendered = `${theme.fg("toolTitle", theme.bold(title))} ${theme.fg("accent", getCursorReplayPath(undefined, details))} ${theme.fg("success", summary)}`;
+	const diff = getCursorEditDiff(details);
+	if (diff) rendered += `\n${formatCursorReplayDiff(diff, theme, options.expanded ? 40 : CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES)}`;
+	return new Text(rendered, 0, 0);
+}
+
+function renderCursorReplayWriteResult(
+	details: CursorReplayWriteDetails,
+	result: Parameters<CursorReplayRenderResult>[0],
+	options: Parameters<CursorReplayRenderResult>[1],
+	theme: Parameters<CursorReplayRenderResult>[2],
+): Component {
+	const text = firstContentText(result);
+	const parts = [
+		details.linesCreated !== undefined ? `${details.linesCreated} line${details.linesCreated === 1 ? "" : "s"}` : undefined,
+		details.fileSize !== undefined ? `${details.fileSize} bytes` : undefined,
+	].filter(Boolean);
+	const summary = parts.length > 0 ? parts.join(", ") : "written";
+	let rendered = `${theme.fg("toolTitle", theme.bold("write"))} ${theme.fg("accent", getCursorReplayPath(undefined, details))} ${theme.fg("success", summary)}`;
+	const previewSource = details.fileContentAfterWrite ?? details.expandedText ?? text;
+	const preview = formatCursorReplayFilePreview(
+		previewSource,
+		getCursorReplayPath(undefined, details),
+		theme,
+		CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES,
+		details.fileContentAfterWrite === undefined,
+	);
+	if (preview) rendered += `\n${preview}`;
+	return new Text(rendered, 0, 0);
+}
+
 function renderCursorGenerateImageResult(
+	details: CursorReplayGenerateImageDetails,
 	result: Parameters<CursorReplayRenderResult>[0],
 	options: Parameters<CursorReplayRenderResult>[1],
 	theme: Parameters<CursorReplayRenderResult>[2],
 	context: Parameters<CursorReplayRenderResult>[3],
 	isError: boolean,
 ): Component {
-	return renderExpandableCursorReplayResult("Cursor generateImage", result, options, theme, context, isError);
+	const title = details.title ?? "Cursor generateImage";
+	return renderExpandableCursorReplayResult(title, details, result, options, theme, context, isError);
+}
+
+function renderCursorReplayDetails(
+	details: CursorReplayToolDetails,
+	result: Parameters<CursorReplayRenderResult>[0],
+	options: Parameters<CursorReplayRenderResult>[1],
+	theme: Parameters<CursorReplayRenderResult>[2],
+	context: Parameters<CursorReplayRenderResult>[3],
+	isError: boolean,
+	text: string,
+): Component {
+	if (isCursorReplayEditDetails(details) && hasCursorEditChanges(details)) {
+		return renderCursorReplayEditResult(details, options, theme);
+	}
+	if (isCursorReplayWriteDetails(details)) {
+		return renderCursorReplayWriteResult(details, result, options, theme);
+	}
+	if (isCursorReplayGenerateImageDetails(details)) {
+		return renderCursorGenerateImageResult(details, result, options, theme, context, isError);
+	}
+	if (isCursorReplayTitledActivityDetails(details)) {
+		return renderExpandableCursorReplayResult(details.title, details, result, options, theme, context, isError);
+	}
+	return new Text(text || theme.fg("success", "Cursor tool result replayed"), 0, 0);
 }
 
 export function renderCursorReplayResult(
@@ -442,41 +514,13 @@ export function renderCursorReplayResult(
 	isError: boolean,
 ): Component {
 	if (options.isPartial) return new Text(theme.fg("warning", "Replaying Cursor tool result..."), 0, 0);
-	const details = asCursorReplayToolDetails(result.details);
+	const details = parseCursorReplayToolDetails(result.details);
 	const text = firstContentText(result);
-	if (isError && !details?.title) return new Text(theme.fg("error", text.split("\n")[0] || "Cursor replay failed"), 0, 0);
-
-	if (details?.cursorToolName === "edit" && hasCursorEditChanges(details)) {
-		const summary = formatCursorEditSummary(details);
-		const title = details.title ?? "edit";
-		let rendered = `${theme.fg("toolTitle", theme.bold(title))} ${theme.fg("accent", getCursorReplayPath(undefined, details))} ${theme.fg("success", summary)}`;
-		const diff = getCursorEditDiff(details);
-		if (diff) rendered += `\n${formatCursorReplayDiff(diff, theme, options.expanded ? 40 : CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES)}`;
-		return new Text(rendered, 0, 0);
+	if (isError && (!details || !isCursorReplayTitledActivityDetails(details))) {
+		return new Text(theme.fg("error", text.split("\n")[0] || "Cursor replay failed"), 0, 0);
 	}
-
-	if (details?.cursorToolName === "write") {
-		const parts = [
-			details.linesCreated !== undefined ? `${details.linesCreated} line${details.linesCreated === 1 ? "" : "s"}` : undefined,
-			details.fileSize !== undefined ? `${details.fileSize} bytes` : undefined,
-		].filter(Boolean);
-		const summary = parts.length > 0 ? parts.join(", ") : "written";
-		let rendered = `${theme.fg("toolTitle", theme.bold("write"))} ${theme.fg("accent", getCursorReplayPath(undefined, details))} ${theme.fg("success", summary)}`;
-		const previewSource = details.fileContentAfterWrite ?? details.expandedText ?? text;
-		const preview = formatCursorReplayFilePreview(
-			previewSource,
-			getCursorReplayPath(undefined, details),
-			theme,
-			CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES,
-			details.fileContentAfterWrite === undefined,
-		);
-		if (preview) rendered += `\n${preview}`;
-		return new Text(rendered, 0, 0);
-	}
-
-	if (details?.cursorToolName === "generateImage") return renderCursorGenerateImageResult(result, options, theme, context, isError);
-	if (details?.title) return renderExpandableCursorReplayResult(details.title, result, options, theme, context, isError);
-	return new Text(text || theme.fg("success", "Cursor tool result replayed"), 0, 0);
+	if (!details) return new Text(text || theme.fg("success", "Cursor tool result replayed"), 0, 0);
+	return renderCursorReplayDetails(details, result, options, theme, context, isError, text);
 }
 
 export function renderNativeLookingCursorReadReplayResult(
