@@ -204,7 +204,7 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 				createBuiltinToolInfo("write", "Write files"),
 				createToolInfo("sem_reindex", "Reindex semantic cache"),
 			];
-			const pi = createMockPi({
+			const pi = createBridgePiHarness({
 				active: tools.map((tool) => tool.name),
 				tools,
 			});

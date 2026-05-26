@@ -45,7 +45,8 @@ describe("cursor-sensitive-text", () => {
 	it("scrubs bridge endpoint material from nested pi tool display values", () => {
 		const endpointToken = "secret-endpoint-token-display";
 		const display = scrubPiToolDisplay({
-			title: "Bridge tool",
+			toolName: "bridge",
+			isError: false,
 			args: { endpoint: `/cursor-pi-tool-bridge/${endpointToken}/mcp` },
 			result: {
 				content: [{ type: "text", text: `failed at http://127.0.0.1:9999/cursor-pi-tool-bridge/${endpointToken}/mcp` }],

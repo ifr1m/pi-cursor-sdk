@@ -7,6 +7,7 @@ import {
 	mockedCreate,
 	registerNativeToolDisplayForTest,
 	resetCursorProviderTestState,
+	mockCreatedAgent,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor } from "../src/cursor-provider.js";
 
@@ -48,11 +49,7 @@ describe("streamCursor connect timeout boundary", () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
-			agentId: "agent-1",
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		try {
 			const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
@@ -80,11 +77,7 @@ describe("streamCursor connect timeout boundary", () => {
 			supports: () => true,
 			unsupportedReason: () => undefined,
 		});
-		mockedCreate.mockResolvedValue({
-			agentId: "agent-1",
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
+		mockCreatedAgent({ send: mockSend });
 
 		try {
 			const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));

@@ -54,7 +54,9 @@ describe("cursor native replay rendering", () => {
 			result,
 			{ expanded: false, isPartial: false },
 			theme,
-			{ isError: false, args: { path: "README.md", localReadPreview: true } },
+			{ isError: false, args: { path: "README.md", localReadPreview: true } } as Parameters<
+				typeof renderNativeLookingCursorReadReplayResult
+			>[3],
 			() => new Text("", 0, 0),
 		)
 			.render(120)

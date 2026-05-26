@@ -41,13 +41,13 @@ describe("cursor tool presentation registry", () => {
 
 	it("maps legacy replay tool names and bridge exclusion from the registry", () => {
 		const legacyNamesFromSpecs = CURSOR_TOOL_PRESENTATION_SPECS.flatMap((spec) =>
-			spec.replayLegacyName ? [spec.replayLegacyName] : [],
+			"replayLegacyName" in spec ? [spec.replayLegacyName] : [],
 		);
 		expect(new Set(CURSOR_REPLAY_LEGACY_TOOL_NAMES)).toEqual(new Set(legacyNamesFromSpecs));
 		expect(CURSOR_REPLAY_LEGACY_TOOL_NAMES).toHaveLength(legacyNamesFromSpecs.length);
 		for (const legacyName of CURSOR_REPLAY_LEGACY_TOOL_NAMES) {
 			const spec = getCursorToolPresentationSpec(legacyName);
-			expect(spec?.replayLegacyName).toBe(legacyName);
+			expect(spec && "replayLegacyName" in spec ? spec.replayLegacyName : undefined).toBe(legacyName);
 			expect(isExcludedFromCursorBridgeExposure(legacyName)).toBe(true);
 		}
 		expect(isExcludedFromCursorBridgeExposure(CURSOR_REPLAY_ACTIVITY_TOOL_NAME)).toBe(true);
@@ -58,7 +58,8 @@ describe("cursor tool presentation registry", () => {
 
 	it("derives replay activity label keys from normalized names", () => {
 		for (const [normalizedName, legacyName] of Object.entries(CURSOR_REPLAY_ACTIVITY_LABEL_KEYS_BY_TOOL_NAME)) {
-			expect(getCursorToolPresentationSpec(normalizedName)?.replayLegacyName).toBe(legacyName);
+			const spec = getCursorToolPresentationSpec(normalizedName as CursorNormalizedToolName);
+			expect(spec && "replayLegacyName" in spec ? spec.replayLegacyName : undefined).toBe(legacyName);
 		}
 	});
 
@@ -79,7 +80,7 @@ describe("cursor tool presentation registry", () => {
 		for (const spec of CURSOR_TOOL_PRESENTATION_SPECS) {
 			const key = spec.normalizedName.toLowerCase();
 			expect(getCursorToolVisibilityPolicy(key)).toEqual(spec.visibility);
-			if (spec.lifecycleLabelKind) {
+			if ("lifecycleLabelKind" in spec && spec.lifecycleLabelKind) {
 				expect(getCursorToolLifecycleLabelKind(key)).toBe(spec.lifecycleLabelKind);
 			}
 		}
@@ -87,7 +88,7 @@ describe("cursor tool presentation registry", () => {
 
 	it("aligns replay activity titles with visibility classification", () => {
 		for (const spec of CURSOR_TOOL_PRESENTATION_SPECS) {
-			if (!spec.replayLegacyName) continue;
+			if (!("replayLegacyName" in spec)) continue;
 			const title = getCursorReplayActivityTitle(spec.normalizedName);
 			expect(title).toBe(spec.displayLabel);
 			expect(classifyCursorToolVisibility({ name: spec.normalizedName }).activityTitle).toBe(title);
