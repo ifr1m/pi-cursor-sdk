@@ -8,7 +8,9 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 
 - `src/index.ts` registers the pi extension, provider, fallback warnings, Cursor fast controls, native replay wrappers, question tool, and pi tool bridge hooks.
 - `src/model-discovery.ts` discovers Cursor models, builds pi model metadata, stores per-model metadata, and defines fallback models.
-- `src/cursor-provider.ts` streams through local `@cursor/sdk` agents, injects local MCP bridge config, resumes live bridge runs, and sanitizes Cursor SDK errors.
+- `src/cursor-provider.ts` is a thin `streamCursor()` wrapper that delegates turn execution to the turn runner.
+- `src/cursor-provider-turn-runner.ts` owns provider turn phases (prepare, send, await outcome, emit, cleanup), live/direct emission strategies, and session/debug/abort cleanup.
+- `src/cursor-provider-run-outcome.ts` owns the unified `CursorRunOutcome` model and live vs direct emission classification from SDK `wait()` results.
 - `src/cursor-provider-errors.ts` owns scrubbed Cursor SDK run failure detail, abort reason formatting, and provider error sanitization.
 - `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, send-state commits, and lifecycle invalidation on compaction/tree/shutdown.
 - `src/cursor-session-send-policy.ts` owns session send planning (`bootstrap` vs `incremental`), periodic agent rebootstrap threshold, and prompt mode selection.
