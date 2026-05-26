@@ -16,7 +16,10 @@ import {
 	__testUtils as sdkEventDebugTestUtils,
 } from "../src/cursor-sdk-event-debug.js";
 import { backfillPiSessionSnapshot, parseDebugProviderEventsArgs } from "../scripts/debug-provider-events.mjs";
-import { serializeCursorSettingSources } from "../scripts/lib/cursor-setting-sources.mjs";
+import {
+	resolveCursorSettingSources,
+	serializeCursorSettingSources,
+} from "../scripts/lib/cursor-setting-sources.mjs";
 
 describe("cursor sdk event debug sink", () => {
 	it("is disabled by default", () => {
@@ -590,5 +593,16 @@ describe("debug-provider-events maintainer probe", () => {
 		);
 		expect(args.settingSources).toBeUndefined();
 		expect(serializeCursorSettingSources(args.settingSources)).toBe("none");
+	});
+
+	it("does not re-enable all when comma-only setting sources round-trip through child env", () => {
+		const args = parseDebugProviderEventsArgs(
+			["--prompt", "hello", "--setting-sources", "  ,  "],
+			{ CURSOR_API_KEY: "key" },
+		);
+		expect(args.settingSources).toBeUndefined();
+		const forwarded = serializeCursorSettingSources(args.settingSources);
+		expect(forwarded).toBe("none");
+		expect(resolveCursorSettingSources(forwarded)).toBeUndefined();
 	});
 });

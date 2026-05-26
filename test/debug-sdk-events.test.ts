@@ -187,7 +187,6 @@ describe("debug-sdk-events maintainer probe", () => {
 			cpSync("package.json", join(packageRoot, "package.json"));
 			cpSync(scriptPath, join(packageRoot, scriptPath));
 			for (const libFile of [
-				"cursor-probe-utils.mjs",
 				"cursor-setting-sources.mjs",
 				"cursor-sensitive-text.mjs",
 				"cursor-cli-args.mjs",

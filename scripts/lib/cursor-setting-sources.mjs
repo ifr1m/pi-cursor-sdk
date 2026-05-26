@@ -7,14 +7,16 @@ export function resolveCursorSettingSources(raw) {
 	const normalized = trimmed.toLowerCase();
 	if (["0", "false", "off", "none", "omit", "disabled"].includes(normalized)) return undefined;
 	if (["1", "true", "on", "all"].includes(normalized)) return ["all"];
-	return trimmed
+	const sources = trimmed
 		.split(",")
 		.map((entry) => entry.trim())
 		.filter(Boolean);
+	if (sources.length === 0) return undefined;
+	return sources;
 }
 
 /** Serialize parsed settingSources for PI_CURSOR_SETTING_SOURCES (undefined => explicit none). */
 export function serializeCursorSettingSources(settingSources) {
-	if (settingSources === undefined) return "none";
+	if (settingSources === undefined || settingSources.length === 0) return "none";
 	return settingSources.join(",");
 }

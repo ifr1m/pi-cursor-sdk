@@ -28,6 +28,12 @@ describe("resolveCursorSettingSources", () => {
 	it("parses comma-separated lists", () => {
 		expect(resolveCursorSettingSources("project,user")).toEqual(["project", "user"]);
 	});
+
+	it("treats comma-only and blank-list input as disabled", () => {
+		for (const raw of [",", ",,", "  ,  ,  "]) {
+			expect(resolveCursorSettingSources(raw)).toBeUndefined();
+		}
+	});
 });
 
 describe("cursorSettingSourcesLoadAgentsRules", () => {

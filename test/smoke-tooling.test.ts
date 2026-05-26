@@ -54,7 +54,9 @@ describe("smoke tooling package checks", () => {
 		expect(paths.has("scripts/debug-provider-events.mjs")).toBe(true);
 		expect(paths.has("scripts/lib/cursor-smoke-shell.sh")).toBe(true);
 		expect(paths.has("scripts/lib/cursor-setting-sources.mjs")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-setting-sources.d.mts")).toBe(true);
 		expect(paths.has("scripts/lib/cursor-sensitive-text.mjs")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-sensitive-text.d.mts")).toBe(true);
 		expect(paths.has("scripts/lib/cursor-cli-args.mjs")).toBe(true);
 		expect(paths.has("CHANGELOG.md")).toBe(true);
 		expect(paths.has("README.md")).toBe(true);

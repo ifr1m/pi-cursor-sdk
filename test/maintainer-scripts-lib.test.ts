@@ -39,6 +39,24 @@ describe("maintainer scripts shared lib", () => {
 		expect(serializeCursorSettingSources(["all"])).toBe("all");
 		expect(serializeCursorSettingSources(["project", "user"])).toBe("project,user");
 		expect(serializeCursorSettingSources(undefined)).toBe("none");
+		expect(serializeCursorSettingSources([])).toBe("none");
+	});
+
+	it("round-trips setting sources through resolve -> serialize -> resolve", () => {
+		const cases: Array<{ raw?: string; expected: ReturnType<typeof resolveCursorSettingSources> }> = [
+			{ raw: undefined, expected: ["all"] },
+			{ raw: "", expected: ["all"] },
+			{ raw: "all", expected: ["all"] },
+			{ raw: "none", expected: undefined },
+			{ raw: "project,user", expected: ["project", "user"] },
+			{ raw: ",", expected: undefined },
+			{ raw: "  ,  ", expected: undefined },
+		];
+		for (const { raw, expected } of cases) {
+			const resolved = resolveCursorSettingSources(raw);
+			expect(resolved).toEqual(expected);
+			expect(resolveCursorSettingSources(serializeCursorSettingSources(resolved))).toEqual(expected);
+		}
 	});
 
 	it("parses common probe flags and enforces api key requirements", () => {

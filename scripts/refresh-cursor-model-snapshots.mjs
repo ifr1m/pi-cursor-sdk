@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, resolve } from "node:path";
 import { Cursor } from "@cursor/sdk";
 import { defaultApiKeyFromEnv, parseArgv } from "./lib/cursor-cli-args.mjs";
 import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
