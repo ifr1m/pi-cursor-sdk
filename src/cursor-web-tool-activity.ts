@@ -1,27 +1,10 @@
+import {
+	classifyCursorWebToolKind as classifyCursorWebToolKindFromRegistry,
+	type CursorWebToolKind,
+} from "./cursor-tool-presentation-registry.js";
 import { normalizeToolName } from "./cursor-transcript-utils.js";
 
-export type CursorWebToolKind = "webSearch" | "webFetch";
-
-const WEB_SEARCH_NAME_PATTERN =
-	/^(?:web[-_ ]?search|search[-_ ]?web|websearch|browser[-_ ]?search|cursor[-_ ]?web[-_ ]?search)$/i;
-const WEB_FETCH_NAME_PATTERN =
-	/^(?:web[-_ ]?fetch|fetch[-_ ]?web|webfetch|browser[-_ ]?fetch|fetch[-_ ]?url|cursor[-_ ]?web[-_ ]?fetch)$/i;
-
-function normalizeWebToolLookupName(name: string): string {
-	return name.replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-export function classifyCursorWebToolKind(name: string | undefined): CursorWebToolKind | undefined {
-	if (!name) return undefined;
-	const normalized = normalizeWebToolLookupName(name);
-	if (WEB_SEARCH_NAME_PATTERN.test(normalized) || normalized === "websearch" || normalized === "web_search") {
-		return "webSearch";
-	}
-	if (WEB_FETCH_NAME_PATTERN.test(normalized) || normalized === "webfetch" || normalized === "web_fetch") {
-		return "webFetch";
-	}
-	return undefined;
-}
+export type { CursorWebToolKind } from "./cursor-tool-presentation-registry.js";
 
 function getNestedMcpArgs(args: Record<string, unknown>): Record<string, unknown> {
 	const nested = args.args;
@@ -66,6 +49,10 @@ export function extractWebFetchTarget(args: Record<string, unknown>): string | u
 		typeof nested.uri === "string" ? nested.uri : undefined,
 		typeof nested.href === "string" ? nested.href : undefined,
 	);
+}
+
+export function classifyCursorWebToolKind(name: string | undefined): CursorWebToolKind | undefined {
+	return classifyCursorWebToolKindFromRegistry(name);
 }
 
 /**

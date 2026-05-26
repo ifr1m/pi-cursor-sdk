@@ -161,6 +161,54 @@ describe("buildCursorPrompt", () => {
 		expect(result.text).toContain("Tool error (bash, call tc1): command failed");
 	});
 
+	it("preserves real pi edit and write tool names in Cursor prompt labels", () => {
+		const ctx: Context = {
+			messages: [
+				{ role: "user", content: "Edit and write files", timestamp: 1 } satisfies UserMessage,
+				{
+					role: "assistant",
+					content: [
+						{ type: "toolCall", id: "edit-call", name: "edit", arguments: { path: "src/a.ts" } },
+						{ type: "toolCall", id: "write-call", name: "write", arguments: { path: "src/b.ts" } },
+					],
+					api: "cursor-sdk",
+					provider: "cursor",
+					model: "test",
+					usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+					stopReason: "toolUse",
+					timestamp: 2,
+				} satisfies AssistantMessage,
+				{
+					role: "toolResult",
+					toolCallId: "edit-call",
+					toolName: "edit",
+					content: [{ type: "text", text: "edit ok" }],
+					isError: false,
+					timestamp: 3,
+				} satisfies ToolResultMessage,
+				{
+					role: "toolResult",
+					toolCallId: "write-call",
+					toolName: "write",
+					content: [{ type: "text", text: "write ok" }],
+					isError: false,
+					timestamp: 4,
+				} satisfies ToolResultMessage,
+			],
+		};
+
+		const result = buildCursorPrompt(ctx);
+
+		expect(result.text).toContain('Tool call (edit, call edit-call): {"path":"src/a.ts"}');
+		expect(result.text).toContain('Tool call (write, call write-call): {"path":"src/b.ts"}');
+		expect(result.text).toContain("Tool result (edit, call edit-call): edit ok");
+		expect(result.text).toContain("Tool result (write, call write-call): write ok");
+		expect(result.text).not.toContain("Tool call (Cursor edit");
+		expect(result.text).not.toContain("Tool call (Cursor write");
+		expect(result.text).not.toContain("Tool result (Cursor edit");
+		expect(result.text).not.toContain("Tool result (Cursor write");
+	});
+
 	it("labels legacy Cursor replay tools without rewriting literal transcript text", () => {
 		const ctx: Context = {
 			messages: [

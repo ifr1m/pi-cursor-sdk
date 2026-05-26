@@ -66,7 +66,7 @@ Edit and write activity replays through pi-facing `edit` and `write` cards only 
 
 Source of truth for SDK tool names: `@cursor/sdk@^1.0.13` conversation `ToolType` values and https://cursor.com/docs/sdk/typescript
 
-Implementation owners: `src/cursor-transcript-tool-specs.ts` (`TOOL_DISPLAY_SPECS`), `src/cursor-native-tool-display-replay.ts`, and `src/cursor-transcript-utils.ts` (`normalizeToolName()`).
+Implementation owners: `src/cursor-tool-presentation-registry.ts` (canonical names, labels, visibility, replay policy, bridge exclusions for internal replay wrappers, and display-spec key completeness), `src/cursor-transcript-tool-specs.ts` (registry-keyed `TOOL_DISPLAY_SPECS` formatters/builders), `src/cursor-native-tool-display-replay.ts` (replay card rendering derived from registry replay metadata), and `src/cursor-transcript-utils.ts` (`normalizeToolName()` delegating to the registry).
 
 This matrix covers **Cursor native tool replay only**. It does not describe the [live pi MCP bridge](#live-bridge-vs-replay) or Cursor-native host tools, settings, plugins, and configured MCP servers from the Cursor SDK local-agent path.
 
@@ -92,7 +92,7 @@ This matrix covers **Cursor native tool replay only**. It does not describe the 
 | *(host/MCP alias)* `WebFetch` / `web_fetch` / similar | neutral activity | `cursor` | Collapsed label **Cursor web fetch**; display-only Cursor web access reported by the SDK, not an executable pi web tool |
 | _(no spec; future/unknown SDK name)_ | neutral activity | `cursor` | Collapsed label **Cursor** plus SDK tool name via `buildGenericPiToolDisplay()`; bounded fallback transcript only |
 
-**Unknown/future fallback path:** SDK tool names with no `TOOL_DISPLAY_SPECS` entry (future or unknown types) use `buildGenericPiToolDisplay()` in `src/cursor-transcript-tool-specs.ts` with bounded `formatFallback()` content from `src/cursor-transcript-tool-formatters.ts`. When native replay is enabled, those completions queue through neutral pi tool name `cursor` (not native pi `read`/`bash`/… cards). Collapsed labels read like **Cursor futureSemSearchWidget** (title `Cursor` plus the SDK tool name) with optional bounded `activitySummary` from scrubbed args/result lines. Errors keep `details.summary` undefined so unbounded raw errors do not leak into replay cards (#52). Known explicit specs still win over this path; pi and bridge tool names are never shadowed.
+**Unknown/future fallback path:** SDK tool names with no registry-backed `TOOL_DISPLAY_SPECS` entry (future or unknown types) use `buildGenericPiToolDisplay()` in `src/cursor-transcript-tool-specs.ts` with bounded `formatFallback()` content from `src/cursor-transcript-tool-formatters.ts`. When native replay is enabled, those completions queue through neutral pi tool name `cursor` (not native pi `read`/`bash`/… cards). Collapsed labels read like **Cursor futureSemSearchWidget** (title `Cursor` plus the SDK tool name) with optional bounded `activitySummary` from scrubbed args/result lines. Errors keep `details.summary` undefined so unbounded raw errors do not leak into replay cards (#52). Known explicit specs still win over this path; real pi bridge tool names such as `edit` and `write` are not suppressed by internal replay-wrapper exclusions.
 
 Neutral activity rows use pi tool name `cursor` with `activityTitle` / `activitySummary` metadata. Legacy internal replay label keys such as `cursor_sem_search` are compatibility details; user-visible collapsed cards use labels like **Cursor semantic search**.
 
