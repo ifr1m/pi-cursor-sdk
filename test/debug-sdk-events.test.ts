@@ -183,9 +183,13 @@ describe("debug-sdk-events maintainer probe", () => {
 		const packageRoot = join(root, "node_modules", "pi-cursor-sdk");
 		try {
 			mkdirSync(join(packageRoot, "scripts", "lib"), { recursive: true });
+			mkdirSync(join(packageRoot, "shared"), { recursive: true });
 			mkdirSync(join(packageRoot, "src"), { recursive: true });
 			cpSync("package.json", join(packageRoot, "package.json"));
 			cpSync(scriptPath, join(packageRoot, scriptPath));
+			for (const sharedFile of ["cursor-setting-sources.mjs", "cursor-sensitive-text.mjs"]) {
+				cpSync(`shared/${sharedFile}`, join(packageRoot, "shared", sharedFile));
+			}
 			for (const libFile of [
 				"cursor-setting-sources.mjs",
 				"cursor-sensitive-text.mjs",

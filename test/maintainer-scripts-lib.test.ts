@@ -10,6 +10,12 @@ import {
 } from "../scripts/lib/cursor-cli-args.mjs";
 import { parseJsonLines, terminateChild, waitForChildClose } from "../scripts/lib/cursor-child-process.mjs";
 import {
+	CURSOR_SETTING_SOURCES_ENV as sharedSettingSourcesEnv,
+	resolveCursorSettingSources as resolveSharedSettingSources,
+	serializeCursorSettingSources as serializeSharedSettingSources,
+} from "../shared/cursor-setting-sources.mjs";
+import { scrubSensitiveText as scrubSharedSensitiveText } from "../shared/cursor-sensitive-text.mjs";
+import {
 	CURSOR_SETTING_SOURCES_ENV,
 	resolveCursorSettingSources,
 	serializeCursorSettingSources,
@@ -18,6 +24,18 @@ import { scrubSensitiveText } from "../scripts/lib/cursor-sensitive-text.mjs";
 import { createScriptFail } from "../scripts/lib/cursor-script-fail.mjs";
 
 describe("maintainer scripts shared lib", () => {
+	it("keeps shared helpers aligned with script re-exports and provider runtime", () => {
+		expect(sharedSettingSourcesEnv).toBe(CURSOR_SETTING_SOURCES_ENV);
+		for (const raw of [undefined, "", "all", "none", "project,user", "OFF", "0"]) {
+			expect(resolveSharedSettingSources(raw)).toEqual(resolveCursorSettingSources(raw));
+			expect(resolveSharedSettingSources(raw)).toEqual(resolveProviderSettingSources(raw));
+		}
+		const leakedKey = "super-secret-cursor-key-12345";
+		const sample = `Bearer ${leakedKey} http://127.0.0.1:4242/cursor-pi-tool-bridge/abc/mcp`;
+		expect(scrubSharedSensitiveText(sample, leakedKey)).toBe(scrubSensitiveText(sample, leakedKey));
+		expect(serializeSharedSettingSources(["project", "user"])).toBe(serializeCursorSettingSources(["project", "user"]));
+	});
+
 	it("keeps setting-source parsing aligned with provider runtime", () => {
 		expect(CURSOR_SETTING_SOURCES_ENV).toBe("PI_CURSOR_SETTING_SOURCES");
 		for (const raw of [undefined, "", "all", "none", "project,user", "OFF", "0"]) {
