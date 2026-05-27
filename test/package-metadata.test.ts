@@ -14,10 +14,6 @@ const PI_PACKAGES = [
 	"@earendil-works/pi-tui",
 ] as const;
 
-function hasUpperBound(range: string): boolean {
-	return /(?:^|\s)(?:<|<=)/.test(range) || /\b0\.77(?:\.0)?\b/.test(range);
-}
-
 describe("package metadata cutover baselines", () => {
 	it("pins Cursor SDK exactly and validates against pi 0.76.0", () => {
 		expect(packageJson.dependencies["@cursor/sdk"]).toBe("1.0.14");
@@ -30,7 +26,6 @@ describe("package metadata cutover baselines", () => {
 		for (const packageName of PI_PACKAGES) {
 			const range = packageJson.peerDependencies[packageName];
 			expect(range).toBe(">=0.76.0");
-			expect(hasUpperBound(range)).toBe(false);
 		}
 	});
 });
