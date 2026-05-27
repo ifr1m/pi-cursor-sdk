@@ -75,7 +75,7 @@ export async function emitCursorLiveTurn(emitParams: EmitCursorLiveTurnParams): 
 		prepared,
 		cursorAgentMessageOffset,
 		modelId: model.id,
-		signalAborted: options?.signal?.aborted,
+		signal: options?.signal,
 		runResultFallback: run.result,
 		resolvedApiKey,
 		optionsApiKey: options?.apiKey,

@@ -28,7 +28,7 @@ export async function cacheSdkContextWindow(agentId: string, modelId: string): P
 export interface BuildCursorRunOutcomeParams {
 	waitResult: Awaited<ReturnType<Awaited<ReturnType<SDKAgent["send"]>>["wait"]>>;
 	prepared: CursorProviderTurnPrepared;
-	signalAborted?: boolean;
+	signal?: AbortSignal;
 	runResultFallback?: string;
 	resolvedApiKey?: string;
 	optionsApiKey?: string;
@@ -39,7 +39,7 @@ export function buildCursorRunOutcomeFromWait(params: BuildCursorRunOutcomeParam
 	const { turnCoordinator, textDeltas, liveRun } = prepared;
 	return resolveCursorRunOutcome({
 		waitResult,
-		signalAborted: params.signalAborted,
+		signalAborted: params.signal?.aborted,
 		textDeltas: liveRun?.textDeltas ?? textDeltas,
 		emittedText: liveRun?.emittedText ?? textDeltas.join(""),
 		planTextCandidate: turnCoordinator.planTextCandidate,
@@ -80,7 +80,7 @@ export interface AwaitFinalizeCursorRunOutcomeParams {
 	prepared: CursorProviderTurnPrepared;
 	cursorAgentMessageOffset: number | undefined;
 	modelId: string;
-	signalAborted?: boolean;
+	signal?: AbortSignal;
 	runResultFallback?: string;
 	resolvedApiKey?: string;
 	optionsApiKey?: string;
@@ -98,7 +98,7 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 	const outcome = buildCursorRunOutcomeFromWait({
 		waitResult,
 		prepared: params.prepared,
-		signalAborted: params.signalAborted,
+		signal: params.signal,
 		runResultFallback: params.runResultFallback,
 		resolvedApiKey: params.resolvedApiKey,
 		optionsApiKey: params.optionsApiKey,

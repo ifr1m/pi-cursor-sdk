@@ -107,11 +107,13 @@ export class CursorProviderTurnRunner {
 
 			const { send, handles: sendHandles } = await sendCursorProviderTurn({
 				params: this.params,
-				cleanup: this.cleanup,
 				prepared,
 				sdkEventDebug: this.cleanup.sdkEventDebug,
 				sdkAbortErrorSuppression,
 				throwIfAborted: () => this.throwIfAborted(),
+				registerSendHandles: (partial) => {
+					this.cleanup.send = { ...this.cleanup.send, ...partial };
+				},
 			});
 			this.cleanup.send = sendHandles;
 
@@ -132,7 +134,7 @@ export class CursorProviderTurnRunner {
 				prepared: send.prepared,
 				cursorAgentMessageOffset: send.cursorAgentMessageOffset,
 				modelId: model.id,
-				signalAborted: options?.signal?.aborted,
+				signal: options?.signal,
 				runResultFallback: send.run.result,
 				resolvedApiKey: this.cleanup.resolvedApiKey,
 				optionsApiKey: options?.apiKey,

@@ -81,7 +81,7 @@ export interface CursorProviderTurnCleanup {
 	sdkEventDebug: CursorSdkEventDebugSink | undefined;
 	resolvedApiKey: string | undefined;
 	prepare: Partial<CursorProviderTurnPrepareHandles> | undefined;
-	send: CursorProviderTurnSendHandles | undefined;
+	send: Partial<CursorProviderTurnSendHandles> | undefined;
 	deferSdkEventDebugFinalize: boolean;
 }
 
