@@ -1,1 +1,1 @@
-export declare function scrubSensitiveText(text: string, apiKey?: string): string;
+export { scrubSensitiveText } from "../../shared/cursor-sensitive-text.mjs";

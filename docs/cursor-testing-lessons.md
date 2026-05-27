@@ -425,6 +425,7 @@ rg '"type": "toolCall"|Tool call \(Cursor|cursor-replay-' "$SMOKE_DIR/session"/*
 - `scripts/validate-smoke-jsonl.mjs`
 - `scripts/debug-sdk-events.mjs`
 - `scripts/debug-provider-events.mjs`
-- `scripts/lib/` — shared maintainer plumbing (CLI arg parsing, secret-aware `fail()`, `PI_CURSOR_SETTING_SOURCES` parsing, child-process shutdown, shell timeout/auth helpers). Provider runtime imports `cursor-setting-sources.mjs` and `cursor-sensitive-text.mjs` from here so scripts and product code stay aligned (`test/maintainer-scripts-lib.test.ts`).
+- `shared/` — runtime-safe ESM helpers consumed by provider `src/` and maintainer scripts (`cursor-sensitive-text.mjs`, `cursor-setting-sources.mjs`).
+- `scripts/lib/` — maintainer plumbing (CLI arg parsing, secret-aware `fail()`, child-process shutdown, shell timeout/auth helpers). Re-exports `shared/` helpers so published smoke/debug scripts stay aligned with provider runtime (`test/maintainer-scripts-lib.test.ts`).
 - `test/helpers/pi-harness.ts` — canonical fake pi/extension harness (`createPiHarness`, shared model/context/event helpers)
 - `test/helpers/cursor-provider-harness.ts` — Cursor SDK provider mocks and stream helpers (re-exports pi-harness fixtures; `createNativeToolDisplayPiForTest` for native replay)

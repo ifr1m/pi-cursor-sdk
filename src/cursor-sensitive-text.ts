@@ -1,6 +1,6 @@
 import type { CursorPiToolDisplay } from "./cursor-transcript-utils.js";
-/** Provider-facing wrapper; canonical scrubbing lives in scripts/lib/cursor-sensitive-text.mjs. */
-import { scrubSensitiveText as scrubSensitiveTextJs } from "../scripts/lib/cursor-sensitive-text.mjs";
+/** Provider-facing wrapper; canonical scrubbing lives in shared/cursor-sensitive-text.mjs. */
+import { scrubSensitiveText as scrubSensitiveTextJs } from "../shared/cursor-sensitive-text.mjs";
 
 export function scrubSensitiveText(text: string, apiKey?: string): string {
 	return scrubSensitiveTextJs(text, apiKey);

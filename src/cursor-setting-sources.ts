@@ -1,9 +1,9 @@
 import type { SettingSource } from "@cursor/sdk";
-/** Provider-facing wrapper; canonical parsing lives in scripts/lib/cursor-setting-sources.mjs. */
+/** Provider-facing wrapper; canonical parsing lives in shared/cursor-setting-sources.mjs. */
 import {
 	CURSOR_SETTING_SOURCES_ENV as CURSOR_SETTING_SOURCES_ENV_JS,
 	resolveCursorSettingSources as resolveCursorSettingSourcesJs,
-} from "../scripts/lib/cursor-setting-sources.mjs";
+} from "../shared/cursor-setting-sources.mjs";
 
 export const CURSOR_SETTING_SOURCES_ENV = CURSOR_SETTING_SOURCES_ENV_JS;
 

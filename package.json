@@ -22,6 +22,7 @@
 	},
 	"homepage": "https://github.com/fitchmultz/pi-cursor-sdk#readme",
 	"files": [
+		"shared",
 		"src",
 		"scripts/refresh-cursor-model-snapshots.mjs",
 		"scripts/steering-rpc-smoke.mjs",
