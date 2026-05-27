@@ -5,6 +5,11 @@ import {
 	DISCARDED_INCOMPLETE_TOOL_CALL_REASON,
 	type DiscardedIncompleteStartedToolCallReason,
 } from "./cursor-sdk-event-debug.js";
+import {
+	assembleCursorReplayActivityDetails,
+	parseCursorReplayToolDetails,
+	resolveIncompleteReplayActivitySourceToolName,
+} from "./cursor-replay-tool-details.js";
 import { truncateArg, type CursorPiToolDisplay } from "./cursor-transcript-utils.js";
 import { classifyCursorToolVisibility } from "./cursor-tool-visibility.js";
 
@@ -87,6 +92,14 @@ export function buildIncompleteCursorToolDisplay(
 	const headline = `${activityTitle} did not complete`;
 	const reasonText = scrubSensitiveText(formatIncompleteCursorToolReasonText(reason), options.apiKey);
 	const contentText = `${headline}\n${reasonText}`;
+	const details = assembleCursorReplayActivityDetails(
+		resolveIncompleteReplayActivitySourceToolName(visibility.normalizedName),
+		headline,
+		{ summary: reasonText, expandedText: contentText },
+		contentText,
+		true,
+		reasonText,
+	);
 	return {
 		toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 		args: {
@@ -97,17 +110,21 @@ export function buildIncompleteCursorToolDisplay(
 		},
 		result: {
 			content: [{ type: "text", text: contentText }],
-			details: {
-				cursorToolName: visibility.normalizedName,
-				title: headline,
-				summary: reasonText,
-			},
+			details,
 		},
 		isError: true,
 	};
 }
 
 export function formatIncompleteCursorToolTrace(display: CursorPiToolDisplay): string {
+	const parsed = parseCursorReplayToolDetails(display.result.details);
+	if (parsed?.variant === "activity") {
+		const summary =
+			parsed.summary?.trim() ||
+			(typeof display.args.activitySummary === "string" && display.args.activitySummary.trim()) ||
+			formatIncompleteCursorToolReasonText(DISCARDED_INCOMPLETE_TOOL_CALL_REASON);
+		return `${truncateCursorDisplayLine(parsed.title)}: ${truncateCursorDisplayLine(summary)}\n`;
+	}
 	const details = display.result.details;
 	const detailRecord = details && typeof details === "object" ? (details as Record<string, unknown>) : undefined;
 	const argsRecord = display.args;

@@ -8,6 +8,7 @@ import {
 	resolveIncompleteCursorToolVisibility,
 } from "../src/cursor-incomplete-tool-visibility.js";
 import { DISCARDED_INCOMPLETE_TOOL_CALL_REASON } from "../src/cursor-sdk-event-debug.js";
+import { CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME } from "../src/cursor-replay-tool-details.js";
 
 describe("cursor incomplete tool visibility", () => {
 	it("labels ordinary native Cursor tools", () => {
@@ -79,6 +80,23 @@ describe("cursor incomplete tool visibility", () => {
 				buildIncompleteCursorToolRunOutcome({ assistantTextProduced: true, reason: "abort" }),
 			),
 		).toBe("emit");
+	});
+
+	it("labels incomplete generateImage as activity instead of a generateImage result card", () => {
+		const display = buildIncompleteCursorToolDisplay(
+			{ name: "generateImage", args: { prompt: "a red circle" } },
+			DISCARDED_INCOMPLETE_TOOL_CALL_REASON,
+		);
+		expect(display.result.details).toMatchObject({
+			variant: "activity",
+			sourceToolName: CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME,
+			title: "Cursor image generation did not complete",
+			summary: "missing completion",
+		});
+		expect(display.result.details).not.toHaveProperty("cursorToolName");
+		expect(formatIncompleteCursorToolTrace(display)).toContain(
+			"Cursor image generation did not complete: missing completion",
+		);
 	});
 
 	it("maps discard reasons to bounded user-facing text", () => {

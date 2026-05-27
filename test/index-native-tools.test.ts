@@ -312,7 +312,7 @@ describe("extension native Cursor tool replay", () => {
 			writeTool.renderResult?.(
 				{
 					content: [{ type: "text", text: "write new.txt\n\nCreated 1 lines" }],
-					details: { cursorToolName: "write", path: "new.txt", linesCreated: 1, fileSize: 6, expandedText: "Created 1 lines" },
+					details: { variant: "nativeWrite", path: "new.txt", linesCreated: 1, fileSize: 6, expandedText: "Created 1 lines" },
 				},
 				options,
 				theme,
@@ -321,7 +321,7 @@ describe("extension native Cursor tool replay", () => {
 			mcpTool!.renderResult?.(
 				{
 					content: [{ type: "text", text: "mcp git\n\nstatus" }],
-					details: { cursorToolName: "mcp", title: "Cursor MCP activity", summary: "git", expandedText: "status" },
+					details: { variant: "activity", sourceToolName: "mcp", title: "Cursor MCP activity", summary: "git", expandedText: "status" },
 				},
 				options,
 				theme,
@@ -378,7 +378,7 @@ describe("extension native Cursor tool replay", () => {
 			writeTool!.renderResult?.(
 				{
 					content: [{ type: "text", text: "write new.txt\n\nCreated 3 lines\n\n# Title\n\nBody" }],
-					details: { cursorToolName: "write", path: "new.txt", linesCreated: 3, fileSize: 13, fileContentAfterWrite: "# Title\n\nBody\n" },
+					details: { variant: "nativeWrite", path: "new.txt", linesCreated: 3, fileSize: 13, fileContentAfterWrite: "# Title\n\nBody\n" },
 				},
 				options,
 				theme,
@@ -501,14 +501,12 @@ describe("extension native Cursor tool replay", () => {
 			{
 				content: [{ type: "text", text: "edit .tool-demo/ux-demo.ts\n\n+1 -1" }],
 				details: {
-					cursorToolName: "edit",
+					variant: "activity",
+					sourceToolName: "edit",
 					title: "Cursor edit",
-					summary: ".tool-demo/ux-demo.ts",
+					summary: ".tool-demo/ux-demo.ts added 1 line, removed 1 line",
 					path: ".tool-demo/ux-demo.ts",
-					linesAdded: 1,
-					linesRemoved: 1,
-					diffString: "--- a/.tool-demo/ux-demo.ts\n+++ b/.tool-demo/ux-demo.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;",
-					expandedText: "edit .tool-demo/ux-demo.ts\n\n+1 -1\n\n--- a/.tool-demo/ux-demo.ts\n+++ b/.tool-demo/ux-demo.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;",
+					expandedText: "edit .tool-demo/ux-demo.ts\n\n+1 -1",
 				},
 			},
 			options,
@@ -516,8 +514,7 @@ describe("extension native Cursor tool replay", () => {
 			context,
 		)?.render(120).join("\n") ?? "";
 		expect(neutralPathOnlyEditRendered).toContain("Cursor edit .tool-demo/ux-demo.ts added 1 line, removed 1 line");
-		expect(neutralPathOnlyEditRendered).toContain("<toolDiffRemoved>-1 export const value = 1;</toolDiffRemoved>");
-		expect(neutralPathOnlyEditRendered).toContain("<toolDiffAdded>+1 export const value = 2;</toolDiffAdded>");
+		expect(neutralPathOnlyEditRendered).not.toContain("<toolDiffRemoved>");
 		expect(neutralPathOnlyEditRendered).not.toContain("@@");
 	});
 

@@ -59,7 +59,7 @@ describe("cursor web tool activity", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { query: "pi mathematics", activityTitle: "Cursor web search", activitySummary: "pi mathematics" },
-			result: { details: { cursorToolName: "webSearch", title: "Cursor web search", summary: "web search pi mathematics" } },
+			result: { details: { variant: "activity", sourceToolName: "webSearch", title: "Cursor web search", summary: "web search pi mathematics" } },
 			isError: false,
 		});
 		expect(display.args).not.toMatchObject({ activityTitle: "Cursor MCP" });
@@ -78,7 +78,7 @@ describe("cursor web tool activity", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { query: "typescript sdk", activityTitle: "Cursor web search", activitySummary: "typescript sdk" },
-			result: { details: { cursorToolName: "webSearch", title: "Cursor web search" } },
+			result: { details: { variant: "activity", sourceToolName: "webSearch", title: "Cursor web search" } },
 		});
 		expect(formatCursorToolTranscript(toolCall)).toContain("web search typescript sdk");
 	});
@@ -100,7 +100,7 @@ describe("cursor web tool activity", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { url: "https://example.com", activityTitle: "Cursor web fetch", activitySummary: "https://example.com" },
-			result: { details: { cursorToolName: "webFetch", title: "Cursor web fetch" } },
+			result: { details: { variant: "activity", sourceToolName: "webFetch", title: "Cursor web fetch" } },
 		});
 		expect(display.args).not.toMatchObject({ activityTitle: "Cursor MCP" });
 	});
@@ -116,7 +116,7 @@ describe("cursor web tool activity", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { url: "https://example.org/page", activityTitle: "Cursor web fetch", activitySummary: "https://example.org/page" },
-			result: { details: { cursorToolName: "webFetch", title: "Cursor web fetch" } },
+			result: { details: { variant: "activity", sourceToolName: "webFetch", title: "Cursor web fetch" } },
 		});
 		expect(formatCursorToolTranscript(toolCall)).toContain("web fetch https://example.org/page");
 	});

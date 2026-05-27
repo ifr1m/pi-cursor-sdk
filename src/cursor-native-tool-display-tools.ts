@@ -18,8 +18,8 @@ import {
 } from "./cursor-tool-names.js";
 import {
 	createCursorReplayOnlyToolDefinition,
-	isCursorReplayEditDetails,
-	isCursorReplayWriteDetails,
+	isCursorReplayNativeEditDetails,
+	isCursorReplayNativeWriteDetails,
 	parseCursorReplayToolDetails,
 	renderCursorReplayResult,
 	renderNativeLookingCursorFileMutationCall,
@@ -92,8 +92,8 @@ export function wrapNativeCursorTool<TParams extends TSchema, TDetails, TState>(
 			const details = parseCursorReplayToolDetails(result.details);
 			if (
 				isCursorFileMutationToolName(definition.name) &&
-				((definition.name === "edit" && details && isCursorReplayEditDetails(details)) ||
-					(definition.name === "write" && details && isCursorReplayWriteDetails(details)))
+				((definition.name === "edit" && details && isCursorReplayNativeEditDetails(details)) ||
+					(definition.name === "write" && details && isCursorReplayNativeWriteDetails(details)))
 			) {
 				return renderCursorReplayResult(result, options, theme, context, context.isError);
 			}

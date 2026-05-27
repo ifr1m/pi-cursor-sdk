@@ -377,7 +377,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
 				content: [{ type: "text", text: expect.stringContaining(`edit ${targetPath}`) }],
-				details: { cursorToolName: "edit", title: "Cursor edit", summary: targetPath, diff: `--- a/${targetPath}\n+++ b/${targetPath}` },
+				details: { variant: "activity", sourceToolName: "edit", title: "Cursor edit", summary: expect.stringContaining(targetPath) },
 				terminate: false,
 			});
 			expect(textFromToolResultBlock(toolResult.content[0])).not.toContain("Validation failed for tool \"edit\"");
@@ -483,7 +483,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
 				content: [{ type: "text", text: expect.stringContaining(`write ${targetPath}`) }],
-				details: { cursorToolName: "write", title: "Cursor write", path: targetPath },
+				details: { variant: "activity", sourceToolName: "write", title: "Cursor write", path: targetPath },
 				terminate: false,
 			});
 			expect(textFromToolResultBlock(toolResult.content[0])).not.toContain("Validation failed for tool \"write\"");
@@ -579,7 +579,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const toolResult = await editTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
 				content: [{ type: "text", text: expect.stringContaining(`edit ${targetPath}`) }],
-				details: { cursorToolName: "edit", diff: expect.stringContaining("-old") },
+				details: { variant: "nativeEdit", diff: expect.stringContaining("-old") },
 				terminate: false,
 			});
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
@@ -671,7 +671,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const toolResult = await writeTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
 				content: [{ type: "text", text: expect.stringContaining(`write ${targetPath}`) }],
-				details: { cursorToolName: "write", fileContentAfterWrite: "new\n" },
+				details: { variant: "nativeWrite", fileContentAfterWrite: "new\n" },
 				terminate: false,
 			});
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");

@@ -49,7 +49,7 @@ describe("formatCursorToolTranscript read and shell", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { totalCount: 0, activityTitle: "Cursor plan", activitySummary: "Plan:" },
-			result: { details: { cursorToolName: "createPlan", title: "Cursor plan", summary: "Plan:" } },
+			result: { details: { variant: "activity", sourceToolName: "createPlan", title: "Cursor plan", summary: "Plan:" } },
 			isError: false,
 		});
 		expect(display.result.content[0].text).toContain("Build a calculator UI");

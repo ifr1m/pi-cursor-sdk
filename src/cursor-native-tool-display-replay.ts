@@ -15,31 +15,36 @@ import {
 } from "./cursor-tool-presentation-registry.js";
 import {
 	CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE,
-	type CursorReplayEditDetails,
+	type CursorReplayNativeEditDetails,
 	type CursorReplayGenerateImageDetails,
-	type CursorReplayTitledActivityDetails,
+	type CursorReplayActivityDetails,
 	type CursorReplayToolDetails,
-	type CursorReplayWriteDetails,
-	isCursorReplayEditDetails,
+	type CursorReplayNativeWriteDetails,
+	isCursorReplayNativeEditDetails,
 	isCursorReplayGenerateImageDetails,
-	isCursorReplayTitledActivityDetails,
-	isCursorReplayWriteDetails,
+	isCursorReplayActivityDetails,
 	parseCursorReplayToolDetails,
 } from "./cursor-replay-tool-details.js";
 
 export type {
+	CursorReplayNativeEditDetails,
 	CursorReplayEditDetails,
 	CursorReplayGenerateImageDetails,
 	CursorReplayGenericFallbackDetails,
+	CursorReplayActivityDetails,
 	CursorReplayTitledActivityDetails,
 	CursorReplayToolDetails,
+	CursorReplayNativeWriteDetails,
 	CursorReplayWriteDetails,
 } from "./cursor-replay-tool-details.js";
 export {
 	asCursorReplayToolDetails,
+	isCursorReplayNativeEditDetails,
 	isCursorReplayEditDetails,
 	isCursorReplayGenerateImageDetails,
+	isCursorReplayActivityDetails,
 	isCursorReplayTitledActivityDetails,
+	isCursorReplayNativeWriteDetails,
 	isCursorReplayWriteDetails,
 	parseCursorReplayToolDetails,
 } from "./cursor-replay-tool-details.js";
@@ -97,7 +102,7 @@ function buildImageReplayComponent(text: string, imageData: string, mimeType: st
 
 export function getCursorReplayPath(
 	args: Record<string, unknown> | undefined,
-	details: Pick<CursorReplayEditDetails, "path"> | Pick<CursorReplayWriteDetails, "path"> | undefined,
+	details: Pick<CursorReplayNativeEditDetails, "path"> | Pick<CursorReplayNativeWriteDetails, "path"> | undefined,
 ): string {
 	const argPath = args?.path;
 	return details?.path ?? (typeof argPath === "string" && argPath.trim() ? argPath : "unknown");
@@ -375,15 +380,15 @@ function pluralize(count: number, noun: string): string {
 	return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-function getCursorEditDiff(details: CursorReplayEditDetails): string | undefined {
+function getCursorEditDiff(details: CursorReplayNativeEditDetails): string | undefined {
 	return resolveCursorEditDiff(details);
 }
 
-function hasCursorEditChanges(details: CursorReplayEditDetails): boolean {
+function hasCursorEditChanges(details: CursorReplayNativeEditDetails): boolean {
 	return Boolean(getCursorEditDiff(details)) || Boolean(details.linesAdded) || Boolean(details.linesRemoved);
 }
 
-function classifyCursorEditOperation(details: CursorReplayEditDetails): "created" | "deleted" | "updated" | "unchanged" {
+function classifyCursorEditOperation(details: CursorReplayNativeEditDetails): "created" | "deleted" | "updated" | "unchanged" {
 	if (!hasCursorEditChanges(details)) return "unchanged";
 	const diff = getCursorEditDiff(details);
 	if (diff?.startsWith("--- /dev/null")) return "created";
@@ -391,7 +396,7 @@ function classifyCursorEditOperation(details: CursorReplayEditDetails): "created
 	return "updated";
 }
 
-function formatCursorEditSummary(details: CursorReplayEditDetails): string {
+function formatCursorEditSummary(details: CursorReplayNativeEditDetails): string {
 	const operation = classifyCursorEditOperation(details);
 	if (operation === "unchanged") return "no changes needed";
 	if (operation === "created" && details.linesAdded !== undefined) return `created ${pluralize(details.linesAdded, "line")}`;
@@ -418,9 +423,7 @@ type CursorReplayExpandableResultDetails = {
 
 function hasCursorReplayDisplayTitle(details: CursorReplayToolDetails | undefined): boolean {
 	if (!details) return false;
-	if (isCursorReplayTitledActivityDetails(details) || isCursorReplayGenerateImageDetails(details)) return true;
-	const title = isCursorReplayEditDetails(details) || isCursorReplayWriteDetails(details) ? details.title?.trim() : undefined;
-	return Boolean(title);
+	return isCursorReplayActivityDetails(details) || isCursorReplayGenerateImageDetails(details);
 }
 
 function renderExpandableCursorReplayResult(
@@ -449,20 +452,19 @@ function renderExpandableCursorReplayResult(
 }
 
 function renderCursorReplayEditResult(
-	details: CursorReplayEditDetails,
+	details: CursorReplayNativeEditDetails,
 	options: Parameters<CursorReplayRenderResult>[1],
 	theme: Parameters<CursorReplayRenderResult>[2],
 ): Component {
 	const summary = formatCursorEditSummary(details);
-	const title = details.title ?? "edit";
-	let rendered = `${theme.fg("toolTitle", theme.bold(title))} ${theme.fg("accent", getCursorReplayPath(undefined, details))} ${theme.fg("success", summary)}`;
+	let rendered = `${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", getCursorReplayPath(undefined, details))} ${theme.fg("success", summary)}`;
 	const diff = getCursorEditDiff(details);
 	if (diff) rendered += `\n${formatCursorReplayDiff(diff, theme, options.expanded ? 40 : CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES)}`;
 	return new Text(rendered, 0, 0);
 }
 
 function renderCursorReplayWriteResult(
-	details: CursorReplayWriteDetails,
+	details: CursorReplayNativeWriteDetails,
 	result: Parameters<CursorReplayRenderResult>[0],
 	options: Parameters<CursorReplayRenderResult>[1],
 	theme: Parameters<CursorReplayRenderResult>[2],
@@ -508,21 +510,13 @@ function renderCursorReplayDetails(
 	text: string,
 ): Component {
 	switch (details.variant) {
-		case "edit": {
-			if (hasCursorEditChanges(details)) {
-				return renderCursorReplayEditResult(details, options, theme);
-			}
-			const title = details.title?.trim();
-			if (title) {
-				return renderExpandableCursorReplayResult(title, details, result, options, theme, context, isError);
-			}
-			break;
-		}
-		case "write":
+		case "nativeEdit":
+			return renderCursorReplayEditResult(details, options, theme);
+		case "nativeWrite":
 			return renderCursorReplayWriteResult(details, result, options, theme);
 		case "generateImage":
 			return renderCursorGenerateImageResult(details, result, options, theme, context, isError);
-		case "titledActivity":
+		case "activity":
 			return renderExpandableCursorReplayResult(details.title, details, result, options, theme, context, isError);
 		case "genericFallback":
 			break;

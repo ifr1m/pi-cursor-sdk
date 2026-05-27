@@ -51,11 +51,10 @@ describe("cursor tool visibility classification", () => {
 			if (toolCall.name === "generateImage") {
 				expect(display.result.details).toMatchObject({
 					variant: "generateImage",
-					cursorToolName: "generateImage",
 				});
 				expect(display.result.details).not.toHaveProperty("title");
 			} else {
-				expect(display.result.details).toMatchObject({ title: expectedTitle });
+				expect(display.result.details).toMatchObject({ variant: "activity", title: expectedTitle });
 			}
 		}
 	});

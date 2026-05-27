@@ -94,7 +94,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		const cursorTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await cursorTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		expect(textFromToolResultBlock(toolResult.content[0])).toContain("createPlan");
-		expect(toolResult.details).toMatchObject({ cursorToolName: "createPlan" });
+		expect(toolResult.details).toMatchObject({ variant: "activity", sourceToolName: "createPlan" });
 
 		resolveRun({ id: "run-1", status: "finished", result: "Final Cursor plan text." });
 
