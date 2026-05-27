@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Cursor } from "@cursor/sdk";
 import { defaultApiKeyFromEnv, parseArgv } from "./lib/cursor-cli-args.mjs";
-import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
+import { scrubSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 import { createScriptFail } from "./lib/cursor-script-fail.mjs";
 
 const FALLBACK_MODELS_PATH = "src/cursor-fallback-models.generated.ts";

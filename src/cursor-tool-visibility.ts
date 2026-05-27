@@ -1,5 +1,5 @@
-import { getCursorReplayActivityTitle, getCursorToolVisibilityPolicy } from "./cursor-tool-presentation-registry.js";
-import { getToolArgs, getToolName, normalizeToolName } from "./cursor-transcript-utils.js";
+import { getCursorReplayActivityTitle, getCursorToolVisibilityPolicy, normalizeCursorToolName as normalizeToolName } from "./cursor-tool-presentation-registry.js";
+import { getToolArgs, getToolName } from "./cursor-transcript-utils.js";
 import { resolveTranscriptToolName } from "./cursor-web-tool-activity.js";
 
 export interface CursorToolVisibility {

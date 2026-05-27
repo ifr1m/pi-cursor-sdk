@@ -113,7 +113,7 @@ describe("formatCursorToolTranscript MCP and web", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { query: "main entrypoint", activityTitle: "Cursor semantic search", activitySummary: "main entrypoint (1 dir)" },
-			result: { details: { variant: "activity", sourceToolName: "semSearch", title: "Cursor semantic search", summary: "semSearch main entrypoint" } },
+			result: { details: { variant: "activity", sourceToolName: "semSearch", title: "Cursor semantic search", summary: "main entrypoint (1 dir)" } },
 			isError: false,
 		});
 		expect(display.result.content[0].text).toContain(results);
@@ -214,7 +214,7 @@ describe("formatCursorToolTranscript MCP and web", () => {
 			result: {
 				details: {
 					variant: "generateImage",
-					summary: "saved /Users/example/.cursor/projects/repo/assets/badge.png",
+					summary: "/Users/example/.cursor/projects/repo/assets/badge.png",
 					imagePath: "/Users/example/.cursor/projects/repo/assets/badge.png",
 					imageDisplayPath: "/Users/example/.cursor/projects/repo/assets/badge.png",
 					imageMimeType: "image/png",

@@ -59,7 +59,7 @@ describe("cursor web tool activity", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { query: "pi mathematics", activityTitle: "Cursor web search", activitySummary: "pi mathematics" },
-			result: { details: { variant: "activity", sourceToolName: "webSearch", title: "Cursor web search", summary: "web search pi mathematics" } },
+			result: { details: { variant: "activity", sourceToolName: "webSearch", title: "Cursor web search", summary: "pi mathematics" } },
 			isError: false,
 		});
 		expect(display.args).not.toMatchObject({ activityTitle: "Cursor MCP" });

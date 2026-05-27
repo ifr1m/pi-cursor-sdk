@@ -8,6 +8,8 @@ import {
 	createBuiltinToolInfo,
 	createExtensionTestContext,
 	getHarnessRegisteredTool,
+	makeHarnessModel,
+	makeModel,
 } from "./helpers/pi-harness.js";
 import { createExtensionPi, resetIndexExtensionTestState } from "./helpers/index-extension-test-kit.js";
 
@@ -541,6 +543,92 @@ describe("extension native Cursor tool replay", () => {
 		);
 	});
 
+	it("does not register native Cursor tool wrappers on non-Cursor models", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createExtensionPi();
+		await extensionFactory(pi);
+		await pi.runSessionStart({
+			model: makeHarnessModel("openai-codex", "openai-codex-responses", "gpt-5.5"),
+		});
+
+		expect(pi._tools.map((tool) => tool.name)).toEqual([CURSOR_ASK_QUESTION_TOOL_NAME]);
+		expect(canRenderCursorToolNatively("cursor")).toBe(false);
+		expect(canRenderCursorToolNatively("edit")).toBe(false);
+		expect(canRenderCursorToolNatively("write")).toBe(false);
+		expect(pi.registerTool).toHaveBeenCalledTimes(1);
+	});
+
+	it("leaves ordinary pi edit rendering untouched on non-Cursor models", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createExtensionPi();
+		await extensionFactory(pi);
+		await pi.runSessionStart({
+			model: makeHarnessModel("openai-codex", "openai-codex-responses", "gpt-5.5"),
+		});
+
+		const wrappedEdit = pi._tools.find((tool) => tool.name === "edit");
+		expect(wrappedEdit).toBeUndefined();
+		expect(pi._activeToolNames()).toEqual(["read", "bash", "edit", "write"]);
+	});
+
+	it("registers native Cursor tool wrappers on first Cursor model transition", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createExtensionPi();
+		await extensionFactory(pi);
+		await pi.runSessionStart({
+			model: makeHarnessModel("openai-codex", "openai-codex-responses", "gpt-5.5"),
+		});
+
+		expect(pi._tools.map((tool) => tool.name)).toEqual([CURSOR_ASK_QUESTION_TOOL_NAME]);
+
+		await pi.runModelSelect(makeModel("composer-2.5"));
+
+		expect(pi._tools.map((tool) => tool.name)).toContain("cursor");
+		expect(pi._tools.map((tool) => tool.name)).toContain("read");
+		expect(pi._activeToolNames()).toContain("cursor");
+		expect(pi._activeToolNames()).toContain("read");
+		expect(canRenderCursorToolNatively("cursor")).toBe(true);
+		expect(canRenderCursorToolNatively("read")).toBe(true);
+	});
+
+	it("warns once for conflicting native Cursor tool wrappers across turn lifecycle hooks", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const notify = vi.fn();
+		const ui = { notify, setStatus: vi.fn() };
+		const pi = createExtensionPi([
+			{
+				name: "read",
+				description: "hashline read",
+				parameters: Type.Object({}),
+				sourceInfo: {
+					source: "package",
+					path: "/opt/homebrew/lib/node_modules/pi-hashline-edit/index.ts",
+					scope: "user",
+					origin: "package",
+				},
+			},
+			createBuiltinToolInfo("bash"),
+			createBuiltinToolInfo("grep"),
+			createBuiltinToolInfo("find"),
+			createBuiltinToolInfo("ls"),
+			createBuiltinToolInfo("edit"),
+			createBuiltinToolInfo("write"),
+		]);
+		await extensionFactory(pi);
+
+		await pi.runSessionStart({ ui });
+		await pi.runBeforeAgentStart({ ui });
+		await pi.runTurnStart({ ui });
+		await pi.runModelSelect(makeModel("composer-2.5"), { ui });
+
+		expect(notify).toHaveBeenCalledTimes(1);
+		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Cursor native tool replay skipped for read"), "warning");
+	});
+
 	it("does not register native Cursor tool wrappers when native display is disabled", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
 		mockedDiscover.mockResolvedValueOnce([]);
@@ -589,9 +677,6 @@ describe("extension native Cursor tool replay", () => {
 
 		expect(pi._tools.map((tool) => tool.name)).toEqual([
 			CURSOR_ASK_QUESTION_TOOL_NAME,
-			"bash",
-			"edit",
-			"write",
 			"grep",
 			"find",
 			"ls",
@@ -609,6 +694,9 @@ describe("extension native Cursor tool replay", () => {
 			"cursor_record_screen",
 			"cursor_web_search",
 			"cursor_web_fetch",
+			"bash",
+			"edit",
+			"write",
 		]);
 		expect(canRenderCursorToolNatively("read")).toBe(false);
 		expect(canRenderCursorToolNatively("bash")).toBe(true);

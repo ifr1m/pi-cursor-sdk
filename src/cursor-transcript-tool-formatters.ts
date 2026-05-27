@@ -505,18 +505,6 @@ export function getTodoTotalCount(args: Record<string, unknown>, result: Normali
 	return getNumber(asRecord(result.value), "totalCount") ?? getNumber(args, "totalCount") ?? todos.length;
 }
 
-export function summarizeTodos(args: Record<string, unknown>, result: NormalizedResult): string {
-	const todos = getTodoItems(args, result);
-	const total = getTodoTotalCount(args, result, todos);
-	const completed = todos.filter((todo) => todo.status === "completed").length;
-	const inProgress = todos.filter((todo) => todo.status === "inProgress").length;
-	const pending = todos.filter((todo) => todo.status === "pending").length;
-	const parts = [`${completed}/${total} completed`];
-	if (inProgress > 0) parts.push(`${inProgress} in progress`);
-	if (pending > 0) parts.push(`${pending} pending`);
-	return parts.join(", ");
-}
-
 function formatTodoStatus(status: string | undefined): string {
 	if (status === "completed") return "✓";
 	if (status === "inProgress") return "…";
@@ -530,12 +518,6 @@ export function formatTodos(args: Record<string, unknown>, result: NormalizedRes
 	if (todos.length === 0) return joinSections(header, limitText(stringifyUnknown(result.value), options));
 	const lines = todos.map((todo) => `${formatTodoStatus(todo.status)} ${todo.content}${todo.status ? ` (${todo.status})` : ""}`);
 	return joinSections(header, limitText(lines.join("\n"), options));
-}
-
-export function summarizePlan(args: Record<string, unknown>, result: NormalizedResult): string {
-	const planText = getString(args, "plan") ?? getString(asRecord(result.value), "plan");
-	const firstLine = planText ? firstNonEmptyLine(planText) : undefined;
-	return firstLine ? truncateArg(firstLine, 160) : summarizeTodos(args, result);
 }
 
 export function formatPlan(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
@@ -576,13 +558,6 @@ export function formatTask(args: Record<string, unknown>, result: NormalizedResu
 	if (result.status === "error") return joinSections(`task ${description}`, formatError(result.error));
 	const taskText = collectTaskText(result);
 	return joinSections(`task ${description}`, limitText(taskText || stringifyUnknown(result.value), options));
-}
-
-export function summarizeTask(description: string, taskText: string): string {
-	const firstLine = firstNonEmptyLine(taskText);
-	if (!firstLine) return truncateArg(description);
-	if (description === "task" || description === firstLine) return truncateArg(firstLine);
-	return truncateArg(`${description}: ${firstLine}`, 160);
 }
 
 function getGenerateImageValue(result: NormalizedResult): Record<string, unknown> | undefined {
@@ -642,16 +617,6 @@ function describeNonTextMcpContent(entry: unknown): string {
 	return `[${type} omitted]`;
 }
 
-export function summarizeSemSearch(args: Record<string, unknown>): string {
-	const query = getString(args, "query") ?? "semantic search";
-	const targetDirectories = getArray(args, "targetDirectories");
-	const dirHint =
-		targetDirectories && targetDirectories.length > 0
-			? ` (${targetDirectories.length} dir${targetDirectories.length === 1 ? "" : "s"})`
-			: "";
-	return truncateArg(`${query}${dirHint}`);
-}
-
 export function formatSemSearch(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
 	const query = getString(args, "query") ?? "semantic search";
 	const header = `semSearch ${truncateArg(query)}`;
@@ -694,24 +659,6 @@ function formatRecordingDurationMs(ms: number | undefined): string | undefined {
 	return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
 }
 
-export function summarizeRecordScreen(
-	args: Record<string, unknown>,
-	result: NormalizedResult,
-	options: TranscriptOptions,
-): string {
-	const mode = getString(args, "mode");
-	if (result.status === "error") return formatRecordScreenMode(mode);
-	const value = asRecord(result.value);
-	const path = getString(value, "path");
-	const displayPath = path ? formatDisplayPath(path, options.cwd) : undefined;
-	const duration = formatRecordingDurationMs(getNumber(value, "recordingDurationMs"));
-	const modeLabel = formatRecordScreenMode(mode);
-	if (displayPath && duration) return `${displayPath} · ${duration}`;
-	if (displayPath) return displayPath;
-	if (duration) return `${modeLabel} · ${duration}`;
-	return modeLabel;
-}
-
 export function formatRecordScreen(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
 	const mode = getString(args, "mode");
 	const header = `recordScreen ${formatRecordScreenMode(mode)}`;
@@ -748,12 +695,6 @@ export function getMcpResultPreview(result: NormalizedResult): string | undefine
 		if (summary) return summary;
 	}
 	return undefined;
-}
-
-export function summarizeMcp(args: Record<string, unknown>, result: NormalizedResult): string {
-	const toolName = truncateArg(getString(args, "toolName") ?? "mcp");
-	const preview = getMcpResultPreview(result);
-	return preview && preview !== toolName ? `${toolName} · ${preview}` : toolName;
 }
 
 function formatWebToolBody(

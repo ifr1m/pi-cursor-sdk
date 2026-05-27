@@ -19,7 +19,7 @@ import { backfillPiSessionSnapshot, parseDebugProviderEventsArgs } from "../scri
 import {
 	resolveCursorSettingSources,
 	serializeCursorSettingSources,
-} from "../scripts/lib/cursor-setting-sources.mjs";
+} from "../shared/cursor-setting-sources.mjs";
 
 describe("cursor sdk event debug sink", () => {
 	it("is disabled by default", () => {

@@ -7,9 +7,9 @@ import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
 import { LOCAL_READ_PREVIEW_NOTICE, isLocalReadPreviewContent } from "./cursor-transcript-utils.js";
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
+	getCursorReplayCallSummary,
 	getCursorReplaySideEffectDescription,
-	getCursorReplaySourceToolName,
-	getCursorReplaySummaryKind,
+	getCursorReplayOperationLabel,
 	getCursorReplayWrapperLabel,
 	type CursorReplayToolName,
 } from "./cursor-tool-presentation-registry.js";
@@ -222,6 +222,58 @@ function formatMutedBlock(text: string, theme: CursorReplayRenderTheme): string 
 	return text.split("\n").map((line) => theme.fg("muted", line)).join("\n");
 }
 
+function hasUnifiedDiffHunk(text: string): boolean {
+	return text.split("\n").some((line) => Boolean(parseUnifiedDiffHunkHeader(line)));
+}
+
+function formatCursorReplayActivityDiffPreview(
+	text: string,
+	theme: CursorReplayRenderTheme,
+	maxLines: number,
+	stripHeader: boolean,
+): string | undefined {
+	const body = (stripHeader ? stripCursorReplayHeader(text) : text).trimEnd();
+	if (!body || !hasUnifiedDiffHunk(body)) return undefined;
+	const slice = Number.isFinite(maxLines) ? sliceCursorReplayPreview(body, maxLines) : undefined;
+	const previewText = slice?.text ?? replaceCursorReplayTabs(body);
+	const rendered: string[] = [];
+	let inHunk = false;
+	for (const line of previewText.split("\n")) {
+		if (parseUnifiedDiffHunkHeader(line)) {
+			inHunk = true;
+			rendered.push(theme.fg("toolDiffContext", line));
+		} else if (!inHunk) {
+			const color = line.startsWith("--- ") || line.startsWith("+++ ") ? "toolDiffContext" : "muted";
+			rendered.push(theme.fg(color, line));
+		} else if (line.startsWith("--- ") || line.startsWith("+++ ")) {
+			rendered.push(theme.fg("toolDiffContext", line));
+		} else if (line.startsWith("+")) {
+			rendered.push(theme.fg("toolDiffAdded", line));
+		} else if (line.startsWith("-")) {
+			rendered.push(theme.fg("toolDiffRemoved", line));
+		} else {
+			rendered.push(theme.fg("toolDiffContext", line));
+		}
+	}
+	const omission = slice ? formatCursorReplayOmission(slice) : undefined;
+	if (omission) rendered.push(theme.fg("muted", omission));
+	return rendered.join("\n");
+}
+
+function formatCursorReplayActivityPreview(
+	details: CursorReplayExpandableResultDetails,
+	text: string,
+	theme: CursorReplayRenderTheme,
+	maxLines: number,
+	stripHeader: boolean,
+): string | undefined {
+	if (details.sourceToolName === "edit" || details.sourceToolName === "write") {
+		const diffPreview = formatCursorReplayActivityDiffPreview(text, theme, maxLines, stripHeader);
+		if (diffPreview) return diffPreview;
+	}
+	return stripHeader ? formatCursorReplayPreview(text, theme, maxLines, true) : formatMutedBlock(text, theme);
+}
+
 export function formatCursorReplayPreview(
 	text: string,
 	theme: CursorReplayRenderTheme,
@@ -268,77 +320,6 @@ function getCursorReplayActivityTitle(toolName: CursorReplayToolName, args: Reco
 		return args.activityTitle.trim();
 	}
 	return getCursorReplayWrapperLabel(toolName);
-}
-
-function formatReplayRecordingDurationMs(ms: number | undefined): string | undefined {
-	if (ms === undefined || !Number.isFinite(ms) || ms < 0) return undefined;
-	if (ms < 1000) return `${Math.round(ms)}ms`;
-	const seconds = ms / 1000;
-	return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-}
-
-function formatReplaySemSearchQuery(args: Record<string, unknown> | undefined): string | undefined {
-	const query = typeof args?.query === "string" ? args.query.trim() : undefined;
-	if (!query) return undefined;
-	const targetDirectories = Array.isArray(args?.targetDirectories)
-		? args.targetDirectories.filter((entry): entry is string => typeof entry === "string")
-		: [];
-	const dirHint =
-		targetDirectories.length > 0 ? ` (${targetDirectories.length} dir${targetDirectories.length === 1 ? "" : "s"})` : "";
-	return `${query}${dirHint}`;
-}
-
-function getCursorReplayCallSummary(toolName: CursorReplayToolName, args: Record<string, unknown> | undefined): string | undefined {
-	const activitySummary = typeof args?.activitySummary === "string" && args.activitySummary.trim() ? args.activitySummary.trim() : undefined;
-	if (activitySummary) return activitySummary;
-
-	const path = typeof args?.path === "string" ? args.path : undefined;
-	const description = typeof args?.description === "string" ? args.description : undefined;
-	const prompt = typeof args?.prompt === "string" ? args.prompt : undefined;
-	const totalCount = typeof args?.totalCount === "number" ? args.totalCount : undefined;
-	const diagnosticCount = typeof args?.diagnosticCount === "number" ? args.diagnosticCount : undefined;
-	const paths = Array.isArray(args?.paths) ? args.paths.filter((entry): entry is string => typeof entry === "string") : [];
-
-	switch (getCursorReplaySummaryKind(toolName)) {
-		case "path":
-			return path ?? "unknown";
-		case "read_lints": {
-			const target = paths.length > 0 ? paths.join(", ") : path;
-			if (target && diagnosticCount !== undefined) {
-				return `${diagnosticCount} diagnostic${diagnosticCount === 1 ? "" : "s"} in ${target}`;
-			}
-			return target;
-		}
-		case "todo_count":
-			return totalCount !== undefined ? `${totalCount} item${totalCount === 1 ? "" : "s"}` : undefined;
-		case "description":
-			return description;
-		case "generate_image":
-			return path ?? prompt;
-		case "mcp_tool_name":
-			return typeof args?.toolName === "string" ? args.toolName : undefined;
-		case "sem_search":
-			return formatReplaySemSearchQuery(args);
-		case "record_screen": {
-			const duration = formatReplayRecordingDurationMs(
-				typeof args?.recordingDurationMs === "number" ? args.recordingDurationMs : undefined,
-			);
-			if (path && duration) return `${path} · ${duration}`;
-			if (path) return path;
-			if (typeof args?.mode === "string") return args.mode;
-			return undefined;
-		}
-		case "web_query":
-			return typeof args?.query === "string" ? args.query : undefined;
-		case "web_url":
-			return typeof args?.url === "string" ? args.url : undefined;
-		case "activity_generic":
-			if (path) return path;
-			if (typeof args?.toolName === "string") return args.toolName;
-			return formatReplaySemSearchQuery(args);
-		default:
-			return undefined;
-	}
 }
 
 export function renderCursorReplayCall(
@@ -419,6 +400,7 @@ type CursorReplayExpandableResultDetails = {
 	collapseDetailsByDefault?: boolean;
 	imagePath?: string;
 	imageMimeType?: string;
+	sourceToolName?: CursorReplayActivityDetails["sourceToolName"];
 };
 
 function hasCursorReplayDisplayTitle(details: CursorReplayToolDetails | undefined): boolean {
@@ -440,7 +422,13 @@ function renderExpandableCursorReplayResult(
 	let rendered = `${theme.fg("toolTitle", theme.bold(title))} ${theme.fg(isError ? "error" : "success", summary)}`;
 	const expandedText = details.expandedText ?? (text.includes("\n") ? text : undefined);
 	if (expandedText && (options.expanded || !details.collapseDetailsByDefault)) {
-		const preview = options.expanded ? formatMutedBlock(expandedText, theme) : formatCursorReplayPreview(expandedText, theme);
+		const preview = formatCursorReplayActivityPreview(
+			details,
+			expandedText,
+			theme,
+			options.expanded ? Number.POSITIVE_INFINITY : CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES,
+			!options.expanded,
+		);
 		if (preview) rendered += `\n${preview}`;
 	}
 	if (details.imagePath && !isError && context.showImages) {
@@ -571,7 +559,7 @@ export function renderNativeLookingCursorReadReplayResult(
 }
 
 export function createCursorReplayOnlyToolDefinition(toolName: CursorReplayToolName): ToolDefinition<typeof cursorReplayToolSchema, unknown> {
-	const cursorToolName = toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME ? "activity" : getCursorReplaySourceToolName(toolName);
+	const cursorToolName = toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME ? "activity" : getCursorReplayOperationLabel(toolName);
 	const sideEffectDescription = getCursorReplaySideEffectDescription(toolName);
 	return {
 		name: toolName,

@@ -55,4 +55,5 @@ export declare function backfillPiSessionSnapshot(
 
 export declare function runDebugProviderEvents(
 	args: CursorDebugProviderEventsArgs,
+	env?: NodeJS.ProcessEnv,
 ): Promise<CursorDebugProviderEventsRunSummary>;

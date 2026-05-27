@@ -10,8 +10,8 @@ import {
 	installCursorMcpToolTimeoutOverride,
 	restoreCursorMcpToolTimeoutOverride,
 } from "../src/cursor-mcp-timeout-override.ts";
-import { defaultApiKeyFromEnv, parseArgv } from "./lib/cursor-cli-args.mjs";
-import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
+import { apiKeySecretsFromProcess, defaultApiKeyFromEnv, parseArgv } from "./lib/cursor-cli-args.mjs";
+import { scrubSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 import { createScriptFail } from "./lib/cursor-script-fail.mjs";
 import { installCursorSdkOutputFilter, suppressCursorSdkOutput } from "./lib/cursor-sdk-output-filter.mjs";
 
@@ -51,8 +51,9 @@ Safety:
 
 const exitWithFailure = createScriptFail("probe-mcp-coldstart");
 
-function fail(message, apiKey) {
-	exitWithFailure(message, apiKey ? [apiKey] : []);
+function fail(message, secrets) {
+	const secretList = secrets === undefined ? [] : Array.isArray(secrets) ? secrets : [secrets];
+	exitWithFailure(message, secretList.filter(Boolean));
 }
 
 function findScenario(label) {
@@ -220,6 +221,6 @@ async function main(argv = process.argv.slice(2), env = process.env) {
 if (import.meta.url === new URL(process.argv[1], "file:").href) {
 	main().catch((error) => {
 		const message = error instanceof Error ? error.message : String(error);
-		fail(message, process.env.CURSOR_API_KEY);
+		fail(message, apiKeySecretsFromProcess());
 	});
 }

@@ -63,10 +63,6 @@ describe("extension registration and discovery", () => {
 		expect(pi.registerTool).toHaveBeenCalledTimes(22);
 		expect(pi._tools.map((tool) => tool.name)).toEqual([
 			CURSOR_ASK_QUESTION_TOOL_NAME,
-			"read",
-			"bash",
-			"edit",
-			"write",
 			"grep",
 			"find",
 			"ls",
@@ -84,6 +80,10 @@ describe("extension registration and discovery", () => {
 			"cursor_record_screen",
 			"cursor_web_search",
 			"cursor_web_fetch",
+			"read",
+			"bash",
+			"edit",
+			"write",
 		]);
 		expect(pi.setActiveTools).toHaveBeenCalledWith([
 			"read",
@@ -139,19 +139,22 @@ describe("extension registration and discovery", () => {
 		expect(pi._activeToolNames()).not.toContain("cursor_generate_image");
 	});
 
-	it("resyncs Cursor-only tools before a turn when session startup did not know the model", async () => {
+	it("registers and resyncs Cursor-only tools before a turn when session startup did not know the model", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		mockedDiscover.mockResolvedValueOnce([]);
 		const pi = createExtensionPi();
 		await extensionFactory(pi);
 		await pi.runSessionStart({ model: undefined });
 
+		expect(pi._tools.map((tool) => tool.name)).toEqual([CURSOR_ASK_QUESTION_TOOL_NAME]);
 		expect(pi._activeToolNames()).not.toContain("cursor");
 		expect(pi._activeToolNames()).not.toContain("grep");
 		expect(pi._activeToolNames()).not.toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
 
 		await pi.runBeforeAgentStart({ model: makeModel("composer-2.5") });
 
+		expect(pi._tools.map((tool) => tool.name)).toContain("cursor");
+		expect(pi._tools.map((tool) => tool.name)).toContain("grep");
 		expect(pi._activeToolNames()).toContain("cursor");
 		expect(pi._activeToolNames()).toContain("grep");
 		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);

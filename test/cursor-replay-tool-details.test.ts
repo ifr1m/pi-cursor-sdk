@@ -4,6 +4,7 @@ import {
 	CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE,
 	buildCursorReplayNativeEditDetails,
 	parseCursorReplayToolDetails,
+	parseStrictCurrentCursorReplayToolDetails,
 } from "../src/cursor-replay-tool-details.js";
 import {
 	renderCursorReplayResult,
@@ -120,7 +121,7 @@ describe("cursor replay tool details contract", () => {
 		expect(write).not.toHaveProperty("title");
 	});
 
-	it("routes known source names on genericFallback away from unknown branding", () => {
+	it("keeps genericFallback strict instead of repairing known source names in render parsing", () => {
 		const edit = parseCursorReplayToolDetails({
 			variant: "genericFallback",
 			sourceToolName: "edit",
@@ -145,14 +146,32 @@ describe("cursor replay tool details contract", () => {
 			summary: "done",
 		});
 
-		expect(edit).toMatchObject({ variant: "nativeEdit" });
-		expect(write).toMatchObject({ variant: "nativeWrite" });
-		expect(image).toMatchObject({ variant: "generateImage" });
-		expect(read).toMatchObject({ variant: "activity", sourceToolName: "read", title: "Cursor read" });
+		expect(edit).toMatchObject({ variant: "genericFallback", sourceToolName: "edit" });
+		expect(write).toMatchObject({ variant: "genericFallback", sourceToolName: "write" });
+		expect(image).toMatchObject({ variant: "genericFallback", sourceToolName: "generateImage" });
+		expect(read).toMatchObject({ variant: "genericFallback", sourceToolName: "read" });
+	});
+
+	it("strict current parsing rejects legacy-only source fields", () => {
+		expect(parseStrictCurrentCursorReplayToolDetails({
+			variant: "activity",
+			cursorToolName: "read",
+			title: "Cursor read",
+		})).toBeUndefined();
+		expect(parseStrictCurrentCursorReplayToolDetails({
+			variant: "genericFallback",
+			cursorToolName: "futureTool",
+			summary: "done",
+		})).toEqual({
+			variant: "genericFallback",
+			sourceToolName: "tool",
+			summary: "done",
+		});
 	});
 
 	it("parses generic fallback details without a title", () => {
 		const parsed = parseCursorReplayToolDetails({
+			variant: "genericFallback",
 			sourceToolName: "futureTool",
 			summary: "done",
 		});
@@ -213,7 +232,7 @@ describe("cursor replay tool details contract", () => {
 			options: { cwd: "/tmp", maxChars: 4000 },
 		});
 		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "");
-		expect(rendered).toContain(`${CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE} saved generated.png`);
+		expect(rendered).toContain(`${CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE} generated.png`);
 		expect(rendered).not.toContain("Cursor image generation");
 	});
 

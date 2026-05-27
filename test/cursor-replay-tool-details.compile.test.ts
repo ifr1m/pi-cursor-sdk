@@ -1,6 +1,6 @@
 import {
-	assembleCursorReplayActivityResultDetails,
 	assembleCursorReplayActivityDetails,
+	assembleCursorReplayGenerateImageDetails,
 	type CursorReplayActivitySourceToolName,
 	type CursorReplayNativeEditDetails,
 	type CursorReplayGenerateImageDetails,
@@ -49,21 +49,20 @@ const _rejectGenerateImageOnGenericFallback: CursorReplayGenericFallbackDetails 
 	sourceToolName: "generateImage",
 };
 
-const _rejectEditOnActivityAssembly = assembleCursorReplayActivityResultDetails(
-	// @ts-expect-error edit activity fallback must use assembleCursorReplayActivityDetails
-	"edit",
-	"Cursor edit",
-	{},
+const _rejectImageFieldsOnActivityDetails = assembleCursorReplayActivityDetails(
+	"mcp",
+	"Cursor MCP",
+	{
+		// @ts-expect-error image fields belong to assembleCursorReplayGenerateImageDetails
+		imagePath: "/tmp/image.png",
+	},
 	"",
 	false,
 	undefined,
 );
 
-const _rejectWriteOnActivityAssembly = assembleCursorReplayActivityResultDetails(
-	// @ts-expect-error write activity fallback must use assembleCursorReplayActivityDetails
-	"write",
-	"Cursor write",
-	{},
+const _acceptGenerateImageDetails = assembleCursorReplayGenerateImageDetails(
+	{ imagePath: "/tmp/image.png", imageMimeType: "image/png" },
 	"",
 	false,
 	undefined,
@@ -79,10 +78,9 @@ const _acceptEditOnActivityDetails = assembleCursorReplayActivityDetails(
 );
 
 void _acceptEditOnActivityDetails;
-
+void _acceptGenerateImageDetails;
 void _rejectGenerateImageOnActivity;
 void _rejectEditOnGenericFallback;
 void _rejectWriteOnGenericFallback;
 void _rejectGenerateImageOnGenericFallback;
-void _rejectEditOnActivityAssembly;
-void _rejectWriteOnActivityAssembly;
+void _rejectImageFieldsOnActivityDetails;

@@ -10,8 +10,8 @@ import { CURSOR_SDK_STARTUP_NOISE_PATTERNS as scriptNoisePatterns } from "../scr
 import {
 	CURSOR_SETTING_SOURCES_ENV,
 	resolveCursorSettingSources as resolveScriptSettingSources,
-} from "../scripts/lib/cursor-setting-sources.mjs";
-import { scrubSensitiveText as scrubScriptSensitiveText } from "../scripts/lib/cursor-sensitive-text.mjs";
+} from "../shared/cursor-setting-sources.mjs";
+import { scrubSensitiveText as scrubScriptSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 import {
 	buildSummary,
 	createEventJsonlSink,
@@ -191,8 +191,6 @@ describe("debug-sdk-events maintainer probe", () => {
 				cpSync(`shared/${sharedFile}`, join(packageRoot, "shared", sharedFile));
 			}
 			for (const libFile of [
-				"cursor-setting-sources.mjs",
-				"cursor-sensitive-text.mjs",
 				"cursor-cli-args.mjs",
 				"cursor-script-fail.mjs",
 				"cursor-sdk-output-filter.mjs",

@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveCursorSettingSources as resolveProviderSettingSources } from "../src/cursor-setting-sources.js";
 import {
 	commonProbeFlags,
+	apiKeySecretsFromProcess,
 	defaultApiKeyFromEnv,
 	defaultSettingSourcesFromEnv,
 	defaultTimestampedDir,
 	parseArgv,
+	readArgvApiKey,
 	requireApiKey,
 } from "../scripts/lib/cursor-cli-args.mjs";
 import { parseJsonLines, terminateChild, waitForChildClose } from "../scripts/lib/cursor-child-process.mjs";
@@ -19,8 +21,8 @@ import {
 	CURSOR_SETTING_SOURCES_ENV,
 	resolveCursorSettingSources,
 	serializeCursorSettingSources,
-} from "../scripts/lib/cursor-setting-sources.mjs";
-import { scrubSensitiveText } from "../scripts/lib/cursor-sensitive-text.mjs";
+} from "../shared/cursor-setting-sources.mjs";
+import { scrubSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 import { createScriptFail } from "../scripts/lib/cursor-script-fail.mjs";
 
 describe("maintainer scripts shared lib", () => {
@@ -75,6 +77,16 @@ describe("maintainer scripts shared lib", () => {
 			expect(resolved).toEqual(expected);
 			expect(resolveCursorSettingSources(serializeCursorSettingSources(resolved))).toEqual(expected);
 		}
+	});
+
+	it("reads api keys from argv and process env for failure scrubbing", () => {
+		expect(readArgvApiKey(["--api-key", " argv-key "])).toBe("argv-key");
+		expect(readArgvApiKey(["--api-key=inline-key"])).toBe("inline-key");
+		expect(readArgvApiKey(["--model", "composer-2.5"])).toBeUndefined();
+		expect(apiKeySecretsFromProcess(["--api-key", "argv-key"], { CURSOR_API_KEY: "env-key" })).toEqual([
+			"env-key",
+			"argv-key",
+		]);
 	});
 
 	it("parses common probe flags and enforces api key requirements", () => {
@@ -133,15 +145,21 @@ describe("maintainer scripts shared lib", () => {
 		expect(typeof terminateChild).toBe("function");
 	});
 
-	it("createScriptFail scrubs all provided secrets before exit", () => {
+	it("createScriptFail scrubs generic secrets before applying explicit secrets", () => {
 		const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as typeof process.exit);
 		const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
 		const firstSecret = "super-secret-cursor-key-12345";
 		const secondSecret = "another-secret-token-67890";
 		const fail = createScriptFail("test-script");
-		fail(`failed with ${firstSecret} and ${secondSecret}`, [firstSecret, secondSecret]);
+		fail(
+			`failed with Bearer generic-token apiKey=raw-key http://127.0.0.1:4242/cursor-pi-tool-bridge/abc/mcp ${firstSecret} and ${secondSecret}`,
+			[firstSecret, secondSecret],
+		);
 		const output = stderr.mock.calls.join("");
 		expect(stderr).toHaveBeenCalledWith(expect.stringContaining("[redacted]"));
+		expect(output).toContain("Bearer [redacted]");
+		expect(output).toContain("apiKey=[redacted]");
+		expect(output).toContain("[redacted-bridge-endpoint]");
 		expect(output).not.toContain(firstSecret);
 		expect(output).not.toContain(secondSecret);
 		exit.mockRestore();

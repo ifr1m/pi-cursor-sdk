@@ -5,10 +5,10 @@ import {
 	getToolName,
 	getToolResult,
 	normalizeResult,
-	normalizeToolName,
 	type CursorPiToolDisplay,
 	type TranscriptOptions,
 } from "./cursor-transcript-utils.js";
+import { normalizeCursorToolName as normalizeToolName } from "./cursor-tool-presentation-registry.js";
 import {
 	buildCursorPiToolDisplayFromSpec,
 	formatCursorToolTranscriptFromSpec,

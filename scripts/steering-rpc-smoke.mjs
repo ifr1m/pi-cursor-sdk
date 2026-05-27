@@ -7,7 +7,8 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseJsonLines, terminateChild, waitForChildClose } from "./lib/cursor-child-process.mjs";
-import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
+import { apiKeySecretsFromProcess } from "./lib/cursor-cli-args.mjs";
+import { scrubSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -155,7 +156,11 @@ async function runPiRpcSmoke(sessionDir) {
 		const exitCode = await waitForChildClose(child);
 		closed = true;
 		if (exitCode !== 0) {
-			fail(`pi exited ${exitCode}\nstderr=${scrubSensitiveText(stderr.slice(-2000), process.env.CURSOR_API_KEY)}`);
+			let scrubbedStderr = scrubSensitiveText(stderr.slice(-2000));
+			for (const secret of apiKeySecretsFromProcess()) {
+				if (secret) scrubbedStderr = scrubSensitiveText(scrubbedStderr, secret);
+			}
+			fail(`pi exited ${exitCode}\nstderr=${scrubbedStderr}`);
 		}
 
 		return {
@@ -185,6 +190,10 @@ async function main() {
 }
 
 main().catch((error) => {
-	console.error(error instanceof Error ? error.message : String(error));
+	let scrubbed = scrubSensitiveText(error instanceof Error ? error.message : String(error));
+	for (const secret of apiKeySecretsFromProcess()) {
+		if (secret) scrubbed = scrubSensitiveText(scrubbed, secret);
+	}
+	console.error(scrubbed);
 	process.exitCode = 1;
 });

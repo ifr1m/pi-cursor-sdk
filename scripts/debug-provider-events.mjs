@@ -8,6 +8,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+	apiKeySecretsFromProcess,
 	commonProbeFlags,
 	defaultApiKeyFromEnv,
 	defaultSettingSourcesFromEnv,
@@ -15,9 +16,9 @@ import {
 	requireApiKey,
 } from "./lib/cursor-cli-args.mjs";
 import { parseJsonLines, terminateChild, waitForChildClose } from "./lib/cursor-child-process.mjs";
-import { scrubSensitiveText } from "./lib/cursor-sensitive-text.mjs";
+import { scrubSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 import { createScriptFail } from "./lib/cursor-script-fail.mjs";
-import { serializeCursorSettingSources } from "./lib/cursor-setting-sources.mjs";
+import { serializeCursorSettingSources } from "../shared/cursor-setting-sources.mjs";
 
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -129,6 +130,25 @@ function readCaptureSummary(artifactDir, stderr) {
 	return undefined;
 }
 
+function assertCompleteCaptureSummary(captureSummary, artifactDir, apiKey) {
+	if (!captureSummary?.artifactDir) {
+		fail(`missing summary.json in ${artifactDir}`, [apiKey]);
+	}
+	if (!captureSummary.artifacts || typeof captureSummary.artifacts !== "object") {
+		fail(`summary.json missing artifacts in ${artifactDir}`, [apiKey]);
+	}
+	if (!captureSummary.counts || typeof captureSummary.counts !== "object") {
+		fail(`summary.json missing counts in ${artifactDir}`, [apiKey]);
+	}
+	if (typeof captureSummary.elapsedMs !== "number") {
+		fail(`summary.json missing elapsedMs in ${artifactDir}`, [apiKey]);
+	}
+	if (typeof captureSummary.waitResultRecorded !== "boolean") {
+		fail(`summary.json missing waitResultRecorded in ${artifactDir}`, [apiKey]);
+	}
+	return captureSummary;
+}
+
 export function backfillPiSessionSnapshot(captureSummary, artifactDir, sessionDir) {
 	const sessionFile = captureSummary?.piSessionSnapshot?.sessionFile ?? captureSummary?.sessionFile;
 	if (!captureSummary || captureSummary.piSessionSnapshot?.copied || !sessionFile || !existsSync(sessionFile)) {
@@ -154,12 +174,12 @@ export function backfillPiSessionSnapshot(captureSummary, artifactDir, sessionDi
 	}
 }
 
-export async function runDebugProviderEvents(args) {
+export async function runDebugProviderEvents(args, envInput = process.env) {
 	if (args.promptFile) {
 		args.prompt = readFileSync(args.promptFile, "utf8");
 	}
 	if (!args.prompt?.trim()) fail("--prompt or --prompt-file is required");
-	args.apiKey = requireApiKey(args, process.env, fail);
+	args.apiKey = requireApiKey(args, envInput, fail);
 
 	const artifactDir = args.out ?? defaultOutDir(args.cwd);
 	const sessionDir = args.sessionDir ?? join(artifactDir, "session");
@@ -178,13 +198,13 @@ export async function runDebugProviderEvents(args) {
 		sessionDir,
 	];
 	const env = {
-		...process.env,
+		...envInput,
 		CURSOR_API_KEY: args.apiKey,
 		PI_CURSOR_SDK_EVENT_DEBUG: "1",
 		PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR: artifactDir,
 		PI_CURSOR_SETTING_SOURCES: serializeCursorSettingSources(args.settingSources),
-		PI_CURSOR_NATIVE_TOOL_DISPLAY: envFlag(process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY, "1"),
-		PI_CURSOR_PI_TOOL_BRIDGE: envFlag(process.env.PI_CURSOR_PI_TOOL_BRIDGE, "1"),
+		PI_CURSOR_NATIVE_TOOL_DISPLAY: envFlag(envInput.PI_CURSOR_NATIVE_TOOL_DISPLAY, "1"),
+		PI_CURSOR_PI_TOOL_BRIDGE: envFlag(envInput.PI_CURSOR_PI_TOOL_BRIDGE, "1"),
 	};
 
 	const child = spawn("pi", piArgs, {
@@ -211,7 +231,7 @@ export async function runDebugProviderEvents(args) {
 	try {
 		send({ type: "prompt", message: args.prompt });
 		await new Promise((resolve, reject) => {
-			const timeoutMs = Number(process.env.PI_PROVIDER_EVENT_DEBUG_TIMEOUT_MS ?? 600_000);
+			const timeoutMs = Number(envInput.PI_PROVIDER_EVENT_DEBUG_TIMEOUT_MS ?? 600_000);
 			const start = Date.now();
 			const tick = () => {
 				const events = parseJsonLines(stdout);
@@ -234,10 +254,11 @@ export async function runDebugProviderEvents(args) {
 			fail(`pi exited ${exitCode}\nstderr=${scrubSensitiveText(stderr.slice(-2000), args.apiKey)}`, [args.apiKey]);
 		}
 
-		const captureSummary = backfillPiSessionSnapshot(readCaptureSummary(artifactDir, stderr), artifactDir, sessionDir);
-		if (!captureSummary?.artifactDir) {
-			fail(`missing summary.json in ${artifactDir}`, [args.apiKey]);
-		}
+		const captureSummary = assertCompleteCaptureSummary(
+			backfillPiSessionSnapshot(readCaptureSummary(artifactDir, stderr), artifactDir, sessionDir),
+			artifactDir,
+			args.apiKey,
+		);
 
 		return {
 			artifactDir: captureSummary.artifactDir,
@@ -267,12 +288,11 @@ async function main(argv = process.argv.slice(2), env = process.env) {
 		printHelp();
 		return;
 	}
-	console.log(JSON.stringify(await runDebugProviderEvents(args)));
+	console.log(JSON.stringify(await runDebugProviderEvents(args, env)));
 }
 
 if (import.meta.url === new URL(process.argv[1], "file:").href) {
 	main().catch((error) => {
-		console.error(error instanceof Error ? error.message : String(error));
-		process.exitCode = 1;
+		fail(error instanceof Error ? error.message : String(error), apiKeySecretsFromProcess());
 	});
 }

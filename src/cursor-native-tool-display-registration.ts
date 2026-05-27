@@ -13,12 +13,19 @@ import {
 	NATIVE_CURSOR_TOOL_DISPLAY_ENV,
 	readBooleanEnv,
 	registeredNativeToolNames,
+	skippedNativeToolNames,
 } from "./cursor-native-tool-display-state.js";
 import { isCursorReplayToolName } from "./cursor-tool-names.js";
 
-const CORE_PI_TOOL_NAMES = new Set(["read", "bash", "edit", "write"]);
+export const CURSOR_CORE_PI_REPLAY_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
+const CORE_PI_TOOL_NAMES = new Set<string>(CURSOR_CORE_PI_REPLAY_TOOL_NAMES);
 
-type CursorNativeToolRegistryApi = Pick<ExtensionAPI, "getActiveTools" | "getAllTools" | "registerTool" | "setActiveTools">;
+function isCursorCorePiReplayToolName(toolName: string): toolName is (typeof CURSOR_CORE_PI_REPLAY_TOOL_NAMES)[number] {
+	return CORE_PI_TOOL_NAMES.has(toolName);
+}
+
+type CursorNativeToolActivationApi = Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">;
+type CursorNativeToolRegistryApi = CursorNativeToolActivationApi & Pick<ExtensionAPI, "getAllTools" | "registerTool">;
 
 export interface CursorNativeToolDisplayExtensionApi extends CursorNativeToolRegistryApi {
 	on(event: "session_start", handler: ExtensionHandler<SessionStartEvent>): void;
@@ -34,7 +41,40 @@ function hasNonBuiltinTool(pi: Pick<ExtensionAPI, "getAllTools">, toolName: Nati
 
 type NativeRegistrationContext = { hasUI: boolean; ui: Pick<ExtensionContext["ui"], "notify">; model?: ExtensionContext["model"] };
 
-export function syncRegisteredNativeCursorToolsForModel(pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">, model: ExtensionContext["model"]): void {
+function registerNativeCursorToolsFromSet(
+	pi: CursorNativeToolRegistryApi,
+	toolNames: readonly NativeCursorToolName[],
+): NativeCursorToolName[] {
+	const newlySkippedToolNames: NativeCursorToolName[] = [];
+	for (const toolName of toolNames) {
+		if (registeredNativeToolNames.has(toolName) || skippedNativeToolNames.has(toolName)) continue;
+		if (hasNonBuiltinTool(pi, toolName)) {
+			skippedNativeToolNames.add(toolName);
+			newlySkippedToolNames.push(toolName);
+			continue;
+		}
+		registerNativeCursorTool(pi, toolName);
+		registeredNativeToolNames.add(toolName);
+	}
+	return newlySkippedToolNames;
+}
+
+function notifySkippedNativeCursorToolsIfNeeded(ctx: NativeRegistrationContext, skippedToolNames: readonly NativeCursorToolName[]): void {
+	if (skippedToolNames.length === 0 || readBooleanEnv(NATIVE_CURSOR_TOOL_DISPLAY_ENV) !== true || !ctx.hasUI) return;
+	ctx.ui.notify(
+		`Cursor native tool replay skipped for ${skippedToolNames.join(", ")} because another extension already provides ${skippedToolNames.length === 1 ? "that tool" : "those tools"}. Cursor will use scrubbed activity transcripts for skipped tools.`,
+		"warning",
+	);
+}
+
+function hasAttemptedNativeCursorToolRegistration(): boolean {
+	return registeredNativeToolNames.size > 0 || skippedNativeToolNames.size > 0;
+}
+
+export function syncRegisteredNativeCursorToolsForModel(
+	pi: CursorNativeToolActivationApi,
+	model: ExtensionContext["model"],
+): void {
 	if (registeredNativeToolNames.size === 0) return;
 	const activeToolNames = new Set(pi.getActiveTools());
 	let changed = false;
@@ -47,7 +87,7 @@ export function syncRegisteredNativeCursorToolsForModel(pi: Pick<ExtensionAPI, "
 		}
 	} else {
 		for (const toolName of registeredNativeToolNames) {
-			if (CORE_PI_TOOL_NAMES.has(toolName)) continue;
+			if (isCursorCorePiReplayToolName(toolName)) continue;
 			if (!activeToolNames.delete(toolName)) continue;
 			changed = true;
 		}
@@ -55,45 +95,41 @@ export function syncRegisteredNativeCursorToolsForModel(pi: Pick<ExtensionAPI, "
 	if (changed) pi.setActiveTools([...activeToolNames]);
 }
 
-function registerAvailableNativeCursorTools(pi: CursorNativeToolRegistryApi, ctx: NativeRegistrationContext): void {
+function ensureNativeCursorToolsRegisteredForModel(pi: CursorNativeToolRegistryApi, ctx: NativeRegistrationContext): void {
 	if (!isCursorNativeToolRegistrationRequested()) {
 		registeredNativeToolNames.clear();
+		skippedNativeToolNames.clear();
 		return;
 	}
+	if (!isCursorModel(ctx.model) || hasAttemptedNativeCursorToolRegistration()) return;
 
-	const skippedToolNames: string[] = [];
-	for (const toolName of NATIVE_CURSOR_TOOL_NAMES) {
-		if (registeredNativeToolNames.has(toolName)) continue;
-		if (hasNonBuiltinTool(pi, toolName)) {
-			skippedToolNames.push(toolName);
-			continue;
-		}
-		registerNativeCursorTool(pi, toolName);
-		registeredNativeToolNames.add(toolName);
+	const nonCoreToolNames = NATIVE_CURSOR_TOOL_NAMES.filter((toolName) => !isCursorCorePiReplayToolName(toolName));
+	const skippedToolNames = [
+		...registerNativeCursorToolsFromSet(pi, nonCoreToolNames),
+		...registerNativeCursorToolsFromSet(pi, CURSOR_CORE_PI_REPLAY_TOOL_NAMES),
+	];
+	notifySkippedNativeCursorToolsIfNeeded(ctx, skippedToolNames);
+}
+
+function ensureThenSyncNativeCursorToolsForModel(pi: CursorNativeToolRegistryApi, ctx: NativeRegistrationContext): void {
+	if (isCursorModel(ctx.model) && !hasAttemptedNativeCursorToolRegistration()) {
+		ensureNativeCursorToolsRegisteredForModel(pi, ctx);
 	}
-
 	syncRegisteredNativeCursorToolsForModel(pi, ctx.model);
-
-	if (skippedToolNames.length > 0 && readBooleanEnv(NATIVE_CURSOR_TOOL_DISPLAY_ENV) === true && ctx.hasUI) {
-		ctx.ui.notify(
-			`Cursor native tool replay skipped for ${skippedToolNames.join(", ")} because another extension already provides ${skippedToolNames.length === 1 ? "that tool" : "those tools"}. Cursor will use scrubbed activity transcripts for skipped tools.`,
-			"warning",
-		);
-	}
 }
 
 export function registerCursorNativeToolDisplay(pi: CursorNativeToolDisplayExtensionApi): void {
 	pi.on("session_start", (_event, ctx) => {
-		registerAvailableNativeCursorTools(pi, ctx);
+		ensureThenSyncNativeCursorToolsForModel(pi, ctx);
 	});
 	pi.on("before_agent_start", (_event, ctx) => {
-		syncRegisteredNativeCursorToolsForModel(pi, ctx.model);
+		ensureThenSyncNativeCursorToolsForModel(pi, ctx);
 	});
 	pi.on("turn_start", (_event, ctx) => {
-		syncRegisteredNativeCursorToolsForModel(pi, ctx.model);
+		ensureThenSyncNativeCursorToolsForModel(pi, ctx);
 	});
-	pi.on("model_select", (event) => {
-		syncRegisteredNativeCursorToolsForModel(pi, event.model);
+	pi.on("model_select", (event, ctx) => {
+		ensureThenSyncNativeCursorToolsForModel(pi, { ...ctx, model: event.model });
 	});
 }
 

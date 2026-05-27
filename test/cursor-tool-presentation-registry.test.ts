@@ -12,8 +12,9 @@ import {
 	CURSOR_TOOL_PRESENTATION_SPECS,
 	classifyCursorWebToolKind,
 	getCursorReplayActivityTitle,
+	getCursorReplayCallSummary,
+	getCursorReplayOperationLabel,
 	getCursorReplaySideEffectDescription,
-	getCursorReplaySummaryKind,
 	getCursorReplayWrapperLabel,
 	getCursorToolLifecycleLabelKind,
 	getCursorToolPresentationSpec,
@@ -23,7 +24,7 @@ import {
 	type CursorNormalizedToolName,
 } from "../src/cursor-tool-presentation-registry.js";
 import { classifyCursorToolVisibility } from "../src/cursor-tool-visibility.js";
-import { normalizeToolName } from "../src/cursor-transcript-utils.js";
+import { normalizeCursorToolName as normalizeToolName } from "../src/cursor-tool-presentation-registry.js";
 
 describe("cursor tool presentation registry", () => {
 	it("lists every known normalized tool exactly once", () => {
@@ -95,6 +96,13 @@ describe("cursor tool presentation registry", () => {
 		}
 	});
 
+	it("derives replay operation labels from normalized names with explicit overrides", () => {
+		expect(getCursorReplayOperationLabel("cursor_edit")).toBe("edit");
+		expect(getCursorReplayOperationLabel("cursor_mcp")).toBe("MCP");
+		expect(getCursorReplayOperationLabel("cursor_web_search")).toBe("web search");
+		expect(getCursorReplayOperationLabel("cursor_web_fetch")).toBe("web fetch");
+	});
+
 	it("derives replay wrapper labels and side-effect policy from the registry", () => {
 		expect(getCursorReplayWrapperLabel("cursor_edit")).toBe("edit");
 		expect(getCursorReplayWrapperLabel("cursor_write")).toBe("write");
@@ -105,11 +113,12 @@ describe("cursor tool presentation registry", () => {
 		expect(getCursorReplaySideEffectDescription("cursor_mcp")).toBe("real tool work");
 	});
 
-	it("assigns replay summary kinds for every legacy replay tool", () => {
+	it("derives replay call summaries from registry display policy", () => {
 		for (const legacyName of CURSOR_REPLAY_LEGACY_TOOL_NAMES) {
-			expect(getCursorReplaySummaryKind(legacyName)).toBeDefined();
+			expect(getCursorReplayCallSummary(legacyName, { activitySummary: "summary" })).toBe("summary");
 		}
-		expect(getCursorReplaySummaryKind(CURSOR_REPLAY_ACTIVITY_TOOL_NAME)).toBe("activity_generic");
+		expect(getCursorReplayCallSummary(CURSOR_REPLAY_ACTIVITY_TOOL_NAME, { toolName: "custom" })).toBe("custom");
+		expect(getCursorReplayCallSummary("cursor_sem_search", { query: "main", targetDirectories: ["src"] })).toBe("main (1 dir)");
 	});
 
 	it("builds transcript displays for every registry-backed spec key", () => {

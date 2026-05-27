@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { CURSOR_SETTING_SOURCES_ENV, resolveCursorSettingSources } from "./cursor-setting-sources.mjs";
+import { CURSOR_SETTING_SOURCES_ENV, resolveCursorSettingSources } from "../../shared/cursor-setting-sources.mjs";
 
 export function readArgvValue(argv, index, flagName, fail) {
 	const current = argv[index];
@@ -47,6 +47,22 @@ export function defaultSettingSourcesFromEnv(env = process.env) {
 
 export function defaultApiKeyFromEnv(env = process.env) {
 	return env.CURSOR_API_KEY?.trim() || undefined;
+}
+
+export function readArgvApiKey(argv) {
+	for (let index = 0; index < argv.length; index++) {
+		const arg = argv[index];
+		if (arg === "--api-key") {
+			const value = argv[index + 1];
+			return typeof value === "string" ? value.trim() : undefined;
+		}
+		if (arg.startsWith("--api-key=")) return arg.slice("--api-key=".length).trim();
+	}
+	return undefined;
+}
+
+export function apiKeySecretsFromProcess(argv = process.argv.slice(2), env = process.env) {
+	return [defaultApiKeyFromEnv(env), readArgvApiKey(argv)];
 }
 
 export function requireApiKey(args, env, fail) {

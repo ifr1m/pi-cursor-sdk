@@ -4,6 +4,55 @@
  * derive from this registry — do not duplicate tool lists in sibling modules.
  */
 
+import {
+	formatReplaySemSearchQuery,
+	readCursorReplaySummaryString,
+	summarizeReplayGenericActivity,
+	summarizeReplayMcp,
+	summarizeReplayPath,
+	summarizeReplayPlan,
+	summarizeReplayReadLints,
+	summarizeReplayRecordScreen,
+	summarizeReplayTask,
+	summarizeReplayTodoCount,
+	withActivitySummaryFallback,
+	type CursorReplayActivitySummaryOverride,
+	type CursorReplayGenerateImageSummaryArgs,
+	type CursorReplayPathSummaryArgs,
+	type CursorReplayPlanSummaryArgs,
+	type CursorReplayReadLintsSummaryArgs,
+	type CursorReplayRecordScreenSummaryArgs,
+	type CursorReplaySemSearchSummaryArgs,
+	type CursorReplaySummaryArgs,
+	type CursorReplayTaskSummaryArgs,
+	type CursorReplayTodoSummaryArgs,
+	type CursorReplayWebFetchSummaryArgs,
+	type CursorReplayWebSearchSummaryArgs,
+} from "./cursor-replay-summary-args.js";
+import {
+	buildCollapsedReplayDetailFields,
+	buildCreatePlanReplaySummaryArgs,
+	buildDeleteReplayDetailFields,
+	buildDeleteReplaySummaryArgs,
+	buildEmptyReplayDetailFields,
+	buildGenerateImageReplayDetailFields,
+	buildGenerateImageReplaySummaryArgs,
+	buildMcpReplaySummaryArgs,
+	buildReadLintsReplaySummaryArgs,
+	buildRecordScreenReplaySummaryArgs,
+	buildSemSearchReplaySummaryArgs,
+	buildTaskReplaySummaryArgs,
+	buildTodoReplaySummaryArgs,
+	buildWebFetchReplaySummaryArgs,
+	buildWebSearchReplaySummaryArgs,
+	type CursorReplayActivityBuildContext,
+} from "./cursor-replay-activity-builders.js";
+import { CURSOR_REPLAY_SOURCE_TOOL_NAMES, type CursorReplaySourceToolName } from "./cursor-replay-source-names.js";
+import type {
+	CursorReplayActivityDetailFields,
+	CursorReplayGenerateImageDetailFields,
+} from "./cursor-replay-tool-details.js";
+
 export const CURSOR_REPLAY_ACTIVITY_TOOL_NAME = "cursor" as const;
 
 export type CursorWebToolKind = "webSearch" | "webFetch";
@@ -22,18 +71,9 @@ export type CursorToolLifecycleLabelKind =
 	| "createPlan"
 	| "updateTodos";
 
-export type CursorReplaySummaryKind =
-	| "path"
-	| "read_lints"
-	| "todo_count"
-	| "description"
-	| "generate_image"
-	| "mcp_tool_name"
-	| "sem_search"
-	| "record_screen"
-	| "web_query"
-	| "web_url"
-	| "activity_generic";
+export type CursorReplayCallSummaryBuilder<T extends CursorReplayActivitySummaryOverride = CursorReplaySummaryArgs> = (
+	args: T | undefined,
+) => string | undefined;
 
 export interface CursorToolVisibilityPolicy {
 	incompleteTitle?: string;
@@ -42,12 +82,23 @@ export interface CursorToolVisibilityPolicy {
 	fastLocalDiscovery?: boolean;
 }
 
+export interface CursorToolActivityReplaySpec<TArgs extends CursorReplaySummaryArgs = CursorReplaySummaryArgs> {
+	buildActivityArgs: (context: CursorReplayActivityBuildContext) => TArgs;
+	buildDetails: (context: CursorReplayActivityBuildContext, contentText: string) => CursorReplayActivityDetailFields;
+}
+
+export interface CursorToolGenerateImageReplaySpec {
+	buildActivityArgs: (context: CursorReplayActivityBuildContext) => CursorReplayGenerateImageSummaryArgs;
+	buildDetails: (context: CursorReplayActivityBuildContext, contentText: string) => CursorReplayGenerateImageDetailFields;
+}
+
 export interface CursorToolPresentationSpec {
-	normalizedName: string;
+	normalizedName: CursorReplaySourceToolName;
 	/** Raw SDK/host names that resolve to this tool via {@link normalizeCursorToolName}. */
 	nameAliases?: readonly string[];
 	replayLegacyName?: string;
-	replaySourceName?: string;
+	/** Human-readable SDK operation label for replay-only tool descriptions when it differs from {@link normalizedName}. */
+	replayOperationLabel?: string;
 	promptLabel: string;
 	displayLabel: string;
 	visibility: CursorToolVisibilityPolicy;
@@ -55,11 +106,13 @@ export interface CursorToolPresentationSpec {
 	/** Regexes matched against lowercased trimmed tool names for {@link classifyCursorWebToolKind}. */
 	webNamePatterns?: readonly RegExp[];
 	lifecycleLabelKind?: CursorToolLifecycleLabelKind;
-	replaySummaryKind?: CursorReplaySummaryKind;
+	replayCallSummary?: CursorReplayCallSummaryBuilder;
 	/** Short label for replay-only tool definitions (for example `edit` for `cursor_edit`). */
 	replayWrapperLabel?: string;
 	/** Whether replay-only wrappers describe file mutations or other recorded tool work. */
 	replaySideEffectCategory?: CursorReplaySideEffectCategory;
+	activityReplay?: CursorToolActivityReplaySpec;
+	generateImageReplay?: CursorToolGenerateImageReplaySpec;
 }
 
 const WEB_SEARCH_NAME_PATTERN =
@@ -122,145 +175,185 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 			"notebookedit",
 		],
 		replayLegacyName: "cursor_edit",
-		replaySourceName: "edit",
 		promptLabel: "Cursor edit",
 		displayLabel: "Cursor edit",
 		visibility: {},
 		replayWrapperLabel: "edit",
 		replaySideEffectCategory: "file_mutations",
-		replaySummaryKind: "path",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayPath),
 	},
 	{
 		normalizedName: "write",
 		nameAliases: ["write_file", "writefile"],
 		replayLegacyName: "cursor_write",
-		replaySourceName: "write",
 		promptLabel: "Cursor write",
 		displayLabel: "Cursor write",
 		visibility: {},
 		replayWrapperLabel: "write",
 		replaySideEffectCategory: "file_mutations",
-		replaySummaryKind: "path",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayPath),
 	},
 	{
 		normalizedName: "delete",
 		replayLegacyName: "cursor_delete",
-		replaySourceName: "delete",
 		promptLabel: "Cursor delete",
 		displayLabel: "Cursor delete",
 		visibility: {},
-		replaySummaryKind: "path",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayPath),
+		activityReplay: {
+			buildActivityArgs: buildDeleteReplaySummaryArgs,
+			buildDetails: buildDeleteReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "readLints",
 		replayLegacyName: "cursor_read_lints",
-		replaySourceName: "readLints",
 		promptLabel: "Cursor diagnostics",
 		displayLabel: "Cursor diagnostics",
 		visibility: {},
-		replaySummaryKind: "read_lints",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayReadLints),
+		activityReplay: {
+			buildActivityArgs: buildReadLintsReplaySummaryArgs,
+			buildDetails: buildEmptyReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "updateTodos",
 		replayLegacyName: "cursor_update_todos",
-		replaySourceName: "updateTodos",
 		promptLabel: "Cursor todos",
 		displayLabel: "Cursor todos",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "updateTodos",
-		replaySummaryKind: "todo_count",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayTodoCount),
+		activityReplay: {
+			buildActivityArgs: ({ args, result }) => buildTodoReplaySummaryArgs(args, result),
+			buildDetails: buildEmptyReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "createPlan",
 		replayLegacyName: "cursor_create_plan",
-		replaySourceName: "createPlan",
 		promptLabel: "Cursor plan",
 		displayLabel: "Cursor plan",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "createPlan",
-		replaySummaryKind: "todo_count",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayPlan),
+		activityReplay: {
+			buildActivityArgs: buildCreatePlanReplaySummaryArgs,
+			buildDetails: buildEmptyReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "task",
 		replayLegacyName: "cursor_task",
-		replaySourceName: "task",
 		promptLabel: "Cursor task",
 		displayLabel: "Cursor task",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "task",
-		replaySummaryKind: "description",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayTask),
+		activityReplay: {
+			buildActivityArgs: buildTaskReplaySummaryArgs,
+			buildDetails: buildEmptyReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "generateImage",
 		replayLegacyName: "cursor_generate_image",
-		replaySourceName: "generateImage",
 		promptLabel: "Cursor image generation",
 		displayLabel: "Cursor image generation",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "generateImage",
-		replaySummaryKind: "generate_image",
+		replayCallSummary: withActivitySummaryFallback((args: CursorReplayGenerateImageSummaryArgs | undefined) =>
+			readCursorReplaySummaryString(args, "path") ?? readCursorReplaySummaryString(args, "prompt"),
+		),
+		generateImageReplay: {
+			buildActivityArgs: buildGenerateImageReplaySummaryArgs,
+			buildDetails: buildGenerateImageReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "mcp",
 		replayLegacyName: "cursor_mcp",
-		replaySourceName: "MCP",
+		replayOperationLabel: "MCP",
 		promptLabel: "Cursor MCP",
 		displayLabel: "Cursor MCP",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "mcp",
-		replaySummaryKind: "mcp_tool_name",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayMcp),
+		activityReplay: {
+			buildActivityArgs: buildMcpReplaySummaryArgs,
+			buildDetails: buildEmptyReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "semSearch",
 		replayLegacyName: "cursor_sem_search",
-		replaySourceName: "semSearch",
 		promptLabel: "Cursor semantic search",
 		displayLabel: "Cursor semantic search",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "semSearch",
-		replaySummaryKind: "sem_search",
+		replayCallSummary: withActivitySummaryFallback(formatReplaySemSearchQuery),
+		activityReplay: {
+			buildActivityArgs: buildSemSearchReplaySummaryArgs,
+			buildDetails: buildEmptyReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "recordScreen",
 		replayLegacyName: "cursor_record_screen",
-		replaySourceName: "recordScreen",
 		promptLabel: "Cursor screen recording",
 		displayLabel: "Cursor screen recording",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "recordScreen",
-		replaySummaryKind: "record_screen",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayRecordScreen),
+		activityReplay: {
+			buildActivityArgs: buildRecordScreenReplaySummaryArgs,
+			buildDetails: buildEmptyReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "webSearch",
 		nameAliases: ["websearch", "web_search", "web-search"],
 		replayLegacyName: "cursor_web_search",
-		replaySourceName: "web search",
+		replayOperationLabel: "web search",
 		promptLabel: "Cursor web search",
 		displayLabel: "Cursor web search",
 		visibility: { lifecycleEligible: true },
 		webKind: "webSearch",
 		webNamePatterns: [WEB_SEARCH_NAME_PATTERN],
 		lifecycleLabelKind: "webSearch",
-		replaySummaryKind: "web_query",
+		replayCallSummary: withActivitySummaryFallback((args: CursorReplayWebSearchSummaryArgs | undefined) =>
+			readCursorReplaySummaryString(args, "query"),
+		),
+		activityReplay: {
+			buildActivityArgs: buildWebSearchReplaySummaryArgs,
+			buildDetails: buildCollapsedReplayDetailFields,
+		},
 	},
 	{
 		normalizedName: "webFetch",
 		nameAliases: ["webfetch", "web_fetch", "web-fetch"],
 		replayLegacyName: "cursor_web_fetch",
-		replaySourceName: "web fetch",
+		replayOperationLabel: "web fetch",
 		promptLabel: "Cursor web fetch",
 		displayLabel: "Cursor web fetch",
 		visibility: { lifecycleEligible: true },
 		webKind: "webFetch",
 		webNamePatterns: [WEB_FETCH_NAME_PATTERN],
 		lifecycleLabelKind: "webFetch",
-		replaySummaryKind: "web_url",
+		replayCallSummary: withActivitySummaryFallback((args: CursorReplayWebFetchSummaryArgs | undefined) =>
+			readCursorReplaySummaryString(args, "url"),
+		),
+		activityReplay: {
+			buildActivityArgs: buildWebFetchReplaySummaryArgs,
+			buildDetails: buildCollapsedReplayDetailFields,
+		},
 	},
 ] as const satisfies readonly CursorToolPresentationSpec[];
 
 type CursorToolPresentationSpecEntry = (typeof CURSOR_TOOL_PRESENTATION_SPECS)[number];
 
-export type CursorNormalizedToolName = CursorToolPresentationSpecEntry["normalizedName"];
+export type CursorNormalizedToolName = CursorReplaySourceToolName;
 
 export type CursorReplayLegacyToolName = Extract<
 	CursorToolPresentationSpecEntry,
@@ -337,8 +430,7 @@ const WEB_KIND_BY_PATTERN = CURSOR_TOOL_PRESENTATION_SPECS.flatMap((spec) => {
 	return webNamePatterns.map((pattern) => ({ pattern, webKind }));
 });
 
-export const CURSOR_KNOWN_NORMALIZED_TOOL_NAMES: readonly CursorNormalizedToolName[] =
-	CURSOR_TOOL_PRESENTATION_SPECS.map((spec) => spec.normalizedName);
+export const CURSOR_KNOWN_NORMALIZED_TOOL_NAMES: readonly CursorNormalizedToolName[] = CURSOR_REPLAY_SOURCE_TOOL_NAMES;
 
 export function getCursorToolPresentationSpec(
 	name: string,
@@ -401,9 +493,9 @@ export function getCursorReplaySideEffectDescription(toolName: CursorReplayToolN
 	return getCursorReplaySideEffectCategory(toolName) === "file_mutations" ? "file mutations" : "real tool work";
 }
 
-export function getCursorReplaySourceToolName(toolName: CursorReplayLegacyToolName): string {
+export function getCursorReplayOperationLabel(toolName: CursorReplayLegacyToolName): string {
 	const spec = SPECS_BY_REPLAY_LEGACY_NAME.get(toolName);
-	return spec?.replaySourceName ?? toolName;
+	return spec?.replayOperationLabel ?? spec?.normalizedName ?? toolName;
 }
 
 export function getCursorReplayPromptLabel(toolName: string): string {
@@ -433,17 +525,32 @@ export function getCursorReplayActivityTitle(toolName: string): string | undefin
 	return spec.displayLabel;
 }
 
+function getCursorToolPresentationSpecByNormalizedKey(normalizedKey: string): CursorToolPresentationSpec | undefined {
+	return SPECS_BY_NORMALIZED_KEY.get(normalizedKey.toLowerCase());
+}
+
 export function getCursorToolVisibilityPolicy(normalizedKey: string): CursorToolVisibilityPolicy | undefined {
-	return SPECS_BY_NORMALIZED_KEY.get(normalizedKey)?.visibility;
+	return getCursorToolPresentationSpecByNormalizedKey(normalizedKey)?.visibility;
 }
 
 export function getCursorToolLifecycleLabelKind(normalizedKey: string): CursorToolLifecycleLabelKind | undefined {
-	return SPECS_BY_NORMALIZED_KEY.get(normalizedKey)?.lifecycleLabelKind;
+	return getCursorToolPresentationSpecByNormalizedKey(normalizedKey)?.lifecycleLabelKind;
 }
 
-export function getCursorReplaySummaryKind(
+export function getCursorToolActivityReplaySpec(normalizedKey: string): CursorToolActivityReplaySpec | undefined {
+	return getCursorToolPresentationSpecByNormalizedKey(normalizedKey)?.activityReplay;
+}
+
+export function getCursorToolGenerateImageReplaySpec(normalizedKey: string): CursorToolGenerateImageReplaySpec | undefined {
+	return getCursorToolPresentationSpecByNormalizedKey(normalizedKey)?.generateImageReplay;
+}
+
+export function getCursorReplayCallSummary(
 	toolName: CursorReplayToolName,
-): CursorReplaySummaryKind | undefined {
-	if (toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME) return "activity_generic";
-	return SPECS_BY_REPLAY_LEGACY_NAME.get(toolName)?.replaySummaryKind;
+	args: CursorReplaySummaryArgs | undefined,
+): string | undefined {
+	if (toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME) {
+		return readCursorReplaySummaryString(args, "activitySummary") ?? summarizeReplayGenericActivity(args);
+	}
+	return SPECS_BY_REPLAY_LEGACY_NAME.get(toolName)?.replayCallSummary?.(args);
 }

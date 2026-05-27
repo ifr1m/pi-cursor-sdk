@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-	classifyCursorRunDirectEmission,
-	classifyCursorRunLiveEmission,
+	classifyCursorRunEmission,
 	isCursorRunFinishedSuccessfully,
 	resolveCursorRunOutcome,
 } from "../src/cursor-provider-run-outcome.js";
@@ -27,8 +26,7 @@ describe("cursor-provider-run-outcome", () => {
 		});
 		expect(outcome.kind).toBe("cancelled");
 		expect(isCursorRunFinishedSuccessfully(outcome)).toBe(false);
-		expect(classifyCursorRunLiveEmission(outcome)).toBe("cancelled");
-		expect(classifyCursorRunDirectEmission(outcome)).toBe("cancelled");
+		expect(classifyCursorRunEmission(outcome)).toBe("cancelled");
 	});
 
 	it("normalizes signal-aborted error waits to cancelled outcomes", () => {
@@ -39,8 +37,7 @@ describe("cursor-provider-run-outcome", () => {
 			emittedText: "",
 		});
 		expect(outcome.kind).toBe("cancelled");
-		expect(classifyCursorRunLiveEmission(outcome)).toBe("cancelled");
-		expect(classifyCursorRunDirectEmission(outcome)).toBe("cancelled");
+		expect(classifyCursorRunEmission(outcome)).toBe("cancelled");
 	});
 
 	it("never produces finished outcomes with signalAborted", () => {
@@ -61,16 +58,14 @@ describe("cursor-provider-run-outcome", () => {
 			textDeltas: [],
 			emittedText: "",
 		});
-		expect(classifyCursorRunLiveEmission(cancelled)).toBe("cancelled");
-		expect(classifyCursorRunDirectEmission(cancelled)).toBe("cancelled");
+		expect(classifyCursorRunEmission(cancelled)).toBe("cancelled");
 
 		const failed = resolveCursorRunOutcome({
 			waitResult: makeWaitResult("error", "boom"),
 			textDeltas: [],
 			emittedText: "",
 		});
-		expect(classifyCursorRunLiveEmission(failed)).toBe("failed");
-		expect(classifyCursorRunDirectEmission(failed)).toBe("failed");
+		expect(classifyCursorRunEmission(failed)).toBe("failed");
 	});
 
 	it("marks successful finished runs and selects final text", () => {
@@ -80,8 +75,7 @@ describe("cursor-provider-run-outcome", () => {
 			emittedText: "",
 		});
 		expect(isCursorRunFinishedSuccessfully(outcome)).toBe(true);
-		expect(classifyCursorRunLiveEmission(outcome)).toBe("finished");
-		expect(classifyCursorRunDirectEmission(outcome)).toBe("finished");
+		expect(classifyCursorRunEmission(outcome)).toBe("finished");
 		expect(outcome.kind).toBe("finished");
 		if (outcome.kind === "finished") {
 			expect(outcome.finalText).toBe("final answer");

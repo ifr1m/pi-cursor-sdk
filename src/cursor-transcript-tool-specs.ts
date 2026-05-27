@@ -3,20 +3,21 @@ import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 	getCursorReplayActivityLabelKey,
 	getCursorReplayActivityTitle,
+	getCursorReplayCallSummary,
 	getCursorReplayDisplayLabel,
+	getCursorToolActivityReplaySpec,
+	getCursorToolGenerateImageReplaySpec,
 	type CursorNormalizedToolName,
 	type CursorReplayActivityToolName,
 	type CursorReplayLegacyToolName,
 } from "./cursor-tool-presentation-registry.js";
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
 import {
-	assembleCursorReplayActivityResultDetails,
 	assembleCursorReplayActivityDetails,
+	assembleCursorReplayGenerateImageDetails,
 	buildCursorReplayNativeEditDetails,
 	buildCursorReplayNativeWriteDetails,
 	CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME,
-	type CursorReplayActivityResultSourceToolName,
-	type CursorReplayActivityDetailFields,
 	type CursorReplayToolDetails,
 } from "./cursor-replay-tool-details.js";
 import {
@@ -43,7 +44,6 @@ import {
 	buildReadDisplayArgs,
 	buildShellDisplayArgs,
 	buildWriteDisplayArgs,
-	collectTaskText,
 	formatDelete,
 	formatEdit,
 	formatFallback,
@@ -65,27 +65,13 @@ import {
 	formatWrite,
 	formatNativeReadDisplayContent,
 	getCursorWriteArgContent,
-	getGenerateImageDisplayPath,
-	getGenerateImagePath,
 	getGlobBody,
 	getGrepBody,
 	getLsBody,
-	getReadLintDiagnostics,
-	getReadLintPaths,
 	getShellOutput,
-	getTaskDescription,
-	getTodoItems,
-	getTodoTotalCount,
-	inferImageMimeType,
-	summarizePlan,
-	summarizeMcp,
-	summarizeRecordScreen,
-	summarizeSemSearch,
-	summarizeTask,
-	summarizeTodos,
 	usesLocalReadPreview,
 } from "./cursor-transcript-tool-formatters.js";
-import { extractWebFetchTarget, extractWebSearchQuery } from "./cursor-web-tool-activity.js";
+import type { CursorReplaySummaryArgs } from "./cursor-replay-summary-args.js";
 
 export interface ToolDisplayContext {
 	rawName: string;
@@ -95,17 +81,11 @@ export interface ToolDisplayContext {
 	options: TranscriptOptions;
 }
 
-interface ActivityReplaySpec {
-	labelKey: CursorReplayLegacyToolName;
-	buildActivityArgs: (context: ToolDisplayContext) => Record<string, unknown>;
-	buildActivitySummary: (context: ToolDisplayContext) => string | undefined;
-	buildDetails: (context: ToolDisplayContext, contentText: string) => CursorReplayActivityDetailFields;
-}
+type NeutralActivityReplayToolName = Exclude<CursorReplayActivityToolName, "edit" | "write" | "generateImage">;
 
 interface ToolDisplaySpec {
 	formatTranscript: (context: ToolDisplayContext) => string;
 	buildPiToolDisplay: (context: ToolDisplayContext) => CursorPiToolDisplay;
-	activityReplay?: ActivityReplaySpec;
 }
 
 function requireReplayActivityLabelKey(normalizedName: CursorReplayActivityToolName): CursorReplayLegacyToolName {
@@ -131,6 +111,13 @@ function buildCursorActivityDisplayArgs(
 	};
 }
 
+function buildRegistryReplaySummary(
+	labelKey: CursorReplayLegacyToolName,
+	args: CursorReplaySummaryArgs,
+): string | undefined {
+	return getCursorReplayCallSummary(labelKey, args);
+}
+
 function buildReplaySummaryDisplay(
 	toolName: string,
 	args: Record<string, unknown>,
@@ -140,9 +127,7 @@ function buildReplaySummaryDisplay(
 ): CursorPiToolDisplay {
 	const isError = result.status === "error";
 	const expandedText = details.expandedText ?? contentText;
-	const summary = isError
-		? details.summary
-		: (details.summary ?? firstNonEmptyLine(contentText));
+	const summary = details.summary;
 	return {
 		toolName,
 		args,
@@ -160,25 +145,42 @@ function getCursorToolActivityTitle(toolName: string): string {
 }
 
 function buildActivityReplayDisplay(
-	sourceToolName: CursorReplayActivityResultSourceToolName,
-	spec: ToolDisplaySpec,
+	sourceToolName: NeutralActivityReplayToolName,
 	context: ToolDisplayContext,
 ): CursorPiToolDisplay {
-	const activity = spec.activityReplay;
+	const spec = TOOL_DISPLAY_SPECS[sourceToolName];
+	const activity = getCursorToolActivityReplaySpec(sourceToolName);
 	if (!activity) throw new Error(`Missing activity replay spec for ${sourceToolName}`);
-	const activityTitle = getCursorReplayDisplayLabel(activity.labelKey);
-	const activitySummary = activity.buildActivitySummary(context);
-	const activityArgs = buildCursorActivityDisplayArgs(
-		activity.buildActivityArgs(context),
-		activityTitle,
-		activitySummary,
-	);
+	const labelKey = requireReplayActivityLabelKey(sourceToolName);
+	const activityTitle = getCursorReplayDisplayLabel(labelKey);
+	const replayArgs = activity.buildActivityArgs(context);
+	const activitySummary = buildRegistryReplaySummary(labelKey, replayArgs);
+	const activityArgs = buildCursorActivityDisplayArgs({ ...replayArgs }, activityTitle, activitySummary);
 	const contentText = spec.formatTranscript(context).trimEnd();
 	const activityFields = activity.buildDetails(context, contentText);
-	const details = assembleCursorReplayActivityResultDetails(
+	const details = assembleCursorReplayActivityDetails(
 		sourceToolName,
 		activityTitle,
 		activityFields,
+		contentText,
+		context.result.status === "error",
+		activitySummary,
+	);
+	return buildReplaySummaryDisplay(CURSOR_REPLAY_ACTIVITY_TOOL_NAME, activityArgs, context.result, contentText, details);
+}
+
+function buildGenerateImageReplayDisplay(context: ToolDisplayContext): CursorPiToolDisplay {
+	const spec = TOOL_DISPLAY_SPECS.generateImage;
+	const replay = getCursorToolGenerateImageReplaySpec("generateImage");
+	if (!replay) throw new Error("Missing generate image replay spec");
+	const labelKey = requireReplayActivityLabelKey("generateImage");
+	const activityTitle = getCursorReplayDisplayLabel(labelKey);
+	const replayArgs = replay.buildActivityArgs(context);
+	const activitySummary = buildRegistryReplaySummary(labelKey, replayArgs);
+	const activityArgs = buildCursorActivityDisplayArgs({ ...replayArgs }, activityTitle, activitySummary);
+	const contentText = spec.formatTranscript(context).trimEnd();
+	const details = assembleCursorReplayGenerateImageDetails(
+		replay.buildDetails(context, contentText),
 		contentText,
 		context.result.status === "error",
 		activitySummary,
@@ -329,7 +331,7 @@ function buildWritePiToolDisplay(context: ToolDisplayContext): CursorPiToolDispl
 	};
 }
 
-const TOOL_DISPLAY_SPECS: Record<CursorNormalizedToolName, ToolDisplaySpec> = {
+const TOOL_DISPLAY_IMPLEMENTATIONS: Record<CursorNormalizedToolName, ToolDisplaySpec> = {
 	read: {
 		formatTranscript: ({ args, result, options }) => formatRead(args, result, options),
 		buildPiToolDisplay: ({ args, result, options }) => {
@@ -402,212 +404,55 @@ const TOOL_DISPLAY_SPECS: Record<CursorNormalizedToolName, ToolDisplaySpec> = {
 	},
 	delete: {
 		formatTranscript: ({ args, result, options }) => formatDelete(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("delete", TOOL_DISPLAY_SPECS.delete, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("delete"),
-			buildActivityArgs: ({ args, options }) => {
-				const displayPath = typeof args.path === "string" ? formatDisplayPath(args.path, options.cwd) : undefined;
-				return displayPath ? { path: displayPath } : {};
-			},
-			buildActivitySummary: ({ args, options }) => {
-				const displayPath = typeof args.path === "string" ? formatDisplayPath(args.path, options.cwd) : undefined;
-				return displayPath ?? "file";
-			},
-			buildDetails: ({ args, result, options }) => {
-				const displayPath = typeof args.path === "string" ? formatDisplayPath(args.path, options.cwd) : undefined;
-				const value = asRecord(result.value);
-				return {
-					path: displayPath,
-					fileSize: getNumber(value, "fileSize"),
-					summary: result.status === "error" ? undefined : displayPath ? `deleted ${displayPath}` : "deleted file",
-				};
-			},
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("delete", context),
 	},
 	readLints: {
 		formatTranscript: ({ args, result, options }) => formatReadLints(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("readLints", TOOL_DISPLAY_SPECS.readLints, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("readLints"),
-			buildActivityArgs: ({ args, result, options }) => {
-				const paths = getReadLintPaths(args, result, options);
-				const diagnosticCount = getReadLintDiagnostics(result, options).length;
-				return { paths, diagnosticCount };
-			},
-			buildActivitySummary: ({ args, result, options }) => {
-				const paths = getReadLintPaths(args, result, options);
-				const diagnosticCount = getReadLintDiagnostics(result, options).length;
-				return `${diagnosticCount} diagnostic${diagnosticCount === 1 ? "" : "s"}${paths.length > 0 ? ` in ${paths.join(", ")}` : ""}`;
-			},
-			buildDetails: () => ({}),
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("readLints", context),
 	},
 	updateTodos: {
 		formatTranscript: ({ args, result, options }) => formatTodos(args, result, options, "updateTodos"),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("updateTodos", TOOL_DISPLAY_SPECS.updateTodos, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("updateTodos"),
-			buildActivityArgs: ({ args, result }) => {
-				const todos = getTodoItems(args, result);
-				return { totalCount: getTodoTotalCount(args, result, todos) };
-			},
-			buildActivitySummary: ({ args, result }) => summarizeTodos(args, result),
-			buildDetails: () => ({}),
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("updateTodos", context),
 	},
 	createPlan: {
 		formatTranscript: ({ args, result, options }) => formatPlan(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("createPlan", TOOL_DISPLAY_SPECS.createPlan, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("createPlan"),
-			buildActivityArgs: ({ args, result }) => {
-				const todos = getTodoItems(args, result);
-				return { totalCount: getTodoTotalCount(args, result, todos) };
-			},
-			buildActivitySummary: ({ args, result }) => summarizePlan(args, result),
-			buildDetails: () => ({}),
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("createPlan", context),
 	},
 	task: {
 		formatTranscript: ({ args, result, options }) => formatTask(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("task", TOOL_DISPLAY_SPECS.task, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("task"),
-			buildActivityArgs: ({ args, result }) => {
-				const description = getTaskDescription(args, result);
-				return { description: truncateArg(description) };
-			},
-			buildActivitySummary: ({ args, result }) => {
-				const description = getTaskDescription(args, result);
-				return summarizeTask(description, collectTaskText(result));
-			},
-			buildDetails: () => ({}),
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("task", context),
 	},
 	generateImage: {
 		formatTranscript: ({ args, result, options }) => formatGenerateImage(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("generateImage", TOOL_DISPLAY_SPECS.generateImage, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("generateImage"),
-			buildActivityArgs: ({ args }) => {
-				const prompt = getString(args, "prompt") ?? getString(args, "description") ?? "image";
-				return { prompt: truncateArg(prompt) };
-			},
-			buildActivitySummary: ({ args, result, options }) => {
-				const prompt = getString(args, "prompt") ?? getString(args, "description") ?? "image";
-				const imageDisplayPath = getGenerateImageDisplayPath(args, result, options);
-				return imageDisplayPath ?? truncateArg(prompt);
-			},
-			buildDetails: ({ args, result, options }, contentText) => {
-				const imagePath = getGenerateImagePath(args, result);
-				const imageDisplayPath = getGenerateImageDisplayPath(args, result, options);
-				return {
-					imagePath,
-					imageDisplayPath,
-					imageMimeType: inferImageMimeType(imagePath),
-					summary: result.status === "error" ? undefined : imageDisplayPath ? `saved ${imageDisplayPath}` : "image generated",
-					expandedText: contentText,
-				};
-			},
-		},
+		buildPiToolDisplay: (context) => buildGenerateImageReplayDisplay(context),
 	},
 	mcp: {
 		formatTranscript: ({ args, result, options }) => formatMcp(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("mcp", TOOL_DISPLAY_SPECS.mcp, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("mcp"),
-			buildActivityArgs: ({ args }) => {
-				const toolName = getString(args, "toolName") ?? "mcp";
-				return { toolName: truncateArg(toolName) };
-			},
-			buildActivitySummary: ({ args, result }) => summarizeMcp(args, result),
-			buildDetails: ({ args, result }) => ({
-				summary: result.status === "error" ? undefined : summarizeMcp(args, result),
-			}),
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("mcp", context),
 	},
 	semSearch: {
 		formatTranscript: ({ args, result, options }) => formatSemSearch(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("semSearch", TOOL_DISPLAY_SPECS.semSearch, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("semSearch"),
-			buildActivityArgs: ({ args }) => {
-				const query = getString(args, "query") ?? "semantic search";
-				return { query: truncateArg(query) };
-			},
-			buildActivitySummary: ({ args }) => summarizeSemSearch(args),
-			buildDetails: ({ result }, contentText) => ({
-				summary: result.status === "error" ? undefined : firstNonEmptyLine(contentText) ?? "semantic search results captured",
-			}),
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("semSearch", context),
 	},
 	recordScreen: {
 		formatTranscript: ({ args, result, options }) => formatRecordScreen(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("recordScreen", TOOL_DISPLAY_SPECS.recordScreen, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("recordScreen"),
-			buildActivityArgs: ({ args, result, options }) => {
-				const mode = getString(args, "mode");
-				const path = getString(asRecord(result.value), "path");
-				return {
-					...(mode ? { mode } : {}),
-					...(path ? { path: formatDisplayPath(path, options.cwd) } : {}),
-				};
-			},
-			buildActivitySummary: ({ args, result, options }) => summarizeRecordScreen(args, result, options),
-			buildDetails: ({ args, result, options }, contentText) => ({
-				summary:
-					result.status === "error"
-						? undefined
-						: summarizeRecordScreen(args, result, options) ?? firstNonEmptyLine(contentText) ?? "screen recording updated",
-			}),
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("recordScreen", context),
 	},
 	webSearch: {
 		formatTranscript: ({ args, result, options }) => formatWebSearch(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("webSearch", TOOL_DISPLAY_SPECS.webSearch, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("webSearch"),
-			buildActivityArgs: ({ args }) => {
-				const query = extractWebSearchQuery(args);
-				return query ? { query: truncateArg(query) } : {};
-			},
-			buildActivitySummary: ({ args }) => truncateArg(extractWebSearchQuery(args) ?? "web search"),
-			buildDetails: ({ result }, contentText) => ({
-				summary: result.status === "error" ? undefined : firstNonEmptyLine(contentText) ?? "web search result captured",
-				collapseDetailsByDefault: true,
-			}),
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("webSearch", context),
 	},
 	webFetch: {
 		formatTranscript: ({ args, result, options }) => formatWebFetch(args, result, options),
-		buildPiToolDisplay: (context) => buildActivityReplayDisplay("webFetch", TOOL_DISPLAY_SPECS.webFetch, context),
-		activityReplay: {
-			labelKey: requireReplayActivityLabelKey("webFetch"),
-			buildActivityArgs: ({ args }) => {
-				const target = extractWebFetchTarget(args);
-				return target ? { url: truncateArg(target) } : {};
-			},
-			buildActivitySummary: ({ args }) => truncateArg(extractWebFetchTarget(args) ?? "web fetch"),
-			buildDetails: ({ result }, contentText) => ({
-				summary: result.status === "error" ? undefined : firstNonEmptyLine(contentText) ?? "web fetch result captured",
-				collapseDetailsByDefault: true,
-			}),
-		},
+		buildPiToolDisplay: (context) => buildActivityReplayDisplay("webFetch", context),
 	},
 };
 
-export const CURSOR_TOOL_DISPLAY_SPEC_KEYS = Object.keys(TOOL_DISPLAY_SPECS) as CursorNormalizedToolName[];
+export const CURSOR_TOOL_DISPLAY_SPEC_KEYS = CURSOR_KNOWN_NORMALIZED_TOOL_NAMES;
 
-function assertRegistryDisplaySpecCompleteness(): void {
-	const registryKeys = new Set(CURSOR_KNOWN_NORMALIZED_TOOL_NAMES);
-	const displayKeys = new Set(CURSOR_TOOL_DISPLAY_SPEC_KEYS);
-	if (registryKeys.size !== displayKeys.size || ![...registryKeys].every((key) => displayKeys.has(key))) {
-		throw new Error("TOOL_DISPLAY_SPECS keys must match CURSOR_KNOWN_NORMALIZED_TOOL_NAMES");
-	}
-}
-
-assertRegistryDisplaySpecCompleteness();
+const TOOL_DISPLAY_SPECS = Object.fromEntries(
+	CURSOR_KNOWN_NORMALIZED_TOOL_NAMES.map((name) => [name, TOOL_DISPLAY_IMPLEMENTATIONS[name]]),
+) as Record<CursorNormalizedToolName, ToolDisplaySpec>;
 
 function getToolDisplaySpec(name: string): ToolDisplaySpec | undefined {
 	if (Object.hasOwn(TOOL_DISPLAY_SPECS, name)) return TOOL_DISPLAY_SPECS[name as CursorNormalizedToolName];

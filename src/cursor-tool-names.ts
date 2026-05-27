@@ -7,7 +7,7 @@ export {
 	getCursorReplayDisplayLabel,
 	getCursorReplayPromptLabel,
 	getCursorReplaySideEffectDescription,
-	getCursorReplaySourceToolName,
+	getCursorReplayOperationLabel,
 	getCursorReplayWrapperLabel,
 	isCursorReplayLegacyToolName,
 	isCursorReplayToolName,

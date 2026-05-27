@@ -6,6 +6,7 @@ import {
 	formatCursorReplayDiff,
 	formatCursorReplayFilePreview,
 	renderCursorReplayCall,
+	renderCursorReplayResult,
 	renderNativeLookingCursorReadReplayResult,
 	type CursorReplayRenderTheme,
 } from "../src/cursor-native-tool-display-replay.js";
@@ -16,6 +17,23 @@ const theme = {
 	fg: (_name: string, value: string) => value,
 	bold: (value: string) => value,
 } as CursorReplayRenderTheme;
+
+const taggedTheme = {
+	fg: (name: string, value: string) => `<${name}>${value}</${name}>`,
+	bold: (value: string) => value,
+} as CursorReplayRenderTheme;
+
+function renderReplayResultWithDetails(details: unknown): string {
+	return renderCursorReplayResult(
+		{ content: [{ type: "text", text: "ok" }], details },
+		{ expanded: false, isPartial: false },
+		taggedTheme,
+		{ isError: false, showImages: false } as never,
+		false,
+	)
+		.render(240)
+		.join("\n");
+}
 
 describe("cursor native replay rendering", () => {
 	it("bounds huge single-line diffs in collapsed replay cards", () => {
@@ -43,6 +61,42 @@ describe("cursor native replay rendering", () => {
 
 		expect(rendered).toContain("more diff lines hidden");
 		expect(rendered).not.toContain("full diff");
+	});
+
+	it("colors unified diff body lines in neutral Cursor edit activity cards", () => {
+		const rendered = renderReplayResultWithDetails({
+			variant: "activity",
+			sourceToolName: "edit",
+			title: "Cursor edit",
+			summary: "file.txt added 1 line, removed 1 line",
+			expandedText: "edit file.txt\n\n+1 -1\n\n--- a/file.txt\n+++ b/file.txt\n@@ -1,3 +1,3 @@\n-old line\n+new line\n keep line\n final line",
+		});
+
+		expect(rendered).toContain("<muted>+1 -1</muted>");
+		expect(rendered).toContain("<toolDiffRemoved>-old line</toolDiffRemoved>");
+		expect(rendered).toContain("<toolDiffAdded>+new line</toolDiffAdded>");
+		expect(rendered).toContain("<toolDiffContext> keep line</toolDiffContext>");
+		expect(rendered).toContain("<toolDiffContext>--- a/file.txt</toolDiffContext>");
+		expect(rendered).toContain("<toolDiffContext>+++ b/file.txt</toolDiffContext>");
+		expect(rendered).not.toContain("<toolDiffRemoved>--- a/file.txt</toolDiffRemoved>");
+		expect(rendered).not.toContain("<toolDiffAdded>+++ b/file.txt</toolDiffAdded>");
+	});
+
+	it("colors unified diff body lines in neutral Cursor write activity cards", () => {
+		const rendered = renderReplayResultWithDetails({
+			variant: "activity",
+			sourceToolName: "write",
+			title: "Cursor write",
+			summary: "created 2 lines",
+			expandedText: "write file.txt\n\n+2 -0\n\n--- /dev/null\n+++ b/file.txt\n@@ -0,0 +1,2 @@\n+first line\n+second line",
+		});
+
+		expect(rendered).toContain("Cursor write");
+		expect(rendered).toContain("<muted>+2 -0</muted>");
+		expect(rendered).toContain("<toolDiffAdded>+first line</toolDiffAdded>");
+		expect(rendered).toContain("<toolDiffAdded>+second line</toolDiffAdded>");
+		expect(rendered).toContain("<toolDiffContext>+++ b/file.txt</toolDiffContext>");
+		expect(rendered).not.toContain("<toolDiffAdded>+++ b/file.txt</toolDiffAdded>");
 	});
 
 	it("shows local read preview disclaimer in collapsed native read replay results", () => {

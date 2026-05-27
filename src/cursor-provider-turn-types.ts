@@ -7,7 +7,6 @@ import type {
 	SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
 import type { SDKAgent, SDKImage } from "@cursor/sdk";
-import type { CursorPiBridgeToolRequest, CursorPiToolBridgeRun } from "./cursor-pi-tool-bridge.js";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
 import type { SessionCursorAgentLease } from "./cursor-session-agent.js";
 import type { planCursorSessionSend } from "./cursor-session-agent.js";
@@ -29,68 +28,59 @@ export interface CursorProviderTurnSendPayload {
 	images?: SDKImage[];
 }
 
-export interface CursorProviderTurnPrepared {
-	cwd: string;
-	sessionAgentLease: SessionCursorAgentLease;
-	agent: SDKAgent;
-	bridgeRun: CursorPiToolBridgeRun | undefined;
+export interface CursorProviderTurnSendMeta {
 	sendPlan: ReturnType<typeof planCursorSessionSend>;
 	prompt: CursorPrompt;
-	sendPayload: CursorProviderTurnSendPayload;
 	bootstrap: boolean;
 	promptInputTokens: number;
 	useNativeToolReplay: boolean;
-	activeToolNames: ReadonlySet<string> | undefined;
+	bridgeEnabled: boolean;
 	nativeReplayId: string;
+}
+
+interface CursorProviderTurnRuntimeBase {
+	turnCoordinator: CursorSdkTurnCoordinator;
+}
+
+export interface DirectCursorProviderTurnRuntime extends CursorProviderTurnRuntimeBase {
+	kind: "direct";
+	liveRun?: undefined;
+}
+
+export interface LiveCursorProviderTurnRuntime extends CursorProviderTurnRuntimeBase {
+	kind: "live";
+	liveRun: CursorLiveRun;
+}
+
+export type CursorProviderTurnRuntime = DirectCursorProviderTurnRuntime | LiveCursorProviderTurnRuntime;
+
+/**
+ * Single owned model for a prepared provider turn.
+ *
+ * Send, finalize, and cleanup phases receive this immutable object instead of
+ * keeping parallel liveRun/turnCoordinator/resource bags in sync by convention.
+ */
+export interface PreparedCursorProviderTurn {
+	agent: SDKAgent;
+	cwd: string;
+	payload: CursorProviderTurnSendPayload;
+	meta: CursorProviderTurnSendMeta;
+	contextWindowAgentId: string;
 	textDeltas: string[];
-	liveRun: CursorLiveRun | undefined;
-	turnCoordinator: CursorSdkTurnCoordinator;
-}
-
-/** Concrete handles produced during prepare; owned by runner cleanup. */
-export interface CursorProviderTurnPrepareHandles {
 	sessionAgentScopeKey: string;
+	sessionAgentLease: SessionCursorAgentLease;
 	restoreCursorSdkOutputFilter: () => void;
-	activeLiveRun: CursorLiveRun | undefined;
-	turnCoordinator: CursorSdkTurnCoordinator;
+	runtime: CursorProviderTurnRuntime;
 }
 
-export interface CursorProviderTurnPrepareResult {
-	prepared: CursorProviderTurnPrepared;
-	handles: CursorProviderTurnPrepareHandles;
-}
+export type CursorProviderTurnPrepareResult = PreparedCursorProviderTurn;
 
 export interface CursorProviderTurnSend {
 	run: Awaited<ReturnType<SDKAgent["send"]>>;
-	prepared: CursorProviderTurnPrepared;
 	cursorAgentMessageOffset: number | undefined;
-}
-
-/** Concrete handles produced during send; owned by runner cleanup. */
-export interface CursorProviderTurnSendHandles {
-	abortRegistration: { signal: AbortSignal; listener: () => void } | undefined;
 }
 
 export interface CursorProviderTurnSendResult {
 	send: CursorProviderTurnSend;
-	handles: CursorProviderTurnSendHandles;
-}
-
-/** Explicit cleanup registry populated as phases complete; not a cross-phase API surface. */
-export interface CursorProviderTurnCleanup {
-	sdkEventDebug: CursorSdkEventDebugSink | undefined;
-	resolvedApiKey: string | undefined;
-	prepare: Partial<CursorProviderTurnPrepareHandles> | undefined;
-	send: Partial<CursorProviderTurnSendHandles> | undefined;
-	deferSdkEventDebugFinalize: boolean;
-}
-
-export function createCursorProviderTurnCleanup(): CursorProviderTurnCleanup {
-	return {
-		sdkEventDebug: undefined,
-		resolvedApiKey: undefined,
-		prepare: undefined,
-		send: undefined,
-		deferSdkEventDebugFinalize: false,
-	};
+	abortRegistration: { signal: AbortSignal; listener: () => void } | undefined;
 }

@@ -7,6 +7,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import {
+	apiKeySecretsFromProcess,
 	commonProbeFlags,
 	defaultApiKeyFromEnv,
 	defaultSettingSourcesFromEnv,
@@ -345,6 +346,6 @@ async function main(argv = process.argv.slice(2), env = process.env) {
 if (import.meta.url === new URL(process.argv[1], "file:").href) {
 	main().catch((error) => {
 		const message = error instanceof Error ? error.message : String(error);
-		fail(message);
+		fail(message, apiKeySecretsFromProcess());
 	});
 }

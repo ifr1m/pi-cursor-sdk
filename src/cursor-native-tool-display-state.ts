@@ -10,6 +10,7 @@ export const NATIVE_CURSOR_TOOL_DISPLAY_ENV = "PI_CURSOR_NATIVE_TOOL_DISPLAY";
 export const NATIVE_CURSOR_TOOL_REGISTRATION_ENV = "PI_CURSOR_REGISTER_NATIVE_TOOLS";
 
 export const registeredNativeToolNames = new Set<string>();
+export const skippedNativeToolNames = new Set<string>();
 export const nativeToolResults = new Map<string, CursorNativeToolDisplayItem>();
 
 export function readBooleanEnv(name: string, env: Record<string, string | undefined> = process.env): boolean | undefined {
@@ -73,6 +74,7 @@ export const __testUtils = {
 	},
 	reset(): void {
 		registeredNativeToolNames.clear();
+		skippedNativeToolNames.clear();
 		nativeToolResults.clear();
 	},
 };

@@ -86,8 +86,6 @@ export function getToolResult(toolCall: unknown): unknown {
 	return record?.result;
 }
 
-export { normalizeCursorToolName as normalizeToolName } from "./cursor-tool-presentation-registry.js";
-
 export function normalizeResult(result: unknown): NormalizedResult {
 	const record = asRecord(result);
 	const status = getString(record, "status");
