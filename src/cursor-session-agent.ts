@@ -22,7 +22,6 @@ export interface SessionCursorAgentSendState {
 	bootstrapped: boolean;
 	contextFingerprint: string;
 	incrementalSendCount: number;
-	agentMode: AgentModeOption;
 }
 
 export interface SessionCursorAgentLease {
@@ -33,7 +32,7 @@ export interface SessionCursorAgentLease {
 	bridgeRun?: CursorPiToolBridgeRun;
 	sendState: SessionCursorAgentSendState;
 	created: boolean;
-	commitSend(context: Context, bootstrapped: boolean, agentMode: AgentModeOption): void;
+	commitSend(context: Context, bootstrapped: boolean): void;
 	trackRunCompletion(completion: Promise<unknown>): void;
 }
 
@@ -213,8 +212,8 @@ async function disposePoolEntryForScope(scopeKey: string, options?: { terminal?:
 	await disposePoolEntry(entry);
 }
 
-function createInitialSendState(agentMode: AgentModeOption): SessionCursorAgentSendState {
-	return { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0, agentMode };
+function createInitialSendState(): SessionCursorAgentSendState {
+	return { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 };
 }
 
 function bindBridgeToolRequest(
@@ -230,14 +229,12 @@ function commitSessionAgentSendForLease(
 	instanceId: number,
 	context: Context,
 	bootstrapped: boolean,
-	agentMode: AgentModeOption,
 ): void {
 	const entry = sessionAgentsByScope.get(scopeKey);
 	if (!isActivePoolEntry(entry)) return;
 	if (entry.poolKey !== poolKey || entry.instanceId !== instanceId) return;
 	entry.sendState.bootstrapped = bootstrapped || entry.sendState.bootstrapped;
 	entry.sendState.contextFingerprint = computeCursorContextFingerprint(context);
-	entry.sendState.agentMode = agentMode;
 	if (bootstrapped) {
 		entry.sendState.incrementalSendCount = 0;
 		return;
@@ -324,8 +321,8 @@ function leaseFromEntry(
 		bridgeRun: entry.bridgeRun,
 		sendState: entry.sendState,
 		created,
-		commitSend: (context, bootstrapped, agentMode) => {
-			commitSessionAgentSendForLease(scopeKey, entry.poolKey, entry.instanceId, context, bootstrapped, agentMode);
+		commitSend: (context, bootstrapped) => {
+			commitSessionAgentSendForLease(scopeKey, entry.poolKey, entry.instanceId, context, bootstrapped);
 		},
 		trackRunCompletion: (completion) => {
 			trackSessionAgentRunCompletionForLease(scopeKey, entry.poolKey, entry.instanceId, completion);
@@ -474,7 +471,7 @@ export async function acquireSessionCursorAgent(params: SessionCursorAgentCreate
 		assertScopeAcceptsAcquire(scopeKey);
 		const creationGeneration = getScopeCreationGeneration(scopeKey);
 		const instanceId = allocateSessionAgentInstanceId();
-		const sendState = createInitialSendState(params.agentMode);
+		const sendState = createInitialSendState();
 		let placeholder: SessionCursorAgentCreatingEntry;
 		const creating = createSessionAgentEntry(scopeKey, instanceId, sendState, params).then(async (createdEntry) => {
 			const stillCurrent =

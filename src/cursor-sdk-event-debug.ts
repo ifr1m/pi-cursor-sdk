@@ -73,7 +73,6 @@ export interface CursorSdkEventDebugSendMeta {
 	nativeReplayId: string;
 	promptInputTokens: number;
 	agentMode: AgentModeOption;
-	sendMode?: AgentModeOption;
 }
 
 export interface CursorSdkEventDebugRunMeta {

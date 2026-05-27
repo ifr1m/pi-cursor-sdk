@@ -89,7 +89,6 @@ export async function prepareCursorProviderTurn(
 			prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
 		}
 		const bootstrap = sendPlan.mode === "bootstrap";
-		const sendMode = sessionAgentLease.created || sessionAgentLease.sendState.agentMode === agentMode ? undefined : agentMode;
 		const agent = sessionAgentLease.agent;
 		const bridgeRun = sessionAgentLease.bridgeRun;
 		const sendPayload = {
@@ -114,7 +113,6 @@ export async function prepareCursorProviderTurn(
 			sendPlan,
 			promptOptions,
 			agentMode,
-			sendMode,
 			activeToolNames: activeToolNames ? [...activeToolNames] : [],
 			sessionAgentScopeKey,
 			bridgeRunId: bridgeRun?.id,
@@ -167,7 +165,6 @@ export async function prepareCursorProviderTurn(
 				bridgeEnabled: bridgeRun !== undefined,
 				nativeReplayId,
 				agentMode,
-				sendMode,
 			},
 			contextWindowAgentId: agent.agentId,
 			textDeltas,

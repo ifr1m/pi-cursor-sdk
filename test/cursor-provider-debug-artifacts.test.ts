@@ -14,7 +14,7 @@ import {
 	createPiHarness,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor } from "../src/cursor-provider.js";
-import { registerCursorFastControls } from "../src/cursor-state.js";
+import { registerCursorRuntimeControls } from "../src/cursor-state.js";
 import { __testUtils as sdkEventDebugTestUtils } from "../src/cursor-sdk-event-debug.js";
 import type { SDKMessage } from "@cursor/sdk";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -23,7 +23,7 @@ import { join } from "node:path";
 
 async function setCursorModeForProviderDebugTest(mode: "agent" | "plan"): Promise<void> {
 	const pi = createPiHarness({ flagValues: { "cursor-mode": mode } });
-	registerCursorFastControls(pi);
+	registerCursorRuntimeControls(pi);
 	await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
 }
 
@@ -76,7 +76,7 @@ describe("streamCursor debug artifacts", () => {
 			}
 		});
 
-		it("records Cursor agent mode and send-time mode switches in provider debug metadata", async () => {
+		it("records Cursor agent mode in provider debug metadata", async () => {
 			const firstSend = vi.fn().mockResolvedValue({
 				id: "run-1",
 				agentId: "agent-1",
@@ -103,8 +103,8 @@ describe("streamCursor debug artifacts", () => {
 				await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
 
 				const metadata = JSON.parse(readFileSync(join(artifactDir, "metadata.json"), "utf8"));
-				expect(metadata.providerMeta).toMatchObject({ agentMode: "plan", sendMode: "plan" });
-				expect(metadata.send).toMatchObject({ agentMode: "plan", sendMode: "plan" });
+				expect(metadata.providerMeta).toMatchObject({ agentMode: "plan" });
+				expect(metadata.send).toMatchObject({ agentMode: "plan" });
 			} finally {
 				if (previousDebug === undefined) delete process.env.PI_CURSOR_SDK_EVENT_DEBUG;
 				else process.env.PI_CURSOR_SDK_EVENT_DEBUG = previousDebug;

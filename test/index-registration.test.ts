@@ -35,7 +35,7 @@ type DiscoverOptions = Parameters<typeof discoverModels>[0];
 describe("extension registration and discovery", () => {
 	beforeEach(resetIndexExtensionTestState);
 
-	it("registers Cursor fast controls and one provider with correct fields", async () => {
+	it("registers Cursor runtime controls and one provider with correct fields", async () => {
 		const mockModels = [makeProviderModelConfig("composer-2", { name: "Cursor Composer 2" })];
 		mockedDiscover.mockResolvedValueOnce(mockModels);
 

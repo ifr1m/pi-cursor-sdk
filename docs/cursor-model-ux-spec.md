@@ -396,8 +396,7 @@ Rules:
 - `/cursor-mode` with no args reports current mode and usage.
 - Invalid CLI values fail non-UI runs and notify interactive users before the provider rejects the run.
 - New SDK agents are seeded with `Agent.create({ mode })`.
-- Reused SDK agents pass `agent.send(..., { mode })` only when the desired mode differs from the last successfully committed mode.
-- Successful run finalization commits the mode; failed/aborted sends leave the last committed mode untouched so the next run retries the switch.
+- Every SDK send passes the effective mode through `agent.send(..., { mode })` so `/cursor-mode` and `--cursor-mode` remain the source of truth.
 - Mode is not part of the session-agent pool key because Cursor SDK supports SDK-native per-send mode switches.
 - Cursor plan/todo/task/mode activity remains display-only Cursor activity unless pi itself exposes a native state path. Replay cards do not mutate pi plan/todo state or active tools.
 

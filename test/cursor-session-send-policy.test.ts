@@ -14,7 +14,7 @@ describe("cursor-session-send-policy", () => {
 			messages: [{ role: "user", content: "Hello", timestamp: 1 }],
 		};
 		const plan = planCursorSessionSend(
-			{ bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0, agentMode: "agent" as const },
+			{ bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 },
 			context,
 		);
 
@@ -35,7 +35,6 @@ describe("cursor-session-send-policy", () => {
 			bootstrapped: true,
 			contextFingerprint: computeCursorContextFingerprint(priorContext),
 			incrementalSendCount: MAX_COMPLETED_INCREMENTAL_SENDS_BEFORE_REBOOTSTRAP - 1,
-			agentMode: "agent" as const,
 		};
 
 		expect(planCursorSessionSend(sendState, context)).toEqual({
@@ -59,7 +58,6 @@ describe("cursor-session-send-policy", () => {
 			bootstrapped: true,
 			contextFingerprint: computeCursorContextFingerprint(priorContext),
 			incrementalSendCount: MAX_COMPLETED_INCREMENTAL_SENDS_BEFORE_REBOOTSTRAP,
-			agentMode: "agent" as const,
 		};
 
 		expect(planCursorSessionSend(sendState, context)).toEqual({
@@ -79,7 +77,7 @@ describe("cursor-session-send-policy", () => {
 		const sendState = {
 			bootstrapped: true,
 			contextFingerprint: computeCursorContextFingerprint(priorContext),
-			incrementalSendCount: 2, agentMode: "agent" as const,
+			incrementalSendCount: 2,
 		};
 
 		expect(planCursorSessionSend(sendState, editedContext)).toEqual({

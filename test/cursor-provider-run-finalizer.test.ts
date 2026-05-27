@@ -47,7 +47,7 @@ describe("CursorRunFinalizer", () => {
 				poolKey: "pool-1",
 				instanceId: 1,
 				agent: { agentId: "agent-1" } as SDKAgent,
-				sendState: { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0, agentMode: "agent" as const },
+				sendState: { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 },
 				created: true,
 				commitSend: () => {
 					throw new Error("commit failed before terminal event");
@@ -138,7 +138,7 @@ describe("CursorRunFinalizer", () => {
 				poolKey: "pool-1",
 				instanceId: 1,
 				agent: { agentId: "agent-1" } as SDKAgent,
-				sendState: { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0, agentMode: "agent" as const },
+				sendState: { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 },
 				created: true,
 				commitSend: () => {},
 				trackRunCompletion: () => {},

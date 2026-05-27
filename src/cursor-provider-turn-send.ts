@@ -55,11 +55,11 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			nativeReplayId: meta.nativeReplayId,
 			promptInputTokens: meta.promptInputTokens,
 			agentMode: meta.agentMode,
-			sendMode: meta.sendMode,
 		});
 		sdkEventDebug?.recordSendPayload(payload);
 		sdkEventDebug?.recordProviderEvent("agent_send_start", payload);
 		const sendOptions: SendOptions = {
+			mode: meta.agentMode,
 			onDelta: (args) => {
 				sdkEventDebug?.recordOnDelta(args.update);
 				turnCoordinator.handleDelta(args.update);
@@ -69,7 +69,6 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 				turnCoordinator.handleStep(args.step);
 			},
 		};
-		if (meta.sendMode) sendOptions.mode = meta.sendMode;
 		const run = await agent.send(payload, sendOptions);
 		sdkRun = run;
 		sdkEventDebug?.recordRunMeta({

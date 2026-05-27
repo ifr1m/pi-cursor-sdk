@@ -12,7 +12,7 @@ import {
 	createMockAgentPlatform,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor } from "../src/cursor-provider.js";
-import { registerCursorFastControls } from "../src/cursor-state.js";
+import { registerCursorRuntimeControls } from "../src/cursor-state.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../src/model-discovery.js";
 import type { Context } from "@earendil-works/pi-ai";
@@ -22,7 +22,7 @@ import { join } from "node:path";
 
 async function setCursorModeForProviderTest(mode: "agent" | "plan"): Promise<void> {
 	const pi = createPiHarness({ flagValues: { "cursor-mode": mode } });
-	registerCursorFastControls(pi);
+	registerCursorRuntimeControls(pi);
 	await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
 }
 
@@ -179,7 +179,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 		}
 	});
 
-	it("seeds Cursor SDK plan mode through Agent.create and omits redundant send mode on first run", async () => {
+	it("passes Cursor SDK plan mode through Agent.create and every Agent.send", async () => {
 		await setCursorModeForProviderTest("plan");
 		const mockSend = vi.fn().mockResolvedValue({
 			id: "run-1",
@@ -198,10 +198,10 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ mode: "plan" }));
-		expect(mockSend.mock.calls[0]?.[1]).not.toHaveProperty("mode");
+		expect(mockSend.mock.calls[0]?.[1]).toMatchObject({ mode: "plan" });
 	});
 
-	it("switches Cursor SDK mode through send options only after an agent is reused", async () => {
+	it("passes the effective Cursor SDK mode on every send while reusing the agent", async () => {
 		const mockSend = vi.fn().mockResolvedValue({
 			id: "run-1",
 			agentId: "agent-1",
@@ -219,7 +219,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 		await setCursorModeForProviderTest("agent");
 		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
 		expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ mode: "agent" }));
-		expect(mockSend.mock.calls[0]?.[1]).not.toHaveProperty("mode");
+		expect(mockSend.mock.calls[0]?.[1]).toMatchObject({ mode: "agent" });
 
 		await setCursorModeForProviderTest("plan");
 		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
@@ -227,7 +227,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 		expect(mockSend.mock.calls[1]?.[1]).toMatchObject({ mode: "plan" });
 
 		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
-		expect(mockSend.mock.calls[2]?.[1]).not.toHaveProperty("mode");
+		expect(mockSend.mock.calls[2]?.[1]).toMatchObject({ mode: "plan" });
 
 		await setCursorModeForProviderTest("agent");
 		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));

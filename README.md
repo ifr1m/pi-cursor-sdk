@@ -216,7 +216,7 @@ Change the session mode interactively:
 
 `/cursor-mode` with no argument reports the current mode and usage. The CLI flag does not persist to the session; slash-command changes are persisted with `pi.appendEntry()`.
 
-When a new local Cursor SDK agent is created, the extension seeds the mode through `Agent.create({ mode })`. When an existing pooled SDK agent is reused and the desired mode changed, the extension sends `agent.send(..., { mode })` for that run. Follow-up sends in the same mode omit `mode` so the SDK keeps the conversation mode.
+When a new local Cursor SDK agent is created, the extension seeds the mode through `Agent.create({ mode })`. The extension also sends the effective Cursor mode on every `agent.send(..., { mode })` call so `/cursor-mode` and `--cursor-mode` remain the source of truth even when a pooled SDK agent is reused.
 
 Cursor SDK `plan` mode can produce plan-oriented output and Cursor todo/plan activity, but those replay cards remain display-only. They do not drive pi's plan-mode extension, pi todos, or active tool state.
 

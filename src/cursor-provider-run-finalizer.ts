@@ -43,7 +43,7 @@ function applyLiveRunOutcome(
 	const { liveRun } = prepared.runtime;
 	switch (classifyCursorRunEmission(outcome)) {
 		case "finished":
-			prepared.sessionAgentLease.commitSend(context, prepared.meta.bootstrap, prepared.meta.agentMode);
+			prepared.sessionAgentLease.commitSend(context, prepared.meta.bootstrap);
 			cursorLiveRuns.markFinished(liveRun, outcome.kind === "finished" ? outcome.finalText : "");
 			break;
 		case "cancelled":
@@ -168,7 +168,7 @@ export class CursorRunFinalizer {
 				this.pushTerminalError(partial, "error", outcome.kind === "error" ? outcome.errorMessage : "Cursor SDK run failed.");
 				break;
 			case "finished":
-				prepared.sessionAgentLease.commitSend(context, prepared.meta.bootstrap, prepared.meta.agentMode);
+				prepared.sessionAgentLease.commitSend(context, prepared.meta.bootstrap);
 				prepared.runtime.turnCoordinator.flushText(
 					outcome.kind === "finished" && hasUsableText(outcome.finalText) ? [outcome.finalText] : [],
 				);

@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, ProviderConfig, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { discoverModels, type CursorModelFallbackIssue } from "./model-discovery.js";
-import { registerCursorFastControls } from "./cursor-state.js";
+import { registerCursorRuntimeControls } from "./cursor-state.js";
 import { registerCursorNativeToolDisplay } from "./cursor-native-tool-display.js";
 import { registerCursorPiToolBridge } from "./cursor-pi-tool-bridge.js";
 import { registerCursorQuestionTool } from "./cursor-question-tool.js";
@@ -13,7 +13,7 @@ type CursorExtensionApi =
 	& Pick<ExtensionAPI, "registerProvider" | "registerCommand">
 	& Parameters<typeof registerCursorSessionCwd>[0]
 	& Parameters<typeof registerCursorSessionAgent>[0]
-	& Parameters<typeof registerCursorFastControls>[0]
+	& Parameters<typeof registerCursorRuntimeControls>[0]
 	& Parameters<typeof registerCursorNativeToolDisplay>[0]
 	& Parameters<typeof registerCursorQuestionTool>[0]
 	& Parameters<typeof registerCursorPiToolBridge>[0]
@@ -38,7 +38,7 @@ export default async function (pi: CursorExtensionApi) {
 	// Session cwd must register before other session_start listeners that depend on it.
 	registerCursorSessionCwd(pi);
 	registerCursorSessionAgent(pi);
-	registerCursorFastControls(pi);
+	registerCursorRuntimeControls(pi);
 	registerCursorNativeToolDisplay(pi);
 	registerCursorQuestionTool(pi);
 	registerCursorPiToolBridge(pi);

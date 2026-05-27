@@ -27,18 +27,22 @@ interface CursorGlobalConfig {
 	fastDefaults?: Record<string, boolean>;
 }
 
-type CursorFastControlsExtensionApi = Pick<
+type CursorRuntimeControlsExtensionApi = Pick<
 	ExtensionAPI,
 	"appendEntry" | "getFlag" | "registerFlag" | "registerCommand" | "on"
 >;
+
+type CursorCliModeState =
+	| { kind: "unset" }
+	| { kind: "valid"; mode: AgentModeOption }
+	| { kind: "invalid"; raw: string; message: string };
 
 const sessionFastPreferences = new Map<string, boolean>();
 let globalFastPreferences = new Map<string, boolean>();
 let cliForceFast = false;
 let cliForceNoFast = false;
 let sessionCursorAgentMode: AgentModeOption | undefined;
-let cliCursorAgentMode: AgentModeOption | undefined;
-let invalidCliCursorMode: string | undefined;
+let cliCursorModeState: CursorCliModeState = { kind: "unset" };
 
 export function isCursorAgentMode(value: unknown): value is AgentModeOption {
 	return value === "agent" || value === "plan";
@@ -123,20 +127,24 @@ function formatInvalidCursorMode(raw: string): string {
 }
 
 export function getEffectiveCursorAgentMode(): AgentModeOption {
-	if (invalidCliCursorMode !== undefined) {
-		throw new Error(formatInvalidCursorMode(invalidCliCursorMode));
+	switch (cliCursorModeState.kind) {
+		case "valid":
+			return cliCursorModeState.mode;
+		case "invalid":
+			throw new Error(cliCursorModeState.message);
+		case "unset":
+			return sessionCursorAgentMode ?? DEFAULT_CURSOR_AGENT_MODE;
 	}
-	return cliCursorAgentMode ?? sessionCursorAgentMode ?? DEFAULT_CURSOR_AGENT_MODE;
 }
 
-function getCursorAgentModeForStatus(): AgentModeOption {
-	return invalidCliCursorMode === undefined ? getEffectiveCursorAgentMode() : DEFAULT_CURSOR_AGENT_MODE;
-}
-
-function formatCursorStatus(fast: boolean | undefined, mode: AgentModeOption): string | undefined {
+function formatCursorStatus(fast: boolean | undefined): string | undefined {
 	const parts: string[] = [];
 	if (fast === true) parts.push("fast");
-	if (mode === "plan") parts.push("plan");
+	if (cliCursorModeState.kind === "invalid") {
+		parts.push("mode invalid");
+	} else if (getEffectiveCursorAgentMode() === "plan") {
+		parts.push("plan");
+	}
 	return parts.length > 0 ? `cursor ${parts.join(" · ")}` : undefined;
 }
 
@@ -147,7 +155,7 @@ function updateCursorStatus(ctx: Pick<ExtensionContext, "model" | "ui">, model =
 	}
 	const metadata = getCursorModelMetadata(model.id);
 	const fast = metadata?.supportsFast ? getEffectiveFast(metadata.baseModelId, model.id) : undefined;
-	ctx.ui.setStatus("cursor", formatCursorStatus(fast, getCursorAgentModeForStatus()));
+	ctx.ui.setStatus("cursor", formatCursorStatus(fast));
 }
 
 function getCurrentCursorMetadata(ctx: Pick<ExtensionContext, "model">) {
@@ -200,17 +208,16 @@ function persistCursorModePreference(pi: Pick<ExtensionAPI, "appendEntry">, mode
 }
 
 function restoreCliCursorMode(raw: boolean | string | undefined, hasUI: boolean, notify: ExtensionContext["ui"]["notify"]): void {
-	cliCursorAgentMode = undefined;
-	invalidCliCursorMode = undefined;
+	cliCursorModeState = { kind: "unset" };
 	if (raw === undefined || raw === "" || raw === false) return;
 	const parsed = parseCursorAgentMode(raw);
 	if (parsed) {
-		cliCursorAgentMode = parsed;
+		cliCursorModeState = { kind: "valid", mode: parsed };
 		return;
 	}
 	const rawText = String(raw);
-	invalidCliCursorMode = rawText;
 	const message = formatInvalidCursorMode(rawText);
+	cliCursorModeState = { kind: "invalid", raw: rawText, message };
 	if (hasUI) {
 		notify(message, "error");
 		return;
@@ -224,7 +231,7 @@ export function getEffectiveFastForModelId(modelId: string): boolean | undefined
 	return getEffectiveFast(metadata.baseModelId, modelId);
 }
 
-export function registerCursorFastControls(pi: CursorFastControlsExtensionApi): void {
+export function registerCursorRuntimeControls(pi: CursorRuntimeControlsExtensionApi): void {
 	pi.registerFlag("cursor-fast", {
 		description: "Force Cursor fast mode for this run when the selected Cursor model supports it",
 		type: "boolean",
@@ -292,19 +299,26 @@ export function registerCursorFastControls(pi: CursorFastControlsExtensionApi): 
 				ctx.ui.notify(`Invalid Cursor mode "${args.trim()}". ${usage}`, "error");
 				return;
 			}
-			if (cliCursorAgentMode !== undefined) {
-				ctx.ui.notify(`Cursor mode is forced to ${cliCursorAgentMode} by --cursor-mode`, "info");
+			if (cliCursorModeState.kind === "valid") {
+				ctx.ui.notify(`Cursor mode is forced to ${cliCursorModeState.mode} by --cursor-mode`, "info");
 				return;
 			}
+			const clearedInvalidCliMode = cliCursorModeState.kind === "invalid";
 			try {
 				persistCursorModePreference(pi, mode);
+				if (clearedInvalidCliMode) cliCursorModeState = { kind: "unset" };
 			} catch (error) {
 				updateCursorStatus(ctx);
 				ctx.ui.notify(`Failed to save Cursor mode preference: ${error instanceof Error ? error.message : String(error)}`, "error");
 				return;
 			}
 			updateCursorStatus(ctx);
-			ctx.ui.notify(`Cursor mode set to ${mode}`, "info");
+			ctx.ui.notify(
+				clearedInvalidCliMode
+					? `Cursor mode set to ${mode}; cleared invalid --cursor-mode override`
+					: `Cursor mode set to ${mode}`,
+				"info",
+			);
 		},
 	});
 
@@ -329,8 +343,7 @@ export function registerCursorFastControls(pi: CursorFastControlsExtensionApi): 
 
 function resetCursorModeStateForTests(): void {
 	sessionCursorAgentMode = undefined;
-	cliCursorAgentMode = undefined;
-	invalidCliCursorMode = undefined;
+	cliCursorModeState = { kind: "unset" };
 }
 
 export const __testUtils = {
@@ -341,6 +354,7 @@ export const __testUtils = {
 	loadGlobalFastPreferences,
 	sessionFastPreferences,
 	getSessionCursorAgentMode: () => sessionCursorAgentMode,
-	getCliCursorAgentMode: () => cliCursorAgentMode,
+	getCliCursorAgentMode: () => (cliCursorModeState.kind === "valid" ? cliCursorModeState.mode : undefined),
+	getCliCursorModeState: () => cliCursorModeState,
 	resetCursorModeStateForTests,
 };
