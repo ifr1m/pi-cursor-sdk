@@ -75,7 +75,7 @@ describe("formatCursorToolTranscript MCP and web", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { query: "pi extension", activityTitle: "Cursor web search", activitySummary: "pi extension" },
-			result: { details: { cursorToolName: "webSearch", title: "Cursor web search" } },
+			result: { details: { variant: "activity", sourceToolName: "webSearch", title: "Cursor web search" } },
 		});
 		expect(display.args.activityTitle).not.toBe("Cursor MCP");
 		expect(transcript).toContain("web search pi extension");
@@ -93,7 +93,7 @@ describe("formatCursorToolTranscript MCP and web", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { url: "https://example.com/docs", activityTitle: "Cursor web fetch", activitySummary: "https://example.com/docs" },
-			result: { details: { cursorToolName: "webFetch", title: "Cursor web fetch" } },
+			result: { details: { variant: "activity", sourceToolName: "webFetch", title: "Cursor web fetch" } },
 		});
 	});
 
@@ -113,7 +113,7 @@ describe("formatCursorToolTranscript MCP and web", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { query: "main entrypoint", activityTitle: "Cursor semantic search", activitySummary: "main entrypoint (1 dir)" },
-			result: { details: { cursorToolName: "semSearch", title: "Cursor semantic search", summary: "semSearch main entrypoint" } },
+			result: { details: { variant: "activity", sourceToolName: "semSearch", title: "Cursor semantic search", summary: "semSearch main entrypoint" } },
 			isError: false,
 		});
 		expect(display.result.content[0].text).toContain(results);
@@ -169,7 +169,8 @@ describe("formatCursorToolTranscript MCP and web", () => {
 			},
 			result: {
 				details: {
-					cursorToolName: "recordScreen",
+					variant: "activity",
+					sourceToolName: "recordScreen",
 					title: "Cursor screen recording",
 					summary: ".cursor/recordings/demo.webm · 4.2s",
 				},
@@ -213,7 +214,6 @@ describe("formatCursorToolTranscript MCP and web", () => {
 			result: {
 				details: {
 					variant: "generateImage",
-					cursorToolName: "generateImage",
 					summary: "saved /Users/example/.cursor/projects/repo/assets/badge.png",
 					imagePath: "/Users/example/.cursor/projects/repo/assets/badge.png",
 					imageDisplayPath: "/Users/example/.cursor/projects/repo/assets/badge.png",

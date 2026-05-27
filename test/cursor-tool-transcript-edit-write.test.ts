@@ -20,7 +20,7 @@ describe("formatCursorToolTranscript edit and write", () => {
 		expect(editDisplay).toMatchObject({
 			toolName: "edit",
 			args: { path: "src/index.ts", edits: [{ oldText: "old line\n", newText: "new line\n" }] },
-			result: { details: { cursorToolName: "edit", diff: "--- a/src/index.ts\n+++ b/src/index.ts" } },
+			result: { details: { variant: "nativeEdit", diff: "--- a/src/index.ts\n+++ b/src/index.ts" } },
 			isError: false,
 		});
 		expect(editDisplay.toolName).not.toContain("cursor");
@@ -29,7 +29,7 @@ describe("formatCursorToolTranscript edit and write", () => {
 		expect(writeDisplay).toMatchObject({
 			toolName: "write",
 			args: { path: "new.txt", content: "hello\n" },
-			result: { details: { cursorToolName: "write", fileContentAfterWrite: "hello\n" } },
+			result: { details: { variant: "nativeWrite", fileContentAfterWrite: "hello\n" } },
 			isError: false,
 		});
 		expect(writeDisplay.toolName).not.toContain("cursor");
@@ -48,7 +48,7 @@ describe("formatCursorToolTranscript edit and write", () => {
 		expect(editDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { path: ".tool-demo-temp.txt", activityTitle: "Cursor edit", activitySummary: ".tool-demo-temp.txt" },
-			result: { details: { cursorToolName: "edit", title: "Cursor edit", summary: ".tool-demo-temp.txt", diff: "--- a/.tool-demo-temp.txt\n+++ b/.tool-demo-temp.txt" } },
+			result: { details: { variant: "activity", sourceToolName: "edit", title: "Cursor edit", summary: ".tool-demo-temp.txt added 1 line" } },
 			isError: false,
 		});
 		expect(editDisplay.args).not.toHaveProperty("edits");
@@ -75,19 +75,19 @@ describe("formatCursorToolTranscript edit and write", () => {
 		expect(strReplaceDisplay).toMatchObject({
 			toolName: "edit",
 			args: { path: "src/index.ts", edits: [{ oldText: "before", newText: "after" }] },
-			result: { details: { cursorToolName: "edit", diff: "--- a/src/index.ts\n+++ b/src/index.ts" } },
+			result: { details: { variant: "nativeEdit", diff: "--- a/src/index.ts\n+++ b/src/index.ts" } },
 			isError: false,
 		});
 		expect(notebookDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { path: "notebooks/demo.ipynb", cellId: "cell-1", activityTitle: "Cursor edit", activitySummary: "notebooks/demo.ipynb" },
-			result: { details: { cursorToolName: "edit", title: "Cursor edit", diff: "--- a/notebooks/demo.ipynb\n+++ b/notebooks/demo.ipynb" } },
+			result: { details: { variant: "activity", sourceToolName: "edit", title: "Cursor edit" } },
 			isError: false,
 		});
 		expect(genericNotebookEditDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { path: "notebooks/demo.ipynb", oldText: "before", newText: "after", activityTitle: "Cursor edit", activitySummary: "notebooks/demo.ipynb" },
-			result: { details: { cursorToolName: "edit", title: "Cursor edit", diff: "--- a/notebooks/demo.ipynb\n+++ b/notebooks/demo.ipynb" } },
+			result: { details: { variant: "activity", sourceToolName: "edit", title: "Cursor edit" } },
 			isError: false,
 		});
 		expect(strReplaceDisplay.toolName).not.toBe(CURSOR_REPLAY_ACTIVITY_TOOL_NAME);
@@ -163,7 +163,7 @@ describe("formatCursorToolTranscript edit and write", () => {
 		expect(lintsDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { paths: ["src/index.ts"], diagnosticCount: 0, activityTitle: "Cursor diagnostics", activitySummary: "0 diagnostics in src/index.ts" },
-			result: { details: { cursorToolName: "readLints", title: "Cursor diagnostics", summary: "0 diagnostics in src/index.ts" } },
+			result: { details: { variant: "activity", sourceToolName: "readLints", title: "Cursor diagnostics", summary: "0 diagnostics in src/index.ts" } },
 			isError: false,
 		});
 		expect(lintsDisplay.result.content[0].text).toContain("No diagnostics in src/index.ts");
@@ -172,7 +172,8 @@ describe("formatCursorToolTranscript edit and write", () => {
 			args: { totalCount: 2, activityTitle: "Cursor todos", activitySummary: "1/2 completed, 1 pending" },
 			result: {
 				details: {
-					cursorToolName: "updateTodos",
+					variant: "activity",
+					sourceToolName: "updateTodos",
 					title: "Cursor todos",
 					summary: "1/2 completed, 1 pending",
 				},
@@ -184,7 +185,8 @@ describe("formatCursorToolTranscript edit and write", () => {
 			args: { totalCount: 2, activityTitle: "Cursor plan", activitySummary: "1/2 completed, 1 pending" },
 			result: {
 				details: {
-					cursorToolName: "createPlan",
+					variant: "activity",
+					sourceToolName: "createPlan",
 					title: "Cursor plan",
 					summary: "1/2 completed, 1 pending",
 				},
@@ -195,14 +197,14 @@ describe("formatCursorToolTranscript edit and write", () => {
 		expect(taskDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { description: "Quick ls demo subagent", activityTitle: "Cursor task", activitySummary: "Quick ls demo subagent: $ ls src | head -5" },
-			result: { details: { cursorToolName: "task", title: "Cursor task", summary: "Quick ls demo subagent: $ ls src | head -5" } },
+			result: { details: { variant: "activity", sourceToolName: "task", title: "Cursor task", summary: "Quick ls demo subagent: $ ls src | head -5" } },
 			isError: false,
 		});
 		expect(taskDisplay.result.content[0].text).toContain("context.ts");
 		expect(mcpDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { toolName: "git", activityTitle: "Cursor MCP", activitySummary: "git · ## Git Status ✅" },
-			result: { details: { cursorToolName: "mcp", title: "Cursor MCP", summary: "git · ## Git Status ✅" } },
+			result: { details: { variant: "activity", sourceToolName: "mcp", title: "Cursor MCP", summary: "git · ## Git Status ✅" } },
 			isError: false,
 		});
 		expect(mcpDisplay.result.content[0].text).toContain("## Git Status ✅");
@@ -210,7 +212,7 @@ describe("formatCursorToolTranscript edit and write", () => {
 		expect(deleteDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { path: ".debug/delete-me.txt", activityTitle: "Cursor delete", activitySummary: ".debug/delete-me.txt" },
-			result: { details: { cursorToolName: "delete", title: "Cursor delete", path: ".debug/delete-me.txt" } },
+			result: { details: { variant: "activity", sourceToolName: "delete", title: "Cursor delete", path: ".debug/delete-me.txt" } },
 			isError: false,
 		});
 		expect(deleteDisplay.result.content[0].text).toContain("Deleted 9 bytes");

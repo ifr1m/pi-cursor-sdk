@@ -60,10 +60,15 @@ describe("formatCursorToolTranscript bounds and aliases", () => {
 		expect(contentWriteDisplay.toolName).toBe("write");
 		expect(editDisplay.result.content[0].text).toContain("edit src/index.ts");
 		expect(pathOnlyWriteDisplay.result.content[0].text).toContain("write new.txt");
-		expect(pathOnlyWriteDisplay.result.details).toMatchObject({ cursorToolName: "write", title: "Cursor write", path: "new.txt" });
+		expect(pathOnlyWriteDisplay.result.details).toMatchObject({ variant: "activity", sourceToolName: "write", title: "Cursor write", path: "new.txt" });
 		expect(editDisplay.result.content[0].text).toContain("--- a/src/index.ts\n+++ b/src/index.ts");
 		expect(editDisplay.result.content[0].text).not.toContain("/repo");
-		expect(editDisplay.result.details).toMatchObject({ path: "src/index.ts", diffString: "--- a/src/index.ts\n+++ b/src/index.ts", diff: "--- a/src/index.ts\n+++ b/src/index.ts" });
+		expect(editDisplay.result.details).toMatchObject({
+			variant: "activity",
+			sourceToolName: "edit",
+			title: "Cursor edit",
+			path: "src/index.ts",
+		});
 	});
 
 	it("builds native pi display data for Cursor read and shell calls", () => {
@@ -316,7 +321,8 @@ describe("formatCursorToolTranscript bounds and aliases", () => {
 			},
 			result: {
 				details: {
-					cursorToolName: CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME,
+					sourceToolName: CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME,
+					variant: "activity",
 					title: "Cursor futureSemSearchWidget",
 				},
 			},
@@ -361,5 +367,25 @@ describe("formatCursorToolTranscript bounds and aliases", () => {
 		expect(display.result.content[0].text).not.toContain("x".repeat(500));
 		expect(getCursorDisplayDetailSummary(display)).toBeUndefined();
 		expect(JSON.stringify(display.result.details ?? {})).not.toContain("x".repeat(500));
+	});
+
+	it("falls back to generic display for inherited object property tool names", () => {
+		for (const inheritedName of ["constructor", "toString"] as const) {
+			const display = buildCursorPiToolDisplay({
+				name: inheritedName,
+				args: { query: "probe" },
+				result: { status: "success", value: { ok: true } },
+			});
+			expect(display.toolName).toBe(CURSOR_REPLAY_ACTIVITY_TOOL_NAME);
+			expect(display.args).toMatchObject({
+				cursorToolName: inheritedName,
+				activityTitle: `Cursor ${inheritedName}`,
+			});
+			expect(display.result.details).toMatchObject({
+				variant: "activity",
+				sourceToolName: CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME,
+				title: `Cursor ${inheritedName}`,
+			});
+		}
 	});
 });
