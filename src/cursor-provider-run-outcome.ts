@@ -130,9 +130,9 @@ export function resolveCursorRunOutcome(params: ResolveCursorRunOutcomeParams): 
 	};
 }
 
-export type CursorRunLiveEmission = "finished" | "cancelled" | "failed";
+export type CursorRunEmission = "finished" | "cancelled" | "failed";
 
-export function classifyCursorRunLiveEmission(outcome: CursorRunOutcome): CursorRunLiveEmission {
+export function classifyCursorRunEmission(outcome: CursorRunOutcome): CursorRunEmission {
 	switch (outcome.kind) {
 		case "finished":
 			return "finished";
@@ -141,12 +141,6 @@ export function classifyCursorRunLiveEmission(outcome: CursorRunOutcome): Cursor
 		case "error":
 			return "failed";
 	}
-}
-
-export type CursorRunDirectEmission = "finished" | "cancelled" | "failed";
-
-export function classifyCursorRunDirectEmission(outcome: CursorRunOutcome): CursorRunDirectEmission {
-	return classifyCursorRunLiveEmission(outcome);
 }
 
 export function getCursorRunAbortMessage(outcome: CursorRunOutcome): string {

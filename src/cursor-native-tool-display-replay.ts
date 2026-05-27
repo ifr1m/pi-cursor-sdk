@@ -7,9 +7,9 @@ import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
 import { LOCAL_READ_PREVIEW_NOTICE, isLocalReadPreviewContent } from "./cursor-transcript-utils.js";
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
+	getCursorReplayCallSummary,
 	getCursorReplaySideEffectDescription,
 	getCursorReplaySourceToolName,
-	getCursorReplaySummaryKind,
 	getCursorReplayWrapperLabel,
 	type CursorReplayToolName,
 } from "./cursor-tool-presentation-registry.js";
@@ -268,77 +268,6 @@ function getCursorReplayActivityTitle(toolName: CursorReplayToolName, args: Reco
 		return args.activityTitle.trim();
 	}
 	return getCursorReplayWrapperLabel(toolName);
-}
-
-function formatReplayRecordingDurationMs(ms: number | undefined): string | undefined {
-	if (ms === undefined || !Number.isFinite(ms) || ms < 0) return undefined;
-	if (ms < 1000) return `${Math.round(ms)}ms`;
-	const seconds = ms / 1000;
-	return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-}
-
-function formatReplaySemSearchQuery(args: Record<string, unknown> | undefined): string | undefined {
-	const query = typeof args?.query === "string" ? args.query.trim() : undefined;
-	if (!query) return undefined;
-	const targetDirectories = Array.isArray(args?.targetDirectories)
-		? args.targetDirectories.filter((entry): entry is string => typeof entry === "string")
-		: [];
-	const dirHint =
-		targetDirectories.length > 0 ? ` (${targetDirectories.length} dir${targetDirectories.length === 1 ? "" : "s"})` : "";
-	return `${query}${dirHint}`;
-}
-
-function getCursorReplayCallSummary(toolName: CursorReplayToolName, args: Record<string, unknown> | undefined): string | undefined {
-	const activitySummary = typeof args?.activitySummary === "string" && args.activitySummary.trim() ? args.activitySummary.trim() : undefined;
-	if (activitySummary) return activitySummary;
-
-	const path = typeof args?.path === "string" ? args.path : undefined;
-	const description = typeof args?.description === "string" ? args.description : undefined;
-	const prompt = typeof args?.prompt === "string" ? args.prompt : undefined;
-	const totalCount = typeof args?.totalCount === "number" ? args.totalCount : undefined;
-	const diagnosticCount = typeof args?.diagnosticCount === "number" ? args.diagnosticCount : undefined;
-	const paths = Array.isArray(args?.paths) ? args.paths.filter((entry): entry is string => typeof entry === "string") : [];
-
-	switch (getCursorReplaySummaryKind(toolName)) {
-		case "path":
-			return path ?? "unknown";
-		case "read_lints": {
-			const target = paths.length > 0 ? paths.join(", ") : path;
-			if (target && diagnosticCount !== undefined) {
-				return `${diagnosticCount} diagnostic${diagnosticCount === 1 ? "" : "s"} in ${target}`;
-			}
-			return target;
-		}
-		case "todo_count":
-			return totalCount !== undefined ? `${totalCount} item${totalCount === 1 ? "" : "s"}` : undefined;
-		case "description":
-			return description;
-		case "generate_image":
-			return path ?? prompt;
-		case "mcp_tool_name":
-			return typeof args?.toolName === "string" ? args.toolName : undefined;
-		case "sem_search":
-			return formatReplaySemSearchQuery(args);
-		case "record_screen": {
-			const duration = formatReplayRecordingDurationMs(
-				typeof args?.recordingDurationMs === "number" ? args.recordingDurationMs : undefined,
-			);
-			if (path && duration) return `${path} · ${duration}`;
-			if (path) return path;
-			if (typeof args?.mode === "string") return args.mode;
-			return undefined;
-		}
-		case "web_query":
-			return typeof args?.query === "string" ? args.query : undefined;
-		case "web_url":
-			return typeof args?.url === "string" ? args.url : undefined;
-		case "activity_generic":
-			if (path) return path;
-			if (typeof args?.toolName === "string") return args.toolName;
-			return formatReplaySemSearchQuery(args);
-		default:
-			return undefined;
-	}
 }
 
 export function renderCursorReplayCall(

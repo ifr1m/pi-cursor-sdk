@@ -7,7 +7,7 @@ import type {
 	SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
 import type { SDKAgent, SDKImage } from "@cursor/sdk";
-import type { CursorPiBridgeToolRequest, CursorPiToolBridgeRun } from "./cursor-pi-tool-bridge.js";
+import type { CursorPiToolBridgeRun } from "./cursor-pi-tool-bridge.js";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
 import type { SessionCursorAgentLease } from "./cursor-session-agent.js";
 import type { planCursorSessionSend } from "./cursor-session-agent.js";
@@ -31,6 +31,8 @@ export interface CursorProviderTurnSendPayload {
 
 export interface CursorProviderTurnPrepared {
 	cwd: string;
+	sessionAgentScopeKey: string;
+	restoreCursorSdkOutputFilter: () => void;
 	sessionAgentLease: SessionCursorAgentLease;
 	agent: SDKAgent;
 	bridgeRun: CursorPiToolBridgeRun | undefined;
@@ -47,17 +49,8 @@ export interface CursorProviderTurnPrepared {
 	turnCoordinator: CursorSdkTurnCoordinator;
 }
 
-/** Concrete handles produced during prepare; owned by runner cleanup. */
-export interface CursorProviderTurnPrepareHandles {
-	sessionAgentScopeKey: string;
-	restoreCursorSdkOutputFilter: () => void;
-	activeLiveRun: CursorLiveRun | undefined;
-	turnCoordinator: CursorSdkTurnCoordinator;
-}
-
 export interface CursorProviderTurnPrepareResult {
 	prepared: CursorProviderTurnPrepared;
-	handles: CursorProviderTurnPrepareHandles;
 }
 
 export interface CursorProviderTurnSend {
@@ -66,31 +59,7 @@ export interface CursorProviderTurnSend {
 	cursorAgentMessageOffset: number | undefined;
 }
 
-/** Concrete handles produced during send; owned by runner cleanup. */
-export interface CursorProviderTurnSendHandles {
-	abortRegistration: { signal: AbortSignal; listener: () => void } | undefined;
-}
-
 export interface CursorProviderTurnSendResult {
 	send: CursorProviderTurnSend;
-	handles: CursorProviderTurnSendHandles;
-}
-
-/** Explicit cleanup registry populated as phases complete; not a cross-phase API surface. */
-export interface CursorProviderTurnCleanup {
-	sdkEventDebug: CursorSdkEventDebugSink | undefined;
-	resolvedApiKey: string | undefined;
-	prepare: Partial<CursorProviderTurnPrepareHandles> | undefined;
-	send: Partial<CursorProviderTurnSendHandles> | undefined;
-	deferSdkEventDebugFinalize: boolean;
-}
-
-export function createCursorProviderTurnCleanup(): CursorProviderTurnCleanup {
-	return {
-		sdkEventDebug: undefined,
-		resolvedApiKey: undefined,
-		prepare: undefined,
-		send: undefined,
-		deferSdkEventDebugFinalize: false,
-	};
+	abortRegistration: { signal: AbortSignal; listener: () => void } | undefined;
 }

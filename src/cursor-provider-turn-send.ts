@@ -5,7 +5,6 @@ import type { installCursorSdkAbortErrorSuppression } from "./cursor-sdk-abort-e
 import type {
 	CursorProviderTurnPrepared,
 	CursorProviderTurnRunnerParams,
-	CursorProviderTurnSendHandles,
 	CursorProviderTurnSendResult,
 } from "./cursor-provider-turn-types.js";
 import type { CursorSdkEventDebugSink } from "./cursor-sdk-event-debug.js";
@@ -16,14 +15,14 @@ export interface SendCursorProviderTurnParams {
 	sdkEventDebug: CursorSdkEventDebugSink | undefined;
 	sdkAbortErrorSuppression: ReturnType<typeof installCursorSdkAbortErrorSuppression>;
 	throwIfAborted: () => void;
-	registerSendHandles: (partial: Partial<CursorProviderTurnSendHandles>) => void;
 }
 
 export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnParams): Promise<CursorProviderTurnSendResult> {
-	const { params, prepared, sdkEventDebug, sdkAbortErrorSuppression, throwIfAborted, registerSendHandles } = sendParams;
+	const { params, prepared, sdkEventDebug, sdkAbortErrorSuppression, throwIfAborted } = sendParams;
 	const { options } = params;
 	const { agent, turnCoordinator, sendPlan, bootstrap, liveRun, prompt, sendPayload, cwd } = prepared;
 
+	let completed = false;
 	let sdkRun: Awaited<ReturnType<typeof agent.send>> | null = null;
 	const abortListener = () => {
 		sdkAbortErrorSuppression.suppressAbortErrors();
@@ -36,60 +35,64 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 	const abortRegistration = abortSignal
 		? { signal: abortSignal, listener: abortListener }
 		: undefined;
-	if (abortRegistration) {
-		abortRegistration.signal.addEventListener("abort", abortListener, { once: true });
-		registerSendHandles({ abortRegistration });
-	}
 
-	throwIfAborted();
-	const cursorAgentMessageOffset = await getCursorAgentMessageOffset(agent.agentId, cwd, sdkEventDebug);
-	throwIfAborted();
-	sdkEventDebug?.recordSendMeta({
-		mode: sendPlan.mode,
-		reason: sendPlan.reason,
-		resetAgent: sendPlan.resetAgent,
-		bootstrap,
-		promptText: prompt.text,
-		imageCount: prompt.images.length,
-		useNativeToolReplay: prepared.useNativeToolReplay,
-		bridgeEnabled: prepared.bridgeRun !== undefined,
-		nativeReplayId: prepared.nativeReplayId,
-		promptInputTokens: prepared.promptInputTokens,
-	});
-	sdkEventDebug?.recordSendPayload(sendPayload);
-	sdkEventDebug?.recordProviderEvent("agent_send_start", sendPayload);
-	const run = await agent.send(sendPayload, {
-		onDelta: (args) => {
-			sdkEventDebug?.recordOnDelta(args.update);
-			turnCoordinator.handleDelta(args.update);
-		},
-		onStep: (args) => {
-			sdkEventDebug?.recordOnStep(args.step);
-			turnCoordinator.handleStep(args.step);
-		},
-	});
-	sdkRun = run;
-	sdkEventDebug?.recordRunMeta({
-		runId: run.id,
-		agentId: run.agentId,
-		status: run.status,
-	});
-	sdkEventDebug?.attachRunStream(run);
-	sdkEventDebug?.recordProviderEvent("agent_send_returned", {
-		runId: run.id,
-		agentId: run.agentId,
-		status: run.status,
-	});
-	if (liveRun) cursorLiveRuns.attachSdkRun(liveRun, run);
-	if (options?.signal?.aborted) {
-		sdkAbortErrorSuppression.suppressAbortErrors();
-		liveRun?.bridgeRun?.cancel("Cursor SDK run aborted");
-		await run.cancel().catch(() => {});
-		throw new CursorLiveRunAbortError();
-	}
+	try {
+		abortRegistration?.signal.addEventListener("abort", abortListener, { once: true });
+		throwIfAborted();
+		const cursorAgentMessageOffset = await getCursorAgentMessageOffset(agent.agentId, cwd, sdkEventDebug);
+		throwIfAborted();
+		sdkEventDebug?.recordSendMeta({
+			mode: sendPlan.mode,
+			reason: sendPlan.reason,
+			resetAgent: sendPlan.resetAgent,
+			bootstrap,
+			promptText: prompt.text,
+			imageCount: prompt.images.length,
+			useNativeToolReplay: prepared.useNativeToolReplay,
+			bridgeEnabled: prepared.bridgeRun !== undefined,
+			nativeReplayId: prepared.nativeReplayId,
+			promptInputTokens: prepared.promptInputTokens,
+		});
+		sdkEventDebug?.recordSendPayload(sendPayload);
+		sdkEventDebug?.recordProviderEvent("agent_send_start", sendPayload);
+		const run = await agent.send(sendPayload, {
+			onDelta: (args) => {
+				sdkEventDebug?.recordOnDelta(args.update);
+				turnCoordinator.handleDelta(args.update);
+			},
+			onStep: (args) => {
+				sdkEventDebug?.recordOnStep(args.step);
+				turnCoordinator.handleStep(args.step);
+			},
+		});
+		sdkRun = run;
+		sdkEventDebug?.recordRunMeta({
+			runId: run.id,
+			agentId: run.agentId,
+			status: run.status,
+		});
+		sdkEventDebug?.attachRunStream(run);
+		sdkEventDebug?.recordProviderEvent("agent_send_returned", {
+			runId: run.id,
+			agentId: run.agentId,
+			status: run.status,
+		});
+		if (liveRun) cursorLiveRuns.attachSdkRun(liveRun, run);
+		if (options?.signal?.aborted) {
+			sdkAbortErrorSuppression.suppressAbortErrors();
+			liveRun?.bridgeRun?.cancel("Cursor SDK run aborted");
+			await run.cancel().catch(() => {});
+			throw new CursorLiveRunAbortError();
+		}
 
-	return {
-		send: { run, prepared, cursorAgentMessageOffset },
-		handles: { abortRegistration },
-	};
+		completed = true;
+		return {
+			send: { run, prepared, cursorAgentMessageOffset },
+			abortRegistration,
+		};
+	} finally {
+		if (!completed && abortRegistration) {
+			abortRegistration.signal.removeEventListener("abort", abortRegistration.listener);
+		}
+	}
 }

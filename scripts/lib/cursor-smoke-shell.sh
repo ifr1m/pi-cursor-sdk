@@ -69,10 +69,22 @@ smoke_run_with_timeout_or_fail() {
 	local timeout_secs="$2"
 	shift 2
 	smoke_log "$label (timeout ${timeout_secs}s)"
-	if smoke_run_with_timeout "$timeout_secs" "$@"; then
+	local restore_errexit=0
+	case $- in
+		*e*)
+			restore_errexit=1
+			set +e
+			;;
+	esac
+	local rc=0
+	smoke_run_with_timeout "$timeout_secs" "$@"
+	rc=$?
+	if (( restore_errexit )); then
+		set -e
+	fi
+	if [[ "$rc" -eq 0 ]]; then
 		return 0
 	fi
-	local rc=$?
 	case "$rc" in
 		124|137|143) smoke_fail "$label timed out after ${timeout_secs}s" ;;
 		*) smoke_fail "$label exited $rc" ;;

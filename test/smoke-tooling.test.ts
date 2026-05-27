@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
@@ -35,6 +36,13 @@ describe("smoke tooling package checks", () => {
 		expect(sdkEventsHelp.stdout).toContain("Capture timestamped Cursor SDK event timelines");
 		expect(providerEventsHelp.status).toBe(0);
 		expect(providerEventsHelp.stdout).toContain("Capture raw Cursor SDK onDelta/onStep payloads through pi's provider path");
+
+		const failedCommand = run("bash", [
+			"-c",
+			"set -e; . scripts/lib/cursor-smoke-shell.sh; smoke_run_with_timeout_or_fail repro 1 bash -c 'exit 42'",
+		]);
+		expect(failedCommand.status).toBe(1);
+		expect(failedCommand.stderr).toContain("repro exited 42");
 	});
 
 	it("packages smoke scripts and avoids reusing the v0.1.16 tarball version", () => {
@@ -52,6 +60,11 @@ describe("smoke tooling package checks", () => {
 		expect(paths.has("scripts/validate-smoke-jsonl.mjs")).toBe(true);
 		expect(paths.has("scripts/debug-sdk-events.mjs")).toBe(true);
 		expect(paths.has("scripts/debug-provider-events.mjs")).toBe(true);
+		for (const path of paths) {
+			if (!path.endsWith(".mjs")) continue;
+			const declarationPath = path.replace(/\.mjs$/, ".d.mts");
+			if (existsSync(declarationPath)) expect(paths.has(declarationPath)).toBe(true);
+		}
 		expect(paths.has("shared/cursor-setting-sources.mjs")).toBe(true);
 		expect(paths.has("shared/cursor-setting-sources.d.mts")).toBe(true);
 		expect(paths.has("shared/cursor-sensitive-text.mjs")).toBe(true);

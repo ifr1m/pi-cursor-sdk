@@ -22,18 +22,7 @@ export type CursorToolLifecycleLabelKind =
 	| "createPlan"
 	| "updateTodos";
 
-export type CursorReplaySummaryKind =
-	| "path"
-	| "read_lints"
-	| "todo_count"
-	| "description"
-	| "generate_image"
-	| "mcp_tool_name"
-	| "sem_search"
-	| "record_screen"
-	| "web_query"
-	| "web_url"
-	| "activity_generic";
+export type CursorReplayCallSummaryBuilder = (args: Record<string, unknown> | undefined) => string | undefined;
 
 export interface CursorToolVisibilityPolicy {
 	incompleteTitle?: string;
@@ -55,11 +44,80 @@ export interface CursorToolPresentationSpec {
 	/** Regexes matched against lowercased trimmed tool names for {@link classifyCursorWebToolKind}. */
 	webNamePatterns?: readonly RegExp[];
 	lifecycleLabelKind?: CursorToolLifecycleLabelKind;
-	replaySummaryKind?: CursorReplaySummaryKind;
+	replayCallSummary?: CursorReplayCallSummaryBuilder;
 	/** Short label for replay-only tool definitions (for example `edit` for `cursor_edit`). */
 	replayWrapperLabel?: string;
 	/** Whether replay-only wrappers describe file mutations or other recorded tool work. */
 	replaySideEffectCategory?: CursorReplaySideEffectCategory;
+}
+
+
+function readReplayString(args: Record<string, unknown> | undefined, key: string): string | undefined {
+	const value = args?.[key];
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readReplayNumber(args: Record<string, unknown> | undefined, key: string): number | undefined {
+	const value = args?.[key];
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function readReplayStringArray(args: Record<string, unknown> | undefined, key: string): string[] {
+	const value = args?.[key];
+	return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+function formatReplayRecordingDurationMs(ms: number | undefined): string | undefined {
+	if (ms === undefined || !Number.isFinite(ms) || ms < 0) return undefined;
+	if (ms < 1000) return `${Math.round(ms)}ms`;
+	const seconds = ms / 1000;
+	return seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+}
+
+function formatReplaySemSearchQuery(args: Record<string, unknown> | undefined): string | undefined {
+	const query = readReplayString(args, "query");
+	if (!query) return undefined;
+	const targetDirectories = readReplayStringArray(args, "targetDirectories");
+	const dirHint =
+		targetDirectories.length > 0 ? ` (${targetDirectories.length} dir${targetDirectories.length === 1 ? "" : "s"})` : "";
+	return `${query}${dirHint}`;
+}
+
+function summarizeReplayPath(args: Record<string, unknown> | undefined): string | undefined {
+	return readReplayString(args, "path") ?? "unknown";
+}
+
+function summarizeReplayReadLints(args: Record<string, unknown> | undefined): string | undefined {
+	const paths = readReplayStringArray(args, "paths");
+	const path = readReplayString(args, "path");
+	const diagnosticCount = readReplayNumber(args, "diagnosticCount");
+	const target = paths.length > 0 ? paths.join(", ") : path;
+	if (target && diagnosticCount !== undefined) {
+		return `${diagnosticCount} diagnostic${diagnosticCount === 1 ? "" : "s"} in ${target}`;
+	}
+	return target;
+}
+
+function summarizeReplayTodoCount(args: Record<string, unknown> | undefined): string | undefined {
+	const totalCount = readReplayNumber(args, "totalCount");
+	return totalCount !== undefined ? `${totalCount} item${totalCount === 1 ? "" : "s"}` : undefined;
+}
+
+function summarizeReplayRecordScreen(args: Record<string, unknown> | undefined): string | undefined {
+	const path = readReplayString(args, "path");
+	const duration = formatReplayRecordingDurationMs(readReplayNumber(args, "recordingDurationMs"));
+	if (path && duration) return `${path} · ${duration}`;
+	return path ?? readReplayString(args, "mode");
+}
+
+function summarizeReplayGenericActivity(args: Record<string, unknown> | undefined): string | undefined {
+	return readReplayString(args, "path") ?? readReplayString(args, "toolName") ?? formatReplaySemSearchQuery(args);
+}
+
+function withActivitySummaryFallback(
+	buildSummary: CursorReplayCallSummaryBuilder,
+): CursorReplayCallSummaryBuilder {
+	return (args) => readReplayString(args, "activitySummary") ?? buildSummary(args);
 }
 
 const WEB_SEARCH_NAME_PATTERN =
@@ -128,7 +186,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		visibility: {},
 		replayWrapperLabel: "edit",
 		replaySideEffectCategory: "file_mutations",
-		replaySummaryKind: "path",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayPath),
 	},
 	{
 		normalizedName: "write",
@@ -140,7 +198,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		visibility: {},
 		replayWrapperLabel: "write",
 		replaySideEffectCategory: "file_mutations",
-		replaySummaryKind: "path",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayPath),
 	},
 	{
 		normalizedName: "delete",
@@ -149,7 +207,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor delete",
 		displayLabel: "Cursor delete",
 		visibility: {},
-		replaySummaryKind: "path",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayPath),
 	},
 	{
 		normalizedName: "readLints",
@@ -158,7 +216,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		promptLabel: "Cursor diagnostics",
 		displayLabel: "Cursor diagnostics",
 		visibility: {},
-		replaySummaryKind: "read_lints",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayReadLints),
 	},
 	{
 		normalizedName: "updateTodos",
@@ -168,7 +226,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		displayLabel: "Cursor todos",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "updateTodos",
-		replaySummaryKind: "todo_count",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayTodoCount),
 	},
 	{
 		normalizedName: "createPlan",
@@ -178,7 +236,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		displayLabel: "Cursor plan",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "createPlan",
-		replaySummaryKind: "todo_count",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayTodoCount),
 	},
 	{
 		normalizedName: "task",
@@ -188,7 +246,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		displayLabel: "Cursor task",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "task",
-		replaySummaryKind: "description",
+		replayCallSummary: withActivitySummaryFallback((args) => readReplayString(args, "description")),
 	},
 	{
 		normalizedName: "generateImage",
@@ -198,7 +256,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		displayLabel: "Cursor image generation",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "generateImage",
-		replaySummaryKind: "generate_image",
+		replayCallSummary: withActivitySummaryFallback((args) => readReplayString(args, "path") ?? readReplayString(args, "prompt")),
 	},
 	{
 		normalizedName: "mcp",
@@ -208,7 +266,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		displayLabel: "Cursor MCP",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "mcp",
-		replaySummaryKind: "mcp_tool_name",
+		replayCallSummary: withActivitySummaryFallback((args) => readReplayString(args, "toolName")),
 	},
 	{
 		normalizedName: "semSearch",
@@ -218,7 +276,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		displayLabel: "Cursor semantic search",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "semSearch",
-		replaySummaryKind: "sem_search",
+		replayCallSummary: withActivitySummaryFallback(formatReplaySemSearchQuery),
 	},
 	{
 		normalizedName: "recordScreen",
@@ -228,7 +286,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		displayLabel: "Cursor screen recording",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "recordScreen",
-		replaySummaryKind: "record_screen",
+		replayCallSummary: withActivitySummaryFallback(summarizeReplayRecordScreen),
 	},
 	{
 		normalizedName: "webSearch",
@@ -241,7 +299,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		webKind: "webSearch",
 		webNamePatterns: [WEB_SEARCH_NAME_PATTERN],
 		lifecycleLabelKind: "webSearch",
-		replaySummaryKind: "web_query",
+		replayCallSummary: withActivitySummaryFallback((args) => readReplayString(args, "query")),
 	},
 	{
 		normalizedName: "webFetch",
@@ -254,7 +312,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 		webKind: "webFetch",
 		webNamePatterns: [WEB_FETCH_NAME_PATTERN],
 		lifecycleLabelKind: "webFetch",
-		replaySummaryKind: "web_url",
+		replayCallSummary: withActivitySummaryFallback((args) => readReplayString(args, "url")),
 	},
 ] as const satisfies readonly CursorToolPresentationSpec[];
 
@@ -441,9 +499,12 @@ export function getCursorToolLifecycleLabelKind(normalizedKey: string): CursorTo
 	return SPECS_BY_NORMALIZED_KEY.get(normalizedKey)?.lifecycleLabelKind;
 }
 
-export function getCursorReplaySummaryKind(
+export function getCursorReplayCallSummary(
 	toolName: CursorReplayToolName,
-): CursorReplaySummaryKind | undefined {
-	if (toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME) return "activity_generic";
-	return SPECS_BY_REPLAY_LEGACY_NAME.get(toolName)?.replaySummaryKind;
+	args: Record<string, unknown> | undefined,
+): string | undefined {
+	if (toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME) {
+		return readReplayString(args, "activitySummary") ?? summarizeReplayGenericActivity(args);
+	}
+	return SPECS_BY_REPLAY_LEGACY_NAME.get(toolName)?.replayCallSummary?.(args);
 }

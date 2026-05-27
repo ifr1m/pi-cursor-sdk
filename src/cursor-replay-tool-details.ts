@@ -108,8 +108,12 @@ export type CursorReplayUnknownCursorToolName = CursorReplayUnknownSourceToolNam
 export type CursorReplayActivityDetailFields = Pick<
 	CursorReplayActivityDetails,
 	"summary" | "expandedText" | "collapseDetailsByDefault" | "path" | "fileSize"
-> &
-	Pick<CursorReplayGenerateImageDetails, "imagePath" | "imageDisplayPath" | "imageMimeType">;
+>;
+
+export type CursorReplayGenerateImageDetailFields = Pick<
+	CursorReplayGenerateImageDetails,
+	"summary" | "expandedText" | "imagePath" | "imageDisplayPath" | "imageMimeType"
+>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -385,40 +389,21 @@ export const assembleCursorReplayTitledActivityDetails = assembleCursorReplayAct
 
 export const CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE = "Cursor generateImage" as const;
 
-export type CursorReplayActivityResultSourceToolName =
-	| Exclude<CursorReplayActivitySourceToolName, "edit" | "write">
-	| "generateImage";
-
-/** @deprecated Prefer {@link CursorReplayActivityResultSourceToolName}. */
-export type CursorReplayActivityResultCursorToolName = CursorReplayActivityResultSourceToolName;
-
-export function assembleCursorReplayActivityResultDetails(
-	sourceToolName: CursorReplayActivityResultSourceToolName,
-	title: string,
-	fields: CursorReplayActivityDetailFields,
+export function assembleCursorReplayGenerateImageDetails(
+	fields: CursorReplayGenerateImageDetailFields,
 	contentText: string,
 	isError: boolean,
 	activitySummary: string | undefined,
-): CursorReplayActivityDetails | CursorReplayGenerateImageDetails {
-	if (sourceToolName === "generateImage") {
-		const summary = isError ? fields.summary : (fields.summary ?? activitySummary);
-		return {
-			variant: "generateImage",
-			imagePath: fields.imagePath,
-			imageDisplayPath: fields.imageDisplayPath,
-			imageMimeType: fields.imageMimeType,
-			summary,
-			expandedText: fields.expandedText ?? contentText,
-		};
-	}
-	return assembleCursorReplayActivityDetails(
-		sourceToolName,
-		title,
-		fields,
-		contentText,
-		isError,
-		activitySummary,
-	);
+): CursorReplayGenerateImageDetails {
+	const summary = isError ? fields.summary : (fields.summary ?? activitySummary);
+	return {
+		variant: "generateImage",
+		imagePath: fields.imagePath,
+		imageDisplayPath: fields.imageDisplayPath,
+		imageMimeType: fields.imageMimeType,
+		summary,
+		expandedText: fields.expandedText ?? contentText,
+	};
 }
 
 export function isCursorReplayNativeEditDetails(

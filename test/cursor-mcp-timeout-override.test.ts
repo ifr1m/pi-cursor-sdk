@@ -185,17 +185,43 @@ describe("Cursor MCP timeout override", () => {
 		expect(isCursorSdkMcpToolTimeoutStack(stack.replace(/node_modules\/\@cursor\/sdk/g, "src"))).toBe(false);
 	});
 
-	it("wires the override before Cursor session agent creation", () => {
-		const prepareSource = readFileSync(join(process.cwd(), "src/cursor-provider-turn-prepare.ts"), "utf8");
-		const installIndex = prepareSource.indexOf("installCursorMcpToolTimeoutOverride();");
-		const acquireIndex = prepareSource.indexOf("acquireSessionCursorAgent(sessionAgentAcquireParams)");
+	it("installs the override before Cursor session agent acquisition", async () => {
+		vi.resetModules();
+		const calls: string[] = [];
+		vi.doMock("../src/cursor-mcp-timeout-override.js", () => ({
+			installCursorMcpToolTimeoutOverride: () => calls.push("install"),
+		}));
+		vi.doMock("../src/cursor-session-agent.js", () => ({
+			acquireSessionCursorAgent: async () => {
+				calls.push("acquire");
+				throw new Error("stop before Cursor agent creation");
+			},
+			buildCursorSessionSendPrompt: vi.fn(),
+			planCursorSessionSend: vi.fn(),
+			resetSessionCursorAgent: vi.fn(),
+		}));
+		const { prepareCursorProviderTurn } = await import("../src/cursor-provider-turn-prepare.js");
 
-		expect(prepareSource).toContain(
-			'import { installCursorMcpToolTimeoutOverride } from "./cursor-mcp-timeout-override.js";',
-		);
-		expect(installIndex).toBeGreaterThanOrEqual(0);
-		expect(acquireIndex).toBeGreaterThanOrEqual(0);
-		expect(installIndex).toBeLessThan(acquireIndex);
+		await expect(
+			prepareCursorProviderTurn({
+				params: {
+					model: { id: "cursor/composer-2.5", provider: "cursor", api: "assistant" } as never,
+					context: {} as never,
+					stream: { push: vi.fn() } as never,
+					partial: { content: [] } as never,
+					sdkEventDebugRef: {},
+				},
+				cwd: process.cwd(),
+				resolvedApiKey: "key",
+				sdkEventDebug: undefined,
+				throwIfAborted: vi.fn(),
+			}),
+		).rejects.toThrow("stop before Cursor agent creation");
+
+		expect(calls).toEqual(["install", "acquire"]);
+		vi.doUnmock("../src/cursor-mcp-timeout-override.js");
+		vi.doUnmock("../src/cursor-session-agent.js");
+		vi.resetModules();
 	});
 
 	it("extends only the Cursor SDK MCP tool-call default timeout", () => {

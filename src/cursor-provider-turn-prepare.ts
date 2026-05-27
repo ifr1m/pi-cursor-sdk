@@ -12,7 +12,7 @@ import type { CursorPiBridgeToolRequest } from "./cursor-pi-tool-bridge.js";
 import { estimateCursorPromptInputTokens, getCursorPromptOptions } from "./cursor-usage-accounting.js";
 import { getActiveContextToolNames } from "./cursor-context-tools.js";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
-import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
+import { abandonSessionCursorAgent, cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
 import { createCursorNativeReplayId } from "./cursor-provider-live-run-drain.js";
 import { getEffectiveFastForModelId } from "./cursor-state.js";
 import { buildCursorModelSelection } from "./model-discovery.js";
@@ -22,7 +22,6 @@ import { MISSING_CURSOR_API_KEY_MESSAGE } from "./cursor-provider-errors.js";
 import { CursorSdkTurnCoordinator } from "./cursor-provider-turn-coordinator.js";
 import { resolveCursorApiKey } from "./cursor-provider-turn-api-key.js";
 import type {
-	CursorProviderTurnPrepareHandles,
 	CursorProviderTurnPrepareResult,
 	CursorProviderTurnRunnerParams,
 } from "./cursor-provider-turn-types.js";
@@ -34,144 +33,155 @@ export interface PrepareCursorProviderTurnParams {
 	resolvedApiKey: string;
 	sdkEventDebug: CursorSdkEventDebugSink | undefined;
 	throwIfAborted: () => void;
-	/** Merges concrete prepare handles as they become available for runner cleanup on early abort. */
-	registerPrepareHandles: (handles: Partial<CursorProviderTurnPrepareHandles>) => void;
 }
 
 export async function prepareCursorProviderTurn(
 	prepareParams: PrepareCursorProviderTurnParams,
 ): Promise<CursorProviderTurnPrepareResult> {
-	const { params, cwd, resolvedApiKey, sdkEventDebug, throwIfAborted, registerPrepareHandles } = prepareParams;
+	const { params, cwd, resolvedApiKey, sdkEventDebug, throwIfAborted } = prepareParams;
 	const { model, context, options } = params;
 
-	const fastEnabled = getEffectiveFastForModelId(model.id);
-	const selection = buildCursorModelSelection(model.id, options?.reasoning ?? "off", fastEnabled);
-	const settingSources = getEffectiveCursorSettingSources();
+	let restoreCursorSdkOutputFilter: (() => void) | undefined;
+	let sessionAgentScopeKey: string | undefined;
+	let liveRun: CursorLiveRun | undefined;
+	let completed = false;
 
-	installCursorMcpToolTimeoutOverride();
-	const restoreCursorSdkOutputFilter = installCursorSdkOutputFilter();
-	registerPrepareHandles({ restoreCursorSdkOutputFilter });
-	const queuedBridgeRequestsBeforeLiveRun: CursorPiBridgeToolRequest[] = [];
-	let liveRunForBridgeQueue: CursorLiveRun | undefined;
+	try {
+		const fastEnabled = getEffectiveFastForModelId(model.id);
+		const selection = buildCursorModelSelection(model.id, options?.reasoning ?? "off", fastEnabled);
+		const settingSources = getEffectiveCursorSettingSources();
 
-	const sessionAgentAcquireParams = {
-		apiKey: resolvedApiKey,
-		cwd,
-		modelSelection: selection,
-		settingSources,
-		debugRecorder: sdkEventDebug,
-		onBridgeToolRequest: (request: CursorPiBridgeToolRequest) => {
-			if (liveRunForBridgeQueue && !liveRunForBridgeQueue.disposed) {
-				cursorLiveRuns.queueEvent(liveRunForBridgeQueue, { type: "bridge-tool", request });
-			} else {
-				queuedBridgeRequestsBeforeLiveRun.push(request);
-			}
-		},
-		createAgent: (createOptions: Parameters<typeof Agent.create>[0]) =>
-			suppressCursorSdkOutput(() => Agent.create(createOptions)),
-	};
-	let sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
-	const sessionAgentScopeKey = sessionAgentLease.scopeKey;
-	registerPrepareHandles({ sessionAgentScopeKey });
-	throwIfAborted();
+		installCursorMcpToolTimeoutOverride();
+		restoreCursorSdkOutputFilter = installCursorSdkOutputFilter();
+		const queuedBridgeRequestsBeforeLiveRun: CursorPiBridgeToolRequest[] = [];
+		let liveRunForBridgeQueue: CursorLiveRun | undefined;
 
-	const promptOptions = getCursorPromptOptions(model);
-	let sendPlan = planCursorSessionSend(sessionAgentLease.sendState, context);
-	let prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
-	if (sendPlan.resetAgent) {
-		await resetSessionCursorAgent(sessionAgentScopeKey);
-		sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
-		sendPlan = planCursorSessionSend(sessionAgentLease.sendState, context);
-		prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
-	}
-	const bootstrap = sendPlan.mode === "bootstrap";
-	const agent = sessionAgentLease.agent;
-	const bridgeRun = sessionAgentLease.bridgeRun;
-	const sendPayload = {
-		text: prompt.text,
-		images: prompt.images.length > 0 ? prompt.images : undefined,
-	};
-	const sessionBridgeRun = bridgeRun;
-	const promptInputTokens = estimateCursorPromptInputTokens(prompt, promptOptions);
-	const useNativeToolReplay = isCursorNativeToolDisplayRuntimeEnabled();
-	const activeToolNames = getActiveContextToolNames(context);
-	sdkEventDebug?.recordProviderMeta({
-		model: {
-			id: model.id,
-			provider: model.provider,
-			api: model.api,
-			reasoning: options?.reasoning ?? "off",
-			fastEnabled,
-			selection,
-		},
-		settingSources: settingSources ?? null,
-		sendState: sessionAgentLease.sendState,
-		sendPlan,
-		promptOptions,
-		activeToolNames: activeToolNames ? [...activeToolNames] : [],
-		sessionAgentScopeKey,
-		bridgeRunId: bridgeRun?.id,
-	});
-	const nativeReplayId = createCursorNativeReplayId();
-	const textDeltas: string[] = [];
-	const useLiveRun = useNativeToolReplay || bridgeRun !== undefined;
-	const liveRun = useLiveRun
-		? cursorLiveRuns.start({
-				id: useNativeToolReplay ? nativeReplayId : bridgeRun?.id ?? nativeReplayId,
-				agent,
-				bridgeRun,
-				sessionBridgeRun,
-				sessionAgentScopeKey,
-				promptInputTokens,
-				textDeltas,
-				debugRecorder: sdkEventDebug,
-			})
-		: undefined;
-	if (liveRun) {
-		liveRunForBridgeQueue = liveRun;
-		for (const request of queuedBridgeRequestsBeforeLiveRun.splice(0)) {
-			cursorLiveRuns.queueEvent(liveRun, { type: "bridge-tool", request });
-		}
-	}
-	const turnCoordinator = new CursorSdkTurnCoordinator({
-		stream: params.stream,
-		partial: params.partial,
-		cwd,
-		resolvedApiKey,
-		liveRun,
-		useNativeToolReplay,
-		activeToolNames,
-		nativeReplayId,
-		textDeltas,
-		debugRecorder: sdkEventDebug,
-	});
-	registerPrepareHandles({ activeLiveRun: liveRun, turnCoordinator });
-
-	return {
-		prepared: {
+		const sessionAgentAcquireParams = {
+			apiKey: resolvedApiKey,
 			cwd,
-			sessionAgentLease,
-			agent,
-			bridgeRun,
+			modelSelection: selection,
+			settingSources,
+			debugRecorder: sdkEventDebug,
+			onBridgeToolRequest: (request: CursorPiBridgeToolRequest) => {
+				if (liveRunForBridgeQueue && !liveRunForBridgeQueue.disposed) {
+					cursorLiveRuns.queueEvent(liveRunForBridgeQueue, { type: "bridge-tool", request });
+				} else {
+					queuedBridgeRequestsBeforeLiveRun.push(request);
+				}
+			},
+			createAgent: (createOptions: Parameters<typeof Agent.create>[0]) =>
+				suppressCursorSdkOutput(() => Agent.create(createOptions)),
+		};
+		let sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
+		sessionAgentScopeKey = sessionAgentLease.scopeKey;
+		throwIfAborted();
+
+		const promptOptions = getCursorPromptOptions(model);
+		let sendPlan = planCursorSessionSend(sessionAgentLease.sendState, context);
+		let prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
+		if (sendPlan.resetAgent) {
+			await resetSessionCursorAgent(sessionAgentScopeKey);
+			sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
+			sessionAgentScopeKey = sessionAgentLease.scopeKey;
+			sendPlan = planCursorSessionSend(sessionAgentLease.sendState, context);
+			prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
+		}
+		const bootstrap = sendPlan.mode === "bootstrap";
+		const agent = sessionAgentLease.agent;
+		const bridgeRun = sessionAgentLease.bridgeRun;
+		const sendPayload = {
+			text: prompt.text,
+			images: prompt.images.length > 0 ? prompt.images : undefined,
+		};
+		const sessionBridgeRun = bridgeRun;
+		const promptInputTokens = estimateCursorPromptInputTokens(prompt, promptOptions);
+		const useNativeToolReplay = isCursorNativeToolDisplayRuntimeEnabled();
+		const activeToolNames = getActiveContextToolNames(context);
+		sdkEventDebug?.recordProviderMeta({
+			model: {
+				id: model.id,
+				provider: model.provider,
+				api: model.api,
+				reasoning: options?.reasoning ?? "off",
+				fastEnabled,
+				selection,
+			},
+			settingSources: settingSources ?? null,
+			sendState: sessionAgentLease.sendState,
 			sendPlan,
-			prompt,
-			sendPayload,
-			bootstrap,
-			promptInputTokens,
+			promptOptions,
+			activeToolNames: activeToolNames ? [...activeToolNames] : [],
+			sessionAgentScopeKey,
+			bridgeRunId: bridgeRun?.id,
+		});
+		const nativeReplayId = createCursorNativeReplayId();
+		const textDeltas: string[] = [];
+		const useLiveRun = useNativeToolReplay || bridgeRun !== undefined;
+		liveRun = useLiveRun
+			? cursorLiveRuns.start({
+					id: useNativeToolReplay ? nativeReplayId : bridgeRun?.id ?? nativeReplayId,
+					agent,
+					bridgeRun,
+					sessionBridgeRun,
+					sessionAgentScopeKey,
+					promptInputTokens,
+					textDeltas,
+					debugRecorder: sdkEventDebug,
+				})
+			: undefined;
+		if (liveRun) {
+			liveRunForBridgeQueue = liveRun;
+			for (const request of queuedBridgeRequestsBeforeLiveRun.splice(0)) {
+				cursorLiveRuns.queueEvent(liveRun, { type: "bridge-tool", request });
+			}
+		}
+		const turnCoordinator = new CursorSdkTurnCoordinator({
+			stream: params.stream,
+			partial: params.partial,
+			cwd,
+			resolvedApiKey,
+			liveRun,
 			useNativeToolReplay,
 			activeToolNames,
 			nativeReplayId,
 			textDeltas,
-			liveRun,
-			turnCoordinator,
-		},
-		handles: {
-			sessionAgentScopeKey,
-			restoreCursorSdkOutputFilter,
-			activeLiveRun: liveRun,
-			turnCoordinator,
-		},
-	};
+			debugRecorder: sdkEventDebug,
+		});
+
+		completed = true;
+		return {
+			prepared: {
+				cwd,
+				sessionAgentScopeKey,
+				restoreCursorSdkOutputFilter,
+				sessionAgentLease,
+				agent,
+				bridgeRun,
+				sendPlan,
+				prompt,
+				sendPayload,
+				bootstrap,
+				promptInputTokens,
+				useNativeToolReplay,
+				activeToolNames,
+				nativeReplayId,
+				textDeltas,
+				liveRun,
+				turnCoordinator,
+			},
+		};
+	} finally {
+		if (!completed) {
+			if (liveRun && !liveRun.disposed) {
+				await cursorLiveRuns
+					.release(liveRun)
+					.catch(() => abandonSessionCursorAgent(sessionAgentScopeKey).catch(() => {}));
+			} else {
+				await abandonSessionCursorAgent(sessionAgentScopeKey).catch(() => {});
+			}
+			restoreCursorSdkOutputFilter?.();
+		}
+	}
 }
 
 export function requireCursorApiKey(options: SimpleStreamOptions | undefined): string {

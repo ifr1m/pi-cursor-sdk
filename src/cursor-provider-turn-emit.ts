@@ -1,5 +1,4 @@
-import type { Context } from "@earendil-works/pi-ai";
-import { CursorLiveRunAbortError, type CursorLiveRun } from "./cursor-live-run-coordinator.js";
+import { CursorLiveRunAbortError } from "./cursor-live-run-coordinator.js";
 import { applyCursorApproximateUsage } from "./cursor-usage-accounting.js";
 import { hasUsableText } from "./cursor-record-utils.js";
 import {
@@ -14,91 +13,36 @@ import {
 	type IncompleteCursorToolRunOutcomeInput,
 } from "./cursor-incomplete-tool-visibility.js";
 import {
-	classifyCursorRunDirectEmission,
-	classifyCursorRunLiveEmission,
+	classifyCursorRunEmission,
 	getCursorRunAbortMessage,
 	type CursorRunOutcome,
 } from "./cursor-provider-run-outcome.js";
-import { sanitizeCursorProviderError } from "./cursor-provider-errors.js";
-import type { installCursorSdkAbortErrorSuppression } from "./cursor-sdk-abort-error-guard.js";
-import type { SessionCursorAgentLease } from "./cursor-session-agent.js";
-import { awaitFinalizeCursorRunOutcome } from "./cursor-provider-turn-finalize.js";
 import type {
-	CursorProviderTurnCleanup,
+	CursorProviderTurnPrepared,
 	CursorProviderTurnRunnerParams,
 	CursorProviderTurnSend,
 } from "./cursor-provider-turn-types.js";
-
-function applyLiveRunOutcome(
-	liveRun: CursorLiveRun,
-	outcome: CursorRunOutcome,
-	sessionAgentLease: SessionCursorAgentLease,
-	context: Context,
-	bootstrap: boolean,
-): void {
-	switch (classifyCursorRunLiveEmission(outcome)) {
-		case "finished":
-			sessionAgentLease.commitSend(context, bootstrap);
-			cursorLiveRuns.markFinished(liveRun, outcome.kind === "finished" ? outcome.finalText : "");
-			break;
-		case "cancelled":
-			cursorLiveRuns.markCancelled(liveRun, getCursorRunAbortMessage(outcome));
-			break;
-		case "failed":
-			cursorLiveRuns.markError(liveRun, outcome.kind === "error" ? outcome.errorMessage : "Cursor SDK run failed.");
-			break;
-	}
-}
+import type { CursorSdkEventDebugSink } from "./cursor-sdk-event-debug.js";
 
 export interface EmitCursorLiveTurnParams {
 	params: CursorProviderTurnRunnerParams;
-	cleanup: CursorProviderTurnCleanup;
 	send: CursorProviderTurnSend;
-	sdkAbortErrorSuppression: ReturnType<typeof installCursorSdkAbortErrorSuppression>;
+	sdkEventDebug: CursorSdkEventDebugSink | undefined;
 	discardIncompleteTools: (outcome: IncompleteCursorToolRunOutcomeInput) => void;
-	finalizeSdkEventDebug: () => Promise<void>;
 }
 
-export async function emitCursorLiveTurn(emitParams: EmitCursorLiveTurnParams): Promise<void> {
-	const { params, cleanup, send, sdkAbortErrorSuppression, discardIncompleteTools, finalizeSdkEventDebug } = emitParams;
-	const { run, prepared, cursorAgentMessageOffset } = send;
-	const { liveRun, turnCoordinator, sessionAgentLease, bootstrap } = prepared;
-	if (!liveRun) return;
+export interface EmitCursorLiveTurnResult {
+	error: unknown | undefined;
+}
 
-	cleanup.deferSdkEventDebugFinalize = true;
-	const activeSessionAgentLease = sessionAgentLease;
+export async function emitCursorLiveTurn(emitParams: EmitCursorLiveTurnParams): Promise<EmitCursorLiveTurnResult> {
+	const { params, send, sdkEventDebug, discardIncompleteTools } = emitParams;
+	const { prepared } = send;
+	const { liveRun, turnCoordinator } = prepared;
+	if (!liveRun) throw new Error("emitCursorLiveTurn requires a live run");
+
 	const { options, model } = params;
-	const { sdkEventDebug, resolvedApiKey } = cleanup;
-
-	const waitCompletion = awaitFinalizeCursorRunOutcome({
-		run,
-		prepared,
-		cursorAgentMessageOffset,
-		modelId: model.id,
-		signal: options?.signal,
-		runResultFallback: run.result,
-		resolvedApiKey,
-		optionsApiKey: options?.apiKey,
-		sdkEventDebug,
-		cacheContextWindow: true,
-		contextWindowAgentId: liveRun.agent.agentId,
-	})
-		.then(async (outcome) => {
-			if (liveRun.disposed) return;
-			applyLiveRunOutcome(liveRun, outcome, activeSessionAgentLease, params.context, bootstrap);
-		})
-		.catch(async (error: unknown) => {
-			sdkEventDebug?.recordWaitResult({ status: "error", error: String(error) });
-			sdkEventDebug?.recordError("run_wait", error);
-			discardIncompleteTools({ status: "error" });
-			await sdkEventDebug?.captureRunArtifacts(run);
-			if (liveRun.disposed) return;
-			cursorLiveRuns.markError(
-				liveRun,
-				sanitizeCursorProviderError(error, resolvedApiKey ?? options?.apiKey),
-			);
-		});
-
+	let error: unknown;
 	try {
 		await cursorLiveRuns.withRunLease(liveRun, options?.signal, async () => {
 			await cursorLiveRuns.waitForProgress(liveRun, options?.signal);
@@ -110,9 +54,9 @@ export async function emitCursorLiveTurn(emitParams: EmitCursorLiveTurnParams): 
 				debugRecorder: sdkEventDebug,
 			});
 		});
-	} catch (error) {
-		if (error instanceof CursorLiveRunAbortError) {
-			sdkAbortErrorSuppression.suppressAbortErrors();
+	} catch (caught) {
+		error = caught;
+		if (caught instanceof CursorLiveRunAbortError) {
 			discardIncompleteTools({ status: "cancelled", signalAborted: true });
 			turnCoordinator.closeTraceBlock();
 			flushPendingCursorLiveRunTraceEventsToStream(params.stream, params.partial, liveRun, {
@@ -120,39 +64,26 @@ export async function emitCursorLiveTurn(emitParams: EmitCursorLiveTurnParams): 
 			});
 			await cursorLiveRuns.release(liveRun);
 		}
-		throw error;
-	} finally {
-		params.sdkEventDebugRef.current = undefined;
-		activeSessionAgentLease.trackRunCompletion(waitCompletion);
-		void waitCompletion
-			.finally(async () => {
-				try {
-					await finalizeSdkEventDebug();
-				} finally {
-					sdkAbortErrorSuppression.dispose();
-				}
-			})
-			.catch(() => {});
 	}
+
+	return { error };
 }
 
 export interface EmitCursorDirectOutcomeParams {
 	params: CursorProviderTurnRunnerParams;
-	cleanup: CursorProviderTurnCleanup;
 	send: CursorProviderTurnSend;
 	outcome: CursorRunOutcome;
 }
 
 export async function emitCursorDirectOutcome(emitParams: EmitCursorDirectOutcomeParams): Promise<void> {
-	const { params, cleanup, send, outcome } = emitParams;
+	const { params, send, outcome } = emitParams;
 	const { prepared } = send;
-	const { turnCoordinator, sessionAgentLease, bootstrap, promptInputTokens } = prepared;
+	const { turnCoordinator, sessionAgentLease, bootstrap, promptInputTokens, sessionAgentScopeKey } = prepared;
 	const { stream, partial, model, context } = params;
-	const sessionAgentScopeKey = cleanup.prepare?.sessionAgentScopeKey ?? "";
 
 	turnCoordinator.closeTraceBlock();
 
-	switch (classifyCursorRunDirectEmission(outcome)) {
+	switch (classifyCursorRunEmission(outcome)) {
 		case "cancelled":
 			await abandonSessionCursorAgent(sessionAgentScopeKey);
 			partial.stopReason = "aborted";
@@ -176,9 +107,9 @@ export async function emitCursorDirectOutcome(emitParams: EmitCursorDirectOutcom
 	}
 }
 
-export function discardIncompleteToolsFromCleanup(
-	cleanup: CursorProviderTurnCleanup,
+export function discardIncompleteToolsFromPrepared(
+	prepared: CursorProviderTurnPrepared | undefined,
 	outcome: IncompleteCursorToolRunOutcomeInput,
 ): void {
-	cleanup.prepare?.turnCoordinator?.discardIncompleteStartedToolCalls(buildIncompleteCursorToolRunOutcome(outcome));
+	prepared?.turnCoordinator.discardIncompleteStartedToolCalls(buildIncompleteCursorToolRunOutcome(outcome));
 }

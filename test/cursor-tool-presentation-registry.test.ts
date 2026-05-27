@@ -12,8 +12,8 @@ import {
 	CURSOR_TOOL_PRESENTATION_SPECS,
 	classifyCursorWebToolKind,
 	getCursorReplayActivityTitle,
+	getCursorReplayCallSummary,
 	getCursorReplaySideEffectDescription,
-	getCursorReplaySummaryKind,
 	getCursorReplayWrapperLabel,
 	getCursorToolLifecycleLabelKind,
 	getCursorToolPresentationSpec,
@@ -105,11 +105,12 @@ describe("cursor tool presentation registry", () => {
 		expect(getCursorReplaySideEffectDescription("cursor_mcp")).toBe("real tool work");
 	});
 
-	it("assigns replay summary kinds for every legacy replay tool", () => {
+	it("derives replay call summaries from registry display policy", () => {
 		for (const legacyName of CURSOR_REPLAY_LEGACY_TOOL_NAMES) {
-			expect(getCursorReplaySummaryKind(legacyName)).toBeDefined();
+			expect(getCursorReplayCallSummary(legacyName, { activitySummary: "summary" })).toBe("summary");
 		}
-		expect(getCursorReplaySummaryKind(CURSOR_REPLAY_ACTIVITY_TOOL_NAME)).toBe("activity_generic");
+		expect(getCursorReplayCallSummary(CURSOR_REPLAY_ACTIVITY_TOOL_NAME, { toolName: "custom" })).toBe("custom");
+		expect(getCursorReplayCallSummary("cursor_sem_search", { query: "main", targetDirectories: ["src"] })).toBe("main (1 dir)");
 	});
 
 	it("builds transcript displays for every registry-backed spec key", () => {
