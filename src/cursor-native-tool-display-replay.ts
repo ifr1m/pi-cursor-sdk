@@ -222,6 +222,58 @@ function formatMutedBlock(text: string, theme: CursorReplayRenderTheme): string 
 	return text.split("\n").map((line) => theme.fg("muted", line)).join("\n");
 }
 
+function hasUnifiedDiffHunk(text: string): boolean {
+	return text.split("\n").some((line) => Boolean(parseUnifiedDiffHunkHeader(line)));
+}
+
+function formatCursorReplayActivityDiffPreview(
+	text: string,
+	theme: CursorReplayRenderTheme,
+	maxLines: number,
+	stripHeader: boolean,
+): string | undefined {
+	const body = (stripHeader ? stripCursorReplayHeader(text) : text).trimEnd();
+	if (!body || !hasUnifiedDiffHunk(body)) return undefined;
+	const slice = Number.isFinite(maxLines) ? sliceCursorReplayPreview(body, maxLines) : undefined;
+	const previewText = slice?.text ?? replaceCursorReplayTabs(body);
+	const rendered: string[] = [];
+	let inHunk = false;
+	for (const line of previewText.split("\n")) {
+		if (parseUnifiedDiffHunkHeader(line)) {
+			inHunk = true;
+			rendered.push(theme.fg("toolDiffContext", line));
+		} else if (!inHunk) {
+			const color = line.startsWith("--- ") || line.startsWith("+++ ") ? "toolDiffContext" : "muted";
+			rendered.push(theme.fg(color, line));
+		} else if (line.startsWith("--- ") || line.startsWith("+++ ")) {
+			rendered.push(theme.fg("toolDiffContext", line));
+		} else if (line.startsWith("+")) {
+			rendered.push(theme.fg("toolDiffAdded", line));
+		} else if (line.startsWith("-")) {
+			rendered.push(theme.fg("toolDiffRemoved", line));
+		} else {
+			rendered.push(theme.fg("toolDiffContext", line));
+		}
+	}
+	const omission = slice ? formatCursorReplayOmission(slice) : undefined;
+	if (omission) rendered.push(theme.fg("muted", omission));
+	return rendered.join("\n");
+}
+
+function formatCursorReplayActivityPreview(
+	details: CursorReplayExpandableResultDetails,
+	text: string,
+	theme: CursorReplayRenderTheme,
+	maxLines: number,
+	stripHeader: boolean,
+): string | undefined {
+	if (details.sourceToolName === "edit" || details.sourceToolName === "write") {
+		const diffPreview = formatCursorReplayActivityDiffPreview(text, theme, maxLines, stripHeader);
+		if (diffPreview) return diffPreview;
+	}
+	return stripHeader ? formatCursorReplayPreview(text, theme, maxLines, true) : formatMutedBlock(text, theme);
+}
+
 export function formatCursorReplayPreview(
 	text: string,
 	theme: CursorReplayRenderTheme,
@@ -348,6 +400,7 @@ type CursorReplayExpandableResultDetails = {
 	collapseDetailsByDefault?: boolean;
 	imagePath?: string;
 	imageMimeType?: string;
+	sourceToolName?: CursorReplayActivityDetails["sourceToolName"];
 };
 
 function hasCursorReplayDisplayTitle(details: CursorReplayToolDetails | undefined): boolean {
@@ -369,7 +422,13 @@ function renderExpandableCursorReplayResult(
 	let rendered = `${theme.fg("toolTitle", theme.bold(title))} ${theme.fg(isError ? "error" : "success", summary)}`;
 	const expandedText = details.expandedText ?? (text.includes("\n") ? text : undefined);
 	if (expandedText && (options.expanded || !details.collapseDetailsByDefault)) {
-		const preview = options.expanded ? formatMutedBlock(expandedText, theme) : formatCursorReplayPreview(expandedText, theme);
+		const preview = formatCursorReplayActivityPreview(
+			details,
+			expandedText,
+			theme,
+			options.expanded ? Number.POSITIVE_INFINITY : CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES,
+			!options.expanded,
+		);
 		if (preview) rendered += `\n${preview}`;
 	}
 	if (details.imagePath && !isError && context.showImages) {
