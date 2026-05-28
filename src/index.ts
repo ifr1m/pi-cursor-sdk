@@ -7,10 +7,11 @@ import { registerCursorQuestionTool } from "./cursor-question-tool.js";
 import { registerCursorSessionCwd } from "./cursor-session-cwd.js";
 import { registerCursorAgentsContextDedup } from "./cursor-agents-context.js";
 import { registerCursorSessionAgent } from "./cursor-session-agent.js";
+import { prepareCursorSessionForCompaction } from "./cursor-session-compaction-prep.js";
 import { streamCursor } from "./cursor-provider.js";
 
 type CursorExtensionApi =
-	& Pick<ExtensionAPI, "registerProvider" | "registerCommand">
+	& Pick<ExtensionAPI, "registerProvider" | "registerCommand" | "on">
 	& Parameters<typeof registerCursorSessionCwd>[0]
 	& Parameters<typeof registerCursorSessionAgent>[0]
 	& Parameters<typeof registerCursorRuntimeControls>[0]
@@ -38,6 +39,9 @@ export default async function (pi: CursorExtensionApi) {
 	// Session cwd must register before other session_start listeners that depend on it.
 	registerCursorSessionCwd(pi);
 	registerCursorSessionAgent(pi);
+	pi.on("session_before_compact", async () => {
+		await prepareCursorSessionForCompaction();
+	});
 	registerCursorRuntimeControls(pi);
 	registerCursorNativeToolDisplay(pi);
 	registerCursorQuestionTool(pi);

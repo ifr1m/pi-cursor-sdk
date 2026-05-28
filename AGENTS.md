@@ -19,7 +19,8 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-provider-run-finalizer.ts` owns live-run wait completion, outcome application, debug finalization, and SDK abort-suppression disposal.
 - `src/cursor-run-final-text.ts` owns final assistant text selection for run outcomes and live-run drain.
 - `src/cursor-provider-errors.ts` owns scrubbed Cursor SDK run failure detail, abort reason formatting, and provider error sanitization.
-- `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, send-state commits, and lifecycle invalidation on compaction/tree/shutdown.
+- `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, send-state commits, busy tracking for in-flight SDK `run.wait()` work, and lifecycle invalidation on compaction/tree/shutdown.
+- `src/cursor-session-compaction-prep.ts` owns `prepareCursorSessionForCompaction()` (release scoped live runs, reset pooled agent) wired from `session_before_compact` in `src/index.ts`.
 - `src/cursor-session-send-policy.ts` owns session send planning (`bootstrap` vs `incremental`), periodic agent rebootstrap threshold, and prompt mode selection.
 - `src/cursor-provider-live-run-drain.ts` owns live-run drain/replay mirroring, pre-send continuation, and native replay turn emission.
 - `src/cursor-provider-turn-coordinator.ts` orchestrates SDK delta/step handling during a turn over focused collaborators.

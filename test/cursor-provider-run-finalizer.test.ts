@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import type { SDKAgent } from "@cursor/sdk";
 import { buildIncompleteCursorToolRunOutcome } from "../src/cursor-incomplete-tool-visibility.js";
@@ -8,9 +8,112 @@ import type { CursorProviderTurnPrepareResult } from "../src/cursor-provider-tur
 import { installCursorSdkAbortErrorSuppression } from "../src/cursor-sdk-abort-error-guard.js";
 import type { CursorSdkEventDebugSink } from "../src/cursor-sdk-event-debug.js";
 import type { SessionCursorAgentLease } from "../src/cursor-session-agent.js";
+import { createCursorLiveRunAccountingState } from "../src/cursor-live-run-accounting.js";
+import { asMockCursorRun } from "./helpers/cursor-provider-harness.js";
 import { collectAssistantEvents, makeAssistantMessage, makeContext, makeModel } from "./helpers/pi-harness.js";
 
+const { mockAwaitFinalizeCursorRunOutcome, trackedWaitCompletion } = vi.hoisted(() => {
+	const waitCompletion = new Promise<void>(() => {});
+	return {
+		trackedWaitCompletion: waitCompletion,
+		mockAwaitFinalizeCursorRunOutcome: vi.fn(() => waitCompletion),
+	};
+});
+
+vi.mock("../src/cursor-provider-turn-finalize.js", () => ({
+	awaitFinalizeCursorRunOutcome: mockAwaitFinalizeCursorRunOutcome,
+	cacheSdkContextWindow: vi.fn(),
+}));
+
 describe("CursorRunFinalizer", () => {
+	it("marks the pooled session agent busy when live run completion starts", () => {
+		const trackRunCompletion = vi.fn();
+		const prepared: CursorProviderTurnPrepareResult = {
+			agent: { agentId: "agent-1" } as SDKAgent,
+			cwd: process.cwd(),
+			payload: { text: "hello" },
+			meta: {
+				sendPlan: { mode: "incremental", reason: "incremental", resetAgent: false },
+				prompt: { text: "hello", images: [] },
+				bootstrap: false,
+				promptInputTokens: 0,
+				useNativeToolReplay: true,
+				bridgeEnabled: false,
+				nativeReplayId: "replay-1",
+				agentMode: "agent",
+			},
+			contextWindowAgentId: "agent-1",
+			textDeltas: [],
+			sessionAgentScopeKey: "scope-1",
+			sessionAgentLease: {
+				scopeKey: "scope-1",
+				poolKey: "pool-1",
+				instanceId: 1,
+				agent: { agentId: "agent-1" } as SDKAgent,
+				sendState: { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 },
+				created: false,
+				commitSend: () => {},
+				trackRunCompletion,
+			} satisfies SessionCursorAgentLease,
+			restoreCursorSdkOutputFilter: () => {},
+			runtime: {
+				kind: "live",
+				liveRun: {
+					id: "replay-1",
+					agent: { agentId: "agent-1" } as SDKAgent,
+					sessionAgentScopeKey: "scope-1",
+					accounting: createCursorLiveRunAccountingState(0),
+					pendingEvents: [],
+					textDeltas: [],
+					emittedText: "",
+					recordedToolDisplayIds: [],
+					done: false,
+					cancelled: false,
+					disposed: false,
+					chainUserInputAfterCompletion: false,
+				},
+				turnCoordinator: new CursorSdkTurnCoordinator({
+					stream: createAssistantMessageEventStream(),
+					partial: makeAssistantMessage(""),
+					cwd: process.cwd(),
+					useNativeToolReplay: true,
+					nativeReplayId: "replay-1",
+					textDeltas: [],
+				}),
+			},
+		};
+		const finalizer = new CursorRunFinalizer({
+			runnerParams: {
+				model: makeModel(),
+				context: makeContext(),
+				stream: createAssistantMessageEventStream(),
+				partial: makeAssistantMessage(""),
+				sdkEventDebugRef: {},
+			},
+			sdkEventDebug: () => undefined,
+			sdkAbortErrorSuppression: installCursorSdkAbortErrorSuppression(),
+			resolvedApiKey: () => "test-key",
+		});
+		finalizer.startLiveRunCompletion({
+			send: {
+				run: asMockCursorRun({
+					id: "run-1",
+					agentId: "agent-1",
+					status: "running",
+					wait: vi.fn(),
+					cancel: vi.fn(),
+				}),
+				cursorAgentMessageOffset: 0,
+			},
+			prepared,
+			modelId: "composer-2.5",
+			discardIncompleteTools: () => {},
+		});
+
+		expect(mockAwaitFinalizeCursorRunOutcome).toHaveBeenCalledTimes(1);
+		expect(trackRunCompletion).toHaveBeenCalledWith(trackedWaitCompletion);
+	});
+
 	it("allows the error terminal path after direct terminal handling throws before emitting", async () => {
 		const stream = createAssistantMessageEventStream();
 		const partial = makeAssistantMessage("");

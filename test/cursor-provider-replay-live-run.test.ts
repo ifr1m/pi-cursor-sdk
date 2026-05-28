@@ -585,6 +585,97 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 		expect(getDoneEvent(steerEvents).reason).toBe("stop");
 	});
 
+	it("awaits pooled-agent idle before compaction-style follow-up send", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		const registeredTools: RegisteredTool[] = [];
+		await registerNativeToolDisplayForTest(registeredTools);
+
+		let sendCallCount = 0;
+		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
+		const runWait = vi.fn(
+			() =>
+				new Promise<{ id: string; status: "finished"; result: string }>((resolve) => {
+					resolveRun = resolve;
+				}),
+		);
+		const mockSend = vi.fn().mockImplementation(async (_message: { text?: string }, opts: { onDelta: CursorDeltaHandler }) => {
+			sendCallCount += 1;
+			if (sendCallCount === 1) {
+				opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "bash", args: { command: "git status" } }, callId: "c1" } });
+				opts.onDelta({
+					update: {
+						type: "tool-call-completed",
+						toolCall: {
+							name: "bash",
+							result: { status: "success", value: { stdout: "clean", stderr: "", exitCode: 0 } },
+						},
+						callId: "c1",
+					},
+				});
+				return asMockCursorRun({
+					id: "run-1",
+					agentId: "agent-1",
+					status: "running",
+					wait: runWait,
+					cancel: vi.fn(),
+					supports: () => true,
+					unsupportedReason: () => undefined,
+				});
+			}
+
+			opts.onDelta({ update: { type: "text-delta", text: "Follow-up answer." } });
+			return asMockCursorRun({
+				id: "run-2",
+				agentId: "agent-1",
+				status: "running",
+				wait: vi.fn().mockResolvedValue({ id: "run-2", status: "finished", result: "Follow-up answer." }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			});
+		});
+		mockCreatedAgent({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const scopeKey = cursorSessionScopeTestUtils.ANONYMOUS_SESSION_SCOPE_KEY;
+		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		expect(getDoneEvent(firstEvents).reason).toBe("toolUse");
+		expect(sessionAgentTestUtils.getSessionCursorAgentPoolState(scopeKey).status).toBe("busy");
+
+		const firstDone = getDoneEvent(firstEvents);
+		const toolCall = firstDone.message.content.find(isToolCallBlock);
+		expect(toolCall).toBeDefined();
+		const followUpContext = makeContext();
+		followUpContext.messages = [
+			...followUpContext.messages,
+			firstDone.message,
+			{
+				role: "toolResult",
+				toolCallId: toolCall!.id,
+				toolName: toolCall!.name,
+				content: [{ type: "text", text: "clean" }],
+				isError: false,
+				timestamp: 2,
+			},
+			{ role: "user", content: [{ type: "text", text: "Continue with the summary." }], timestamp: 3 },
+		];
+		const followUpEventsPromise = collectEvents(streamCursor(makeModel(), followUpContext, { apiKey: "test-key" }));
+		await Promise.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 30));
+
+		expect(mockSend).toHaveBeenCalledTimes(1);
+
+		resolveRun({ id: "run-1", status: "finished", result: "Follow-up answer." });
+		const followUpEvents = await followUpEventsPromise;
+
+		expect(mockSend).toHaveBeenCalledTimes(2);
+		expect(collectTextDeltas(followUpEvents)).toBe("Follow-up answer.");
+		expect(getDoneEvent(followUpEvents).reason).toBe("stop");
+	});
+
 	it("aborts while waiting for an active scoped live run and releases it once", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: RegisteredTool[] = [];

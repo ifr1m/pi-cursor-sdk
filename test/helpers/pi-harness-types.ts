@@ -9,6 +9,7 @@ import type {
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
 	SessionBeforeTreeEvent,
+	SessionBeforeCompactEvent,
 	SessionCompactEvent,
 	SessionShutdownEvent,
 	SessionStartEvent,
@@ -47,6 +48,7 @@ export type HarnessEventName =
 	| "before_agent_start"
 	| "turn_start"
 	| "session_shutdown"
+	| "session_before_compact"
 	| "session_compact"
 	| "session_tree"
 	| "session_before_tree"
@@ -67,6 +69,7 @@ export type HarnessEventMap = {
 	before_agent_start: BeforeAgentStartEvent;
 	turn_start: TurnStartEvent;
 	session_shutdown: SessionShutdownEvent;
+	session_before_compact: SessionBeforeCompactEvent;
 	session_compact: SessionCompactEvent;
 	session_tree: SessionTreeEvent;
 	session_before_tree: SessionBeforeTreeEvent;
@@ -153,6 +156,10 @@ export interface EventHarness {
 	runTurnStart: (ctxOverrides?: ExtensionContextOverrides) => Promise<void>;
 	runSessionShutdown: (
 		eventOverrides?: Partial<HarnessEventMap["session_shutdown"]>,
+		ctxOverrides?: ExtensionContextOverrides,
+	) => Promise<void>;
+	runSessionBeforeCompact: (
+		eventOverrides?: Partial<SessionBeforeCompactEvent>,
 		ctxOverrides?: ExtensionContextOverrides,
 	) => Promise<void>;
 	runSessionCompact: (

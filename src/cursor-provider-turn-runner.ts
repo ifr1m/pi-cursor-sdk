@@ -105,7 +105,7 @@ export class CursorProviderTurnRunner {
 				return;
 			}
 
-			const outcome = await awaitFinalizeCursorRunOutcome({
+			const outcomePromise = awaitFinalizeCursorRunOutcome({
 				run: send.run,
 				prepared,
 				cursorAgentMessageOffset: send.cursorAgentMessageOffset,
@@ -117,6 +117,8 @@ export class CursorProviderTurnRunner {
 				sdkEventDebug: this.sdkEventDebug,
 				contextWindowAgentId: prepared.contextWindowAgentId,
 			});
+			prepared.sessionAgentLease.trackRunCompletion(outcomePromise);
+			const outcome = await outcomePromise;
 			await runFinalizer.applyTerminalEvent({ kind: "direct", prepared, outcome });
 		} catch (error) {
 			await runFinalizer.applyTerminalEvent({ kind: "error", prepared, error });

@@ -5,6 +5,7 @@ import type {
 	ExtensionContext,
 	ExtensionHandler,
 	SessionBeforeTreeEvent,
+	SessionBeforeCompactEvent,
 	SessionCompactEvent,
 	ToolCallEvent,
 	ToolCallEventResult,
@@ -252,6 +253,32 @@ function createHarnessEventApi(): EventHarness {
 		);
 	};
 
+	const runSessionBeforeCompact = async (
+		eventOverrides: Partial<SessionBeforeCompactEvent> = {},
+		ctxOverrides: ExtensionContextOverrides = {},
+	): Promise<void> => {
+		await invokeEvent(
+			"session_before_compact",
+			{
+				type: "session_before_compact",
+				preparation: {
+					firstKeptEntryId: "entry-1",
+					messagesToSummarize: [],
+					turnPrefixMessages: [],
+					isSplitTurn: false,
+					tokensBefore: 0,
+					previousSummary: undefined,
+					fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+					settings: { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000 },
+				},
+				branchEntries: [],
+				signal: new AbortController().signal,
+				...eventOverrides,
+			},
+			ctxOverrides,
+		);
+	};
+
 	const runSessionCompact = async (
 		eventOverrides: Partial<SessionCompactEvent> = {},
 		ctxOverrides: ExtensionContextOverrides = {},
@@ -339,6 +366,7 @@ function createHarnessEventApi(): EventHarness {
 		runBeforeAgentStart,
 		runTurnStart,
 		runSessionShutdown,
+		runSessionBeforeCompact,
 		runSessionCompact,
 		runSessionTree,
 		runSessionBeforeTree,

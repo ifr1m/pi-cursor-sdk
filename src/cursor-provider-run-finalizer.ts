@@ -113,6 +113,9 @@ export class CursorRunFinalizer {
 					sanitizeCursorProviderError(error, this.params.resolvedApiKey() ?? runnerParams.options?.apiKey),
 				);
 			});
+		// Mark the pooled agent busy as soon as the SDK run exists so auto-compaction summarization
+		// (and other concurrent acquires) wait for run.wait() instead of hitting AgentBusyError.
+		prepared.sessionAgentLease.trackRunCompletion(waitCompletion);
 		return { waitCompletion, prepared };
 	}
 
@@ -139,7 +142,6 @@ export class CursorRunFinalizer {
 		}
 		this.params.runnerParams.sdkEventDebugRef.current = undefined;
 		if (liveCompletion) {
-			this.safeCleanup(() => liveCompletion.prepared.sessionAgentLease.trackRunCompletion(liveCompletion.waitCompletion));
 			void liveCompletion.waitCompletion
 				.finally(async () => {
 					await this.finalizeSdkEventDebugBestEffort();

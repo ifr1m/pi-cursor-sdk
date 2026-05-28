@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Fix pi auto-compaction `AgentBusyError` (`already has active run`) by marking pooled session agents busy as soon as a Cursor SDK `run.wait()` starts (live and direct turns), releasing scoped live-run drain state, and resetting the pooled agent on `session_before_compact` before summarization streams (`prepareCursorSessionForCompaction` in `src/cursor-session-compaction-prep.ts`).
+
 ## 0.1.21 - 2026-05-28
 
 **Upgrade:** Requires **pi 0.76.0+** and installs exact **`@cursor/sdk@1.0.14`**. Older pi or Cursor SDK combinations are not supported on this release line.
