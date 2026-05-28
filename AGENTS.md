@@ -150,7 +150,7 @@ When the user requests a PR review (including thermo-nuclear / deep maintainabil
 Before **every commit** that touches Cursor provider/runtime, prompt/session send policy, agents-context dedup, bridge, replay, or related extension wiring:
 
 - Run real `pi` against the local extension: `pi -e . --cursor-no-fast --model cursor/composer-2.5` with a fresh `--session-dir` under `/tmp` (see `docs/cursor-live-smoke-checklist.md`).
-- Prefer `npm run smoke:live` (`scripts/tmux-live-smoke.sh`) for its covered live subset, `npm run smoke:visual` (`scripts/visual-tui-smoke.mjs`) for canonical card/color PNG evidence, or the relevant checklist subset via tmux when TUI observation matters. For card/color claims, capture ANSI from the offscreen TUI, render it through the canonical browser/xterm path, save PNG evidence, and inspect JSONL. Use `npm run smoke:isolated` for full pre-release packaging + live preflight when appropriate.
+- Prefer `npm run smoke:live` (`scripts/tmux-live-smoke.sh`) for its covered live subset and sealed PATH/env wrapper, `npm run smoke:visual` (`scripts/visual-tui-smoke.mjs`) for canonical card/color PNG evidence, or the relevant checklist subset via tmux when TUI observation matters. For card/color claims, capture ANSI from the offscreen TUI, render it through the canonical browser/xterm path, save PNG evidence, and inspect JSONL. Use `npm run smoke:isolated` for full pre-release packaging + live preflight when appropriate.
 - If Cursor auth (`~/.pi/agent/auth.json` or `CURSOR_API_KEY`) is unavailable, **do not commit**—report blocked, not skipped-ready.
 - Unit tests (`npm test`, `npm run typecheck`) are necessary but not sufficient for these commits.
 

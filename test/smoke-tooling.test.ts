@@ -31,6 +31,7 @@ describe("smoke tooling package checks", () => {
 
 		expect(liveHelp.status).toBe(0);
 		expect(liveHelp.stdout).toContain("retry-empty-output");
+		expect(liveHelp.stdout).toContain("--self-test");
 		expect(isolatedHelp.status).toBe(0);
 		expect(isolatedHelp.stdout).toContain("plan-strip");
 		expect(steeringHelp.status).toBe(0);
@@ -60,6 +61,9 @@ describe("smoke tooling package checks", () => {
 		const steeringSelfTest = run(process.execPath, ["scripts/steering-rpc-smoke.mjs", "--self-test"]);
 		expect(steeringSelfTest.status).toBe(0);
 		expect(steeringSelfTest.stdout).toContain("self-test PASS");
+		const liveSelfTest = run("scripts/tmux-live-smoke.sh", ["--self-test"]);
+		expect(liveSelfTest.status).toBe(0);
+		expect(liveSelfTest.stdout).toContain("self-test PASS");
 		const invalidVisualArgs = run(process.execPath, ["scripts/visual-tui-smoke.mjs", "--label", "bad", "--prompt", "bad", "--expose-builtin-tools"]);
 		expect(invalidVisualArgs.status).toBe(2);
 		expect(invalidVisualArgs.stderr).toContain("--expose-builtin-tools requires --bridge");

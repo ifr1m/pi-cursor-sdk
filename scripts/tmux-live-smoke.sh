@@ -14,7 +14,19 @@ NPM_BIN=""
 RG_BIN=""
 TMUX_BIN=""
 ENV_BIN=""
+SEALED_PATH=""
 PI_BASE=()
+DEBUG_ENV_NAMES=(
+	PI_CURSOR_SDK_EVENT_DEBUG
+	PI_CURSOR_SDK_EVENT_DEBUG_DIR
+	PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR
+	PI_CURSOR_SDK_EVENT_DEBUG_SESSION_DIR
+	PI_CURSOR_SDK_EVENT_DEBUG_STDERR
+)
+DEBUG_ENV_UNSETS=()
+BASE_ENV=()
+NONE_ENV=()
+DEFAULT_ENV=()
 
 TMUX_SESSIONS=()
 
@@ -41,8 +53,9 @@ Environment:
 
 Prerequisites:
   pi, node, npm, rg, tmux on PATH
-  Resolved pi/node/npm/rg/tmux paths from the parent shell are reused in tmux-launched checks.
+  Resolved pi/node/npm/rg/tmux paths from the parent shell are reused in tmux-launched checks; pi shims run with the resolved node directory first on PATH.
   timeout or gtimeout optional; bash process-group kill fallback is used when absent
+  Child pi runs clear Cursor SDK event-debug env; isolated cases force PI_CURSOR_SETTING_SOURCES=none and default-settings unsets it.
 
 Coverage:
   - prereq model listing
@@ -63,6 +76,7 @@ Not covered here:
 
 Options:
   -h, --help                    Show this help.
+  --self-test                   Run sealed PATH/env probes without live Cursor auth.
 
 Exit codes:
   0  all partial checks passed
@@ -84,6 +98,23 @@ resolve_cmd() {
 		fail "required command $name did not resolve to an absolute path: $path"
 	fi
 	printf '%s\n' "$path"
+}
+
+build_sealed_path() {
+	local node_bin="$1"
+	local base_path="${2:-$PATH}"
+	printf '%s:%s\n' "$(dirname "$node_bin")" "$base_path"
+}
+
+build_smoke_env_arrays() {
+	local name
+	DEBUG_ENV_UNSETS=()
+	for name in "${DEBUG_ENV_NAMES[@]}"; do
+		DEBUG_ENV_UNSETS+=( -u "$name" )
+	done
+	BASE_ENV=( "$ENV_BIN" "${DEBUG_ENV_UNSETS[@]}" "PATH=$SEALED_PATH" )
+	NONE_ENV=( "$ENV_BIN" "${DEBUG_ENV_UNSETS[@]}" "PATH=$SEALED_PATH" PI_CURSOR_SETTING_SOURCES=none )
+	DEFAULT_ENV=( "$ENV_BIN" "${DEBUG_ENV_UNSETS[@]}" -u PI_CURSOR_SETTING_SOURCES "PATH=$SEALED_PATH" )
 }
 
 tail_file() {
@@ -232,7 +263,7 @@ run_tui_math_footer_poll() {
 	printf -v script 'export PATH=%q
 cd %q || exit 97
 exec %s
-' "$PATH" "$ROOT" "$command"
+' "$SEALED_PATH" "$ROOT" "$command"
 	"$TMUX_BIN" new-session -d -s "$session" -x 120 -y 40 -- "$SHELL_BIN" -lc "$script"
 	TMUX_SESSIONS+=("$session")
 
@@ -280,7 +311,7 @@ cd %q || exit 97
 %s> %q 2> %q
 code=$?
 printf '\''%%s\n'\'' "$code" > %q
-' "$PATH" "$ROOT" "$command" "$stdout" "$stderr" "$marker"
+' "$SEALED_PATH" "$ROOT" "$command" "$stdout" "$stderr" "$marker"
 	"$TMUX_BIN" new-session -d -s "$session" -- "$SHELL_BIN" -lc "$script"
 	TMUX_SESSIONS+=("$session")
 
@@ -312,8 +343,65 @@ model_listed() {
 	"$RG_BIN" -q "composer-2\\.5" "$file"
 }
 
+run_self_test() {
+	local temp_dir bin_dir fake_pi fake_node fake_node_marker env_capture hostile_path captured_path node_dir name
+	temp_dir="$(mktemp -d /tmp/pi-cursor-sdk-live-smoke-self-test.XXXXXX)"
+	trap 'rm -rf "$temp_dir"' RETURN
+	bin_dir="$temp_dir/bin"
+	mkdir -p "$bin_dir"
+	fake_pi="$bin_dir/pi"
+	fake_node="$bin_dir/node"
+	fake_node_marker="$temp_dir/fake-node-used"
+	env_capture="$temp_dir/fake-pi.env"
+	cat >"$fake_pi" <<EOF_SELFTEST_PI
+#!/usr/bin/env node
+const { writeFileSync } = require("node:fs");
+writeFileSync("$env_capture", Object.entries(process.env).map(([key, value]) => key + "=" + (value ?? "")).join("\\n") + "\\n", "utf8");
+EOF_SELFTEST_PI
+	cat >"$fake_node" <<EOF_SELFTEST_NODE
+#!/usr/bin/env bash
+echo fake-node-used > "$fake_node_marker"
+exit 99
+EOF_SELFTEST_NODE
+	chmod +x "$fake_pi" "$fake_node"
+
+	ENV_BIN="$(resolve_cmd env)"
+	NODE_BIN="$(resolve_cmd node)"
+	hostile_path="$bin_dir:$PATH"
+	SEALED_PATH="$(build_sealed_path "$NODE_BIN" "$hostile_path")"
+	build_smoke_env_arrays
+	node_dir="$(dirname "$NODE_BIN")"
+
+	PI_CURSOR_SETTING_SOURCES=all \
+	PI_CURSOR_SDK_EVENT_DEBUG=1 \
+	PI_CURSOR_SDK_EVENT_DEBUG_DIR="$temp_dir/debug-dir" \
+	PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR="$temp_dir/debug-run-dir" \
+	PI_CURSOR_SDK_EVENT_DEBUG_SESSION_DIR="$temp_dir/debug-session-dir" \
+	PI_CURSOR_SDK_EVENT_DEBUG_STDERR=1 \
+		"${NONE_ENV[@]}" "$fake_pi" --version
+	[[ ! -e "$fake_node_marker" ]] || fail "self-test failed: sealed PATH still used hostile fake node"
+	captured_path="$(awk -F= '$1 == "PATH" { print substr($0, 6); exit }' "$env_capture")"
+	[[ "${captured_path%%:*}" == "$node_dir" ]] || fail "self-test failed: PATH did not start with resolved node dir"
+	grep -qx 'PI_CURSOR_SETTING_SOURCES=none' "$env_capture" || fail "self-test failed: isolated env did not force PI_CURSOR_SETTING_SOURCES=none"
+	for name in "${DEBUG_ENV_NAMES[@]}"; do
+		if grep -q "^${name}=" "$env_capture"; then
+			fail "self-test failed: $name was not cleared"
+		fi
+	done
+
+	PI_CURSOR_SETTING_SOURCES=all "${DEFAULT_ENV[@]}" "$fake_pi" --version
+	if grep -q '^PI_CURSOR_SETTING_SOURCES=' "$env_capture"; then
+		fail "self-test failed: default-settings env did not unset PI_CURSOR_SETTING_SOURCES"
+	fi
+	printf '[smoke] self-test PASS\n'
+}
+
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 	print_help
+	exit 0
+fi
+if [[ "${1:-}" == "--self-test" ]]; then
+	run_self_test
 	exit 0
 fi
 
@@ -323,6 +411,8 @@ NPM_BIN="$(resolve_cmd npm)"
 RG_BIN="$(resolve_cmd rg)"
 TMUX_BIN="$(resolve_cmd tmux)"
 ENV_BIN="$(resolve_cmd env)"
+SEALED_PATH="$(build_sealed_path "$NODE_BIN" "$PATH")"
+build_smoke_env_arrays
 if [[ "$SHELL_BIN" != /* ]]; then
 	SHELL_BIN="$(resolve_cmd "$SHELL_BIN")"
 fi
@@ -346,10 +436,10 @@ log "npm=$NPM_BIN"
 log "tmux=$TMUX_BIN"
 log "partial live smoke: prereq, basic, default-settings, noninteractive-math, tui, steering, diagnostics, jsonl"
 
-"$PI_BIN" --version | tee "$SMOKE_DIR/prereq.pi-version.txt"
-"$NPM_BIN" --prefix "$ROOT" ls @cursor/sdk @earendil-works/pi-coding-agent @earendil-works/pi-ai @earendil-works/pi-tui | tee "$SMOKE_DIR/prereq.npm-ls.txt"
+"${BASE_ENV[@]}" "$PI_BIN" --version | tee "$SMOKE_DIR/prereq.pi-version.txt"
+"${BASE_ENV[@]}" "$NPM_BIN" --prefix "$ROOT" ls @cursor/sdk @earendil-works/pi-coding-agent @earendil-works/pi-ai @earendil-works/pi-tui | tee "$SMOKE_DIR/prereq.npm-ls.txt"
 
-if ! "$ENV_BIN" PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" --list-models cursor 2>"$SMOKE_DIR/prereq.stderr.txt" | tee "$SMOKE_DIR/prereq.models.txt" | "$RG_BIN" -q "composer-2\\.5"; then
+if ! "${NONE_ENV[@]}" "${PI_BASE[@]}" --list-models cursor 2>"$SMOKE_DIR/prereq.stderr.txt" | tee "$SMOKE_DIR/prereq.models.txt" | "$RG_BIN" -q "composer-2\\.5"; then
 	if ! model_listed "$SMOKE_DIR/prereq.stderr.txt"; then
 		fail "cursor/composer-2.5 not listed"
 	fi
@@ -357,31 +447,31 @@ fi
 log "prereq PASS"
 
 run_direct basic 600 retry-empty-output "PI_CURSOR_SMOKE_OK" "PI_CURSOR_SMOKE_OK" \
-	"$ENV_BIN" PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
+	"${NONE_ENV[@]}" "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/basic" \
 	--no-tools \
 	-p 'Live smoke. Reply exactly: PI_CURSOR_SMOKE_OK'
 
 run_direct default-settings 300 strict "PRODUCT=42" "PRODUCT=42" \
-	"${PI_BASE[@]}" \
+	"${DEFAULT_ENV[@]}" "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/default-settings" \
 	--no-tools \
 	-p 'Default settings smoke. Include PRODUCT=42 in the final answer.'
 
 run_direct noninteractive-math 300 strict "SUM=42" "SUM=42" \
-	"$ENV_BIN" PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
+	"${NONE_ENV[@]}" "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/noninteractive-math" \
 	--no-tools \
 	-p 'Noninteractive math smoke. Compute 19 + 23. Reply only with SUM=42.'
 
 run_tui_math_footer_poll tui 420 \
-	"$ENV_BIN" PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
+	"${NONE_ENV[@]}" "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/tui" \
 	--no-tools \
 	'TUI smoke. Compute 19 + 23. Reply only with SUM=<number>.'
 
 run_tmux steering 420 1 \
-	"$ENV_BIN" "SMOKE_SESSION_DIR=$SMOKE_DIR/steering" "PI_BIN=$PI_BIN" "$NODE_BIN" "$ROOT/scripts/steering-rpc-smoke.mjs"
+	"${NONE_ENV[@]}" "SMOKE_SESSION_DIR=$SMOKE_DIR/steering" "PI_BIN=$PI_BIN" "$NODE_BIN" "$ROOT/scripts/steering-rpc-smoke.mjs"
 "$RG_BIN" -q '"steerOk":true' "$SMOKE_DIR/steering.stdout.txt" || fail "steering missing steerOk"
 "$RG_BIN" -q '"steerChain":true' "$SMOKE_DIR/steering.stdout.txt" || fail "steering missing steerChain"
 "$RG_BIN" -q "already has active run|AgentBusyError" "$SMOKE_DIR/steering.stdout.txt" "$SMOKE_DIR/steering.stderr.txt" && fail "steering hit AgentBusyError" || true

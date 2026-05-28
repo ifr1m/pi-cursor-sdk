@@ -32,6 +32,8 @@ The repo also ships partial automation for the prerequisite/basic/default-settin
 npm run smoke:live
 ```
 
+`npm run smoke:live` resolves `pi`, `node`, `npm`, `rg`, and `tmux` once in the parent shell, then runs all `pi` shims with the resolved Node directory first on `PATH`. It clears inherited Cursor SDK event-debug env for every child pi run. Isolated helper cases force `PI_CURSOR_SETTING_SOURCES=none`; the `default-settings` helper case explicitly unsets `PI_CURSOR_SETTING_SOURCES` so it exercises the default ambient setting-source path.
+
 The canonical visual runner for section 4 is checked in separately:
 
 ```bash
@@ -55,7 +57,7 @@ node scripts/validate-smoke-jsonl.mjs --replay-errors-only "$SMOKE_DIR/session-s
 
 The replay scan flags only error `toolResult` / error assistant messages with `Tool grep/cursor/find/ls not found`, not successful reads of docs that mention those strings. See [Cursor testing lessons](./cursor-testing-lessons.md#what-counts-as-a-replay-failure).
 
-`npm run smoke:live` is a helper only; it polls the section 3 TUI for answer/footer evidence and then cleans up the tmux session, but it does not replace the canonical rendered-PNG visual review in section 4. Release readiness still requires the manual checks below for detailed visual TUI behavior, bridge, standalone native replay, abort/cancel, packaging, cleanup, and any touched runtime surface not covered by the helper.
+`npm run smoke:live` is a helper only; it polls the section 3 TUI for answer/footer evidence and then cleans up the tmux session, but it does not replace the canonical rendered-PNG visual review in section 4. Run `npm run smoke:live -- --self-test` when changing the helper's sealed PATH or env wrappers. Release readiness still requires the manual checks below for detailed visual TUI behavior, bridge, standalone native replay, abort/cancel, packaging, cleanup, and any touched runtime surface not covered by the helper.
 
 Pass criteria:
 
@@ -125,7 +127,7 @@ Pass criteria:
 
 ## 4. Mandatory visual card/color rendering check
 
-This is the canonical visual release path for Cursor provider/runtime changes. It requires offscreen TUI visual inspection, not only JSONL or code review. Use pi 0.76.0, `@cursor/sdk@1.0.14`, a fresh temporary session dir, Cursor SDK `plan` mode, native replay enabled, and the checked-in visual runner. The runner resolves `pi` by directly walking the parent `PATH`, uses `process.execPath` for Node, prepends that Node directory inside tmux so `#!/usr/bin/env node` shims use the validated Node, and reuses those paths inside tmux-launched runs. The default matrix is native replay only: native replay registration is forced on, settings sources are `none`, the pi bridge is off, overlapping built-in pi tools are not exposed, and inherited Cursor SDK event-debug artifact env is cleared. With `--event-debug`, debug capture writes to a deterministic directory under `VISUAL_DIR`.
+This is the canonical visual release path for Cursor provider/runtime changes. It requires offscreen TUI visual inspection, not only JSONL or code review. Use pi 0.76.0, `@cursor/sdk@1.0.14`, a fresh temporary session dir, Cursor SDK `plan` mode, native replay enabled, and the checked-in visual runner. The runner resolves `pi` by directly walking the parent `PATH`, uses `process.execPath` for Node, and prepends that Node directory for both prereq checks and tmux launches so `#!/usr/bin/env node` shims use the validated Node. The default matrix is native replay only: native replay registration is forced on, settings sources are `none`, the pi bridge is off, overlapping built-in pi tools are not exposed, and inherited Cursor SDK event-debug artifact env is cleared. With `--event-debug`, debug capture writes to a deterministic directory under `VISUAL_DIR`.
 
 ```bash
 VISUAL_DIR="$(mktemp -d /tmp/pi-cursor-sdk-1014-visual.XXXXXX)"

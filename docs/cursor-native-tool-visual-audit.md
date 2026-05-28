@@ -65,7 +65,7 @@ This is the best default release path because it exercises the real pi TUI, capt
 
 ## Tool stack
 
-The canonical runner is checked in at `scripts/visual-tui-smoke.mjs` and exposed as `npm run smoke:visual`. It uses tmux for the fixed-size PTY, `@xterm/xterm` for browser rendering, and Playwright for automatic PNG capture. It resolves `pi` by directly walking the parent `PATH`, uses `process.execPath` for Node, prepends that Node directory inside tmux so `#!/usr/bin/env node` shims use the validated Node, and reuses those paths inside tmux-launched runs so a login shell or stale tmux server `PATH` cannot silently select a different executable.
+The canonical runner is checked in at `scripts/visual-tui-smoke.mjs` and exposed as `npm run smoke:visual`. It uses tmux for the fixed-size PTY, `@xterm/xterm` for browser rendering, and Playwright for automatic PNG capture. It resolves `pi` by directly walking the parent `PATH`, uses `process.execPath` for Node, and prepends that Node directory for prereq checks and tmux launches so `#!/usr/bin/env node` shims use the validated Node and a login shell or stale tmux server `PATH` cannot silently select a different executable.
 
 One-time setup from a clean checkout:
 
@@ -81,7 +81,7 @@ npx playwright install chromium
 `scripts/visual-tui-smoke.mjs` is the durable source of truth for this workflow. It must keep supporting:
 
 - fixed-size tmux PTY execution of the parent-resolved `pi -e <extension-dir> --model cursor/composer-2.5`
-- parent-resolved `pi` and `tmux` command paths reused in tmux-launched runs, with `process.execPath`'s directory prepended so Node shims use the validated Node
+- parent-resolved `pi` and `tmux` command paths reused in tmux-launched runs, with `process.execPath`'s directory prepended for prereq checks and tmux launches so Node shims use the validated Node
 - `PI_CURSOR_NATIVE_TOOL_DISPLAY=1`
 - `PI_CURSOR_REGISTER_NATIVE_TOOLS=1` by default
 - `PI_CURSOR_SETTING_SOURCES=none` by default

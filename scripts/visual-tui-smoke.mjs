@@ -78,7 +78,7 @@ Artifacts written:
 
 Prerequisites:
   - pi, node, tmux, and npm-installed dev dependencies on PATH / in node_modules.
-  - The runner resolves pi/tmux from the parent PATH, uses process.execPath for node, and reuses those paths inside tmux.
+  - The runner resolves pi/tmux from the parent PATH, uses process.execPath for node, and seals pi-shim PATH for prereq checks and tmux.
   - For automatic PNG capture, install a Playwright browser once when needed:
       npx playwright install chromium
   - In the pi agent harness, --no-screenshot plus agent_browser on the generated HTML is also acceptable.
@@ -295,10 +295,14 @@ function resolveCommand(command, envPath = process.env.PATH ?? "") {
 	fail(`${command} is required on PATH`, EXIT_USAGE);
 }
 
-function requireCommand(command) {
-	const path = resolveCommand(command);
+function sealedPathForNode(nodePath, envPath = process.env.PATH ?? "") {
+	return `${dirname(nodePath)}${delimiter}${envPath}`;
+}
+
+function requireCommand(command, options = {}) {
+	const path = resolveCommand(command, options.envPath ?? process.env.PATH ?? "");
 	const args = command === "tmux" ? ["-V"] : ["--version"];
-	const result = run(path, args);
+	const result = run(path, args, { env: options.env });
 	if (result.status !== 0) fail(`${command} failed prerequisite check at ${path}`, EXIT_USAGE);
 	return path;
 }
@@ -490,6 +494,7 @@ function checkLeftovers(patterns) {
 }
 
 function buildLaunchPlan(options, commands, shell) {
+	const sealedPath = commands.sealedPath ?? sealedPathForNode(commands.node);
 	const envAssignments = [
 		["PI_CURSOR_NATIVE_TOOL_DISPLAY", "1"],
 		["PI_CURSOR_REGISTER_NATIVE_TOOLS", "1"],
@@ -516,7 +521,7 @@ function buildLaunchPlan(options, commands, shell) {
 	].join(" ");
 	const clearLines = clearEnvNames.map((name) => `unset ${name}`).join("\n");
 	const script = [
-		`export PATH=${shellQuote(`${dirname(commands.node)}${delimiter}${process.env.PATH ?? ""}`)}`,
+		`export PATH=${shellQuote(sealedPath)}`,
 		clearLines,
 		`cd ${shellQuote(options.cwd)} || exit 97`,
 		command,
@@ -550,9 +555,12 @@ async function writeScreenshot(htmlPath, pngPath, width, height) {
 }
 
 function runVisualSmoke(options) {
+	const node = requireNode();
+	const sealedPath = sealedPathForNode(node);
 	const commands = {
-		pi: requireCommand("pi"),
-		node: requireNode(),
+		pi: requireCommand("pi", { env: { ...process.env, PATH: sealedPath } }),
+		node,
+		sealedPath,
 		tmux: requireCommand("tmux"),
 	};
 
@@ -657,8 +665,11 @@ function runSelfTest() {
 		chmodSync(fakeNode, 0o755);
 
 		const hostilePath = `${binDir}${delimiter}${process.env.PATH ?? ""}`;
+		const sealedHostilePath = sealedPathForNode(process.execPath, hostilePath);
 		assertSelfTest(resolveCommand("pi", hostilePath) === fakePi, "direct PATH resolver did not prefer fake PATH head");
 		assertSelfTest(requireNode() === process.execPath, "node resolver must use process.execPath");
+		assertSelfTest(requireCommand("pi", { envPath: hostilePath, env: { ...process.env, PATH: sealedHostilePath } }) === fakePi, "pi prereq should use sealed PATH when executing the shim");
+		assertSelfTest(!existsSync(fakeNodeMarker), "pi prereq should not use hostile fake node");
 
 		const baseOptions = {
 			ext: ROOT,
@@ -674,7 +685,7 @@ function runSelfTest() {
 			exposeBuiltinTools: false,
 			eventDebug: false,
 		};
-		const plan = buildLaunchPlan(baseOptions, { pi: fakePi, node: process.execPath }, "/bin/sh");
+		const plan = buildLaunchPlan(baseOptions, { pi: fakePi, node: process.execPath, sealedPath: sealedHostilePath }, "/bin/sh");
 		const defaults = envMap(plan.envAssignments);
 		assertSelfTest(defaults.get("PI_CURSOR_NATIVE_TOOL_DISPLAY") === "1", "native display must be forced on");
 		assertSelfTest(defaults.get("PI_CURSOR_REGISTER_NATIVE_TOOLS") === "1", "native tool registration must be forced on");
@@ -715,7 +726,7 @@ function runSelfTest() {
 
 		const optInPlan = buildLaunchPlan(
 			{ ...baseOptions, settingSources: "all", bridge: true, exposeBuiltinTools: true, eventDebug: true },
-			{ pi: fakePi, node: process.execPath },
+			{ pi: fakePi, node: process.execPath, sealedPath: sealedHostilePath },
 			"/bin/sh",
 		);
 		const optIns = envMap(optInPlan.envAssignments);
