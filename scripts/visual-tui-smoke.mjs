@@ -13,6 +13,7 @@ const DEFAULT_STARTUP_MS = 5_000;
 const DEFAULT_HISTORY_LINES = 3_000;
 const DEFAULT_MODEL = "cursor/composer-2.5";
 const DEFAULT_MODE = "plan";
+const DEFAULT_SETTING_SOURCES = "none";
 
 const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
@@ -42,10 +43,20 @@ Common options:
   --width N                     PTY columns. Default: ${DEFAULT_WIDTH}.
   --height N                    PTY rows. Default: ${DEFAULT_HEIGHT}.
   --history-lines N             tmux capture history lines. Default: ${DEFAULT_HISTORY_LINES}.
+  --setting-sources VALUE       Cursor setting sources. Default: ${DEFAULT_SETTING_SOURCES}.
+  --bridge                      Opt in to the pi tool bridge for bridge-specific visual audits.
+  --expose-builtin-tools        Opt in to exposing overlapping built-in pi tools to Cursor.
   --event-debug                 Set PI_CURSOR_SDK_EVENT_DEBUG=1 for the run.
   --leftover-pattern REGEX      After capture, fail if a process command still matches REGEX. Repeatable.
-  --no-screenshot              Write .ansi/.txt/.html/.jsonl.path only; use agent_browser manually.
+  --no-screenshot               Write .ansi/.txt/.html/.jsonl.path only; use agent_browser manually.
   -h, --help                    Show this help.
+
+Native replay isolation defaults:
+  PI_CURSOR_NATIVE_TOOL_DISPLAY=1
+  PI_CURSOR_SETTING_SOURCES=none
+  PI_CURSOR_PI_TOOL_BRIDGE=0
+  PI_CURSOR_EXPOSE_BUILTIN_TOOLS=0
+  TERM=xterm-256color
 
 Artifacts written:
   <label>.ansi                  Raw tmux ANSI capture.
@@ -55,7 +66,8 @@ Artifacts written:
   <label>.jsonl.path            Latest persisted pi session JSONL path.
 
 Prerequisites:
-  - pi, tmux, and npm-installed dev dependencies on PATH / in node_modules.
+  - pi, node, tmux, and npm-installed dev dependencies on PATH / in node_modules.
+  - The runner resolves pi/node/tmux from the parent PATH and reuses those paths inside tmux.
   - For automatic PNG capture, install a Playwright browser once when needed:
       npx playwright install chromium
   - In the pi agent harness, --no-screenshot plus agent_browser on the generated HTML is also acceptable.
@@ -113,6 +125,9 @@ function parseArgs(argv) {
 		startupMs: DEFAULT_STARTUP_MS,
 		model: DEFAULT_MODEL,
 		mode: DEFAULT_MODE,
+		settingSources: DEFAULT_SETTING_SOURCES,
+		bridge: false,
+		exposeBuiltinTools: false,
 		leftoverPatterns: [],
 		width: DEFAULT_WIDTH,
 		height: DEFAULT_HEIGHT,
@@ -182,6 +197,18 @@ function parseArgs(argv) {
 			case "--history-lines":
 				options.historyLines = parseInteger(next(), arg);
 				break;
+			case "--setting-sources": {
+				const settingSources = next();
+				if (!settingSources.trim()) fail("--setting-sources requires a non-empty value", EXIT_USAGE);
+				options.settingSources = settingSources;
+				break;
+			}
+			case "--bridge":
+				options.bridge = true;
+				break;
+			case "--expose-builtin-tools":
+				options.exposeBuiltinTools = true;
+				break;
 			case "--event-debug":
 				options.eventDebug = true;
 				break;
@@ -227,14 +254,25 @@ function run(command, args, options = {}) {
 	return result;
 }
 
+function resolveCommand(command) {
+	const result = run("/bin/sh", ["-lc", `command -v -- ${shellQuote(command)}`]);
+	if (result.status !== 0) fail(`${command} is required on PATH`, EXIT_USAGE);
+	const path = result.stdout.toString().trim().split("\n")[0];
+	if (!path || !path.startsWith("/")) fail(`${command} did not resolve to an absolute executable path: ${path || "<empty>"}`, EXIT_USAGE);
+	return path;
+}
+
 function requireCommand(command) {
-	const result = run(command, ["--version"]);
-	if (result.status === 0) return;
-	if (command === "tmux") {
-		const tmuxVersion = run(command, ["-V"]);
-		if (tmuxVersion.status === 0) return;
-	}
-	fail(`${command} is required on PATH`, EXIT_USAGE);
+	const path = resolveCommand(command);
+	const args = command === "tmux" ? ["-V"] : ["--version"];
+	const result = run(path, args);
+	if (result.status !== 0) fail(`${command} failed prerequisite check at ${path}`, EXIT_USAGE);
+	return path;
+}
+
+function resolveShell(shell) {
+	if (shell.startsWith("/")) return shell;
+	return resolveCommand(shell);
 }
 
 function sleep(ms) {
@@ -246,8 +284,8 @@ function writeUtf8(path, text) {
 	writeFileSync(path, text, "utf8");
 }
 
-function capturePane(sessionName, args) {
-	const result = run("tmux", ["capture-pane", ...args, "-t", sessionName]);
+function capturePane(tmuxBin, sessionName, args) {
+	const result = run(tmuxBin, ["capture-pane", ...args, "-t", sessionName]);
 	if (result.status !== 0) {
 		throw new Error(result.stderr?.toString().trim() || `tmux capture-pane exited ${result.status}`);
 	}
@@ -433,25 +471,30 @@ async function writeScreenshot(htmlPath, pngPath, width, height) {
 }
 
 function runVisualSmoke(options) {
-	requireCommand("pi");
-	requireCommand("tmux");
+	const commands = {
+		pi: requireCommand("pi"),
+		node: requireCommand("node"),
+		tmux: requireCommand("tmux"),
+	};
 
 	mkdirSync(options.outDir, { recursive: true });
 	mkdirSync(options.sessionDir, { recursive: true });
 
 	const sessionName = `pi-visual-${options.safeLabel}-${process.pid}`;
 	const bufferName = `pi-visual-prompt-${process.pid}`;
-	const shell = process.env.SHELL || "/bin/bash";
-	const envParts = [
-		"PI_CURSOR_NATIVE_TOOL_DISPLAY=1",
-		"TERM=xterm-256color",
+	const shell = resolveShell(process.env.SHELL || "/bin/bash");
+	const envAssignments = [
+		["PI_CURSOR_NATIVE_TOOL_DISPLAY", "1"],
+		["PI_CURSOR_SETTING_SOURCES", options.settingSources],
+		["PI_CURSOR_PI_TOOL_BRIDGE", options.bridge ? "1" : "0"],
+		["PI_CURSOR_EXPOSE_BUILTIN_TOOLS", options.exposeBuiltinTools ? "1" : "0"],
+		["TERM", "xterm-256color"],
 	];
-	if (options.eventDebug) envParts.push("PI_CURSOR_SDK_EVENT_DEBUG=1");
+	if (options.eventDebug) envAssignments.push(["PI_CURSOR_SDK_EVENT_DEBUG", "1"]);
 	const command = [
+		...envAssignments.map(([name, value]) => `${name}=${shellQuote(value)}`),
 		"exec",
-		"env",
-		...envParts,
-		"pi",
+		shellQuote(commands.pi),
 		"-e", shellQuote(options.ext),
 		"--cursor-no-fast",
 		"--cursor-mode", shellQuote(options.mode),
@@ -459,34 +502,40 @@ function runVisualSmoke(options) {
 		"--session-id", shellQuote(options.sessionId),
 		"--model", shellQuote(options.model),
 	].join(" ");
-	const script = `cd ${shellQuote(options.cwd)} || exit 97\n${command}\n`;
+	const script = `export PATH=${shellQuote(process.env.PATH ?? "")}\ncd ${shellQuote(options.cwd)} || exit 97\n${command}\n`;
 
 	console.log(`[visual-smoke] out-dir=${options.outDir}`);
 	console.log(`[visual-smoke] session-dir=${options.sessionDir}`);
 	console.log(`[visual-smoke] tmux-session=${sessionName}`);
+	console.log(`[visual-smoke] pi=${commands.pi}`);
+	console.log(`[visual-smoke] node=${commands.node}`);
+	console.log(`[visual-smoke] tmux=${commands.tmux}`);
+	console.log(
+		`[visual-smoke] native-replay-only=${!options.bridge && !options.exposeBuiltinTools && options.settingSources === DEFAULT_SETTING_SOURCES ? "true" : "false"}`,
+	);
 
 	let sessionStarted = false;
 	try {
-		const start = run("tmux", ["new-session", "-d", "-s", sessionName, "-x", String(options.width), "-y", String(options.height), "--", shell, "-lc", script]);
+		const start = run(commands.tmux, ["new-session", "-d", "-s", sessionName, "-x", String(options.width), "-y", String(options.height), "--", shell, "-lc", script]);
 		if (start.status !== 0) throw new Error(`tmux new-session failed: ${start.stderr?.toString().trim() || start.status}`);
 		sessionStarted = true;
 
 		sleep(options.startupMs);
-		const load = run("tmux", ["load-buffer", "-b", bufferName, "-"], { input: Buffer.from(options.prompt, "utf8") });
+		const load = run(commands.tmux, ["load-buffer", "-b", bufferName, "-"], { input: Buffer.from(options.prompt, "utf8") });
 		if (load.status !== 0) throw new Error(`tmux load-buffer failed: ${load.stderr?.toString().trim() || load.status}`);
-		const paste = run("tmux", ["paste-buffer", "-b", bufferName, "-t", sessionName]);
+		const paste = run(commands.tmux, ["paste-buffer", "-b", bufferName, "-t", sessionName]);
 		if (paste.status !== 0) throw new Error(`tmux paste-buffer failed: ${paste.stderr?.toString().trim() || paste.status}`);
 		// Give bracketed paste handling a moment to finish before submitting.
 		sleep(250);
-		const enter = run("tmux", ["send-keys", "-t", sessionName, "Enter"]);
+		const enter = run(commands.tmux, ["send-keys", "-t", sessionName, "Enter"]);
 		if (enter.status !== 0) throw new Error(`tmux send-keys failed: ${enter.stderr?.toString().trim() || enter.status}`);
-		run("tmux", ["delete-buffer", "-b", bufferName]);
+		run(commands.tmux, ["delete-buffer", "-b", bufferName]);
 
 		sleep(options.waitMs);
 
 		const historyStart = `-${options.historyLines}`;
-		const ansi = capturePane(sessionName, ["-e", "-p", "-S", historyStart]);
-		const plain = capturePane(sessionName, ["-p", "-S", historyStart]);
+		const ansi = capturePane(commands.tmux, sessionName, ["-e", "-p", "-S", historyStart]);
+		const plain = capturePane(commands.tmux, sessionName, ["-p", "-S", historyStart]);
 
 		const base = resolve(options.outDir, options.safeLabel);
 		const ansiPath = `${base}.ansi`;
@@ -505,7 +554,7 @@ function runVisualSmoke(options) {
 
 		return { ansiPath, textPath, htmlPath, pngPath, jsonlPathFile, jsonlPath };
 	} finally {
-		if (sessionStarted) run("tmux", ["kill-session", "-t", sessionName]);
+		if (sessionStarted) run(commands.tmux, ["kill-session", "-t", sessionName]);
 	}
 }
 

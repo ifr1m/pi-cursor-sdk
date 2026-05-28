@@ -8,18 +8,21 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SMOKE_DIR="${SMOKE_DIR:-/tmp/pi-cursor-sdk-live-smoke-$(date +%Y%m%dT%H%M%S)}"
 SHELL_BIN="${SHELL:-/bin/bash}"
 
-PI_BASE=(
-	pi -e "$ROOT"
-	--cursor-no-fast
-	--model cursor/composer-2.5
-)
+PI_BIN=""
+NODE_BIN=""
+NPM_BIN=""
+RG_BIN=""
+TMUX_BIN=""
+ENV_BIN=""
+PI_BASE=()
 
 TMUX_SESSIONS=()
 
 cleanup() {
 	local session
+	[[ -n "${TMUX_BIN:-}" ]] || return 0
 	for session in "${TMUX_SESSIONS[@]:-}"; do
-		tmux kill-session -t "$session" 2>/dev/null || true
+		"$TMUX_BIN" kill-session -t "$session" 2>/dev/null || true
 	done
 }
 trap cleanup EXIT
@@ -38,6 +41,7 @@ Environment:
 
 Prerequisites:
   pi, node, npm, rg, tmux on PATH
+  Resolved pi/node/npm/rg/tmux paths from the parent shell are reused in tmux-launched checks.
   timeout or gtimeout optional; bash process-group kill fallback is used when absent
 
 Coverage:
@@ -68,8 +72,19 @@ EOF
 
 log() { smoke_log "$@"; }
 fail() { smoke_fail "$@"; }
-require_cmd() { smoke_require_cmd "$@"; }
 run_with_timeout() { smoke_run_with_timeout "$@"; }
+
+resolve_cmd() {
+	local name="$1"
+	local path
+	if ! path="$(command -v -- "$name" 2>/dev/null)" || [[ -z "$path" ]]; then
+		fail "missing required command: $name"
+	fi
+	if [[ "$path" != /* ]]; then
+		fail "required command $name did not resolve to an absolute path: $path"
+	fi
+	printf '%s\n' "$path"
+}
 
 tail_file() {
 	local file="$1"
@@ -86,7 +101,7 @@ assert_file_contains() {
 	local file="$2"
 	local pattern="$3"
 	local label="$4"
-	if ! rg -q "$pattern" "$file"; then
+	if ! "$RG_BIN" -q "$pattern" "$file"; then
 		printf '[smoke] %s missing %s in %s\n' "$name" "$label" "$file" >&2
 		printf '[smoke] %s transcript tail:\n' "$name" >&2
 		tail_file "$file" 120 >&2
@@ -148,7 +163,7 @@ run_direct() {
 	else
 		code=$?
 	fi
-	if [[ "$code" == "0" ]] && rg -q "$expected_pattern" "$stdout"; then
+	if [[ "$code" == "0" ]] && "$RG_BIN" -q "$expected_pattern" "$stdout"; then
 		log "$name PASS"
 		return 0
 	fi
@@ -168,7 +183,7 @@ run_direct() {
 			log "$name retrying once after empty output with exit $code"
 			if run_direct_attempt "$name" "$timeout_secs" "$stdout" "$stderr" "$@"; then
 				local retry_code=0
-				if rg -q "$expected_pattern" "$stdout"; then
+				if "$RG_BIN" -q "$expected_pattern" "$stdout"; then
 					log "$name PASS after retry (first exit $code; first stderr: $first_stderr)"
 					return 0
 				fi
@@ -214,21 +229,22 @@ run_tui_math_footer_poll() {
 	command="$(quote_command "$@")"
 	rm -f "$capture"
 
-	printf -v script 'cd %q || exit 97
+	printf -v script 'export PATH=%q
+cd %q || exit 97
 exec %s
-' "$ROOT" "$command"
-	tmux new-session -d -s "$session" -x 120 -y 40 -- "$SHELL_BIN" -lc "$script"
+' "$PATH" "$ROOT" "$command"
+	"$TMUX_BIN" new-session -d -s "$session" -x 120 -y 40 -- "$SHELL_BIN" -lc "$script"
 	TMUX_SESSIONS+=("$session")
 
 	local elapsed=0
 	local missing=""
 	while true; do
-		tmux capture-pane -pt "$session" >"$capture" 2>/dev/null || true
+		"$TMUX_BIN" capture-pane -pt "$session" >"$capture" 2>/dev/null || true
 		missing=""
-		rg -q "SUM=42" "$capture" || missing="${missing} SUM=42"
-		rg -q "\\(cursor\\) composer-2\\.5" "$capture" || missing="${missing} footer (cursor) composer-2.5"
+		"$RG_BIN" -q "SUM=42" "$capture" || missing="${missing} SUM=42"
+		"$RG_BIN" -q "\\(cursor\\) composer-2\\.5" "$capture" || missing="${missing} footer (cursor) composer-2.5"
 		if [[ -z "$missing" ]]; then
-			tmux kill-session -t "$session" 2>/dev/null || true
+			"$TMUX_BIN" kill-session -t "$session" 2>/dev/null || true
 			log "$name PASS"
 			return 0
 		fi
@@ -236,7 +252,7 @@ exec %s
 		sleep 2
 		elapsed=$((elapsed + 2))
 		if (( elapsed >= timeout_secs )); then
-			tmux kill-session -t "$session" 2>/dev/null || true
+			"$TMUX_BIN" kill-session -t "$session" 2>/dev/null || true
 			printf '[smoke] %s timed out after %ss; missing:%s\n' "$name" "$timeout_secs" "$missing" >&2
 			printf '[smoke] %s capture tail:\n' "$name" >&2
 			tail_file "$capture" 120 >&2
@@ -259,12 +275,13 @@ run_tmux() {
 	command="$(quote_command "$@")"
 	rm -f "$marker" "$stdout" "$stderr"
 
-	printf -v script 'cd %q || exit 97
+	printf -v script 'export PATH=%q
+cd %q || exit 97
 %s> %q 2> %q
 code=$?
 printf '\''%%s\n'\'' "$code" > %q
-' "$ROOT" "$command" "$stdout" "$stderr" "$marker"
-	tmux new-session -d -s "$session" -- "$SHELL_BIN" -lc "$script"
+' "$PATH" "$ROOT" "$command" "$stdout" "$stderr" "$marker"
+	"$TMUX_BIN" new-session -d -s "$session" -- "$SHELL_BIN" -lc "$script"
 	TMUX_SESSIONS+=("$session")
 
 	local elapsed=0
@@ -272,15 +289,15 @@ printf '\''%%s\n'\'' "$code" > %q
 		sleep 2
 		elapsed=$((elapsed + 2))
 		if (( elapsed >= timeout_secs )); then
-			tmux capture-pane -pt "$session" >"$SMOKE_DIR/${name}.capture.txt" || true
-			tmux kill-session -t "$session" 2>/dev/null || true
+			"$TMUX_BIN" capture-pane -pt "$session" >"$SMOKE_DIR/${name}.capture.txt" || true
+			"$TMUX_BIN" kill-session -t "$session" 2>/dev/null || true
 			fail "$name timed out after ${timeout_secs}s (see ${name}.capture.txt)"
 		fi
 	done
 
 	local code
 	code="$(cat "$marker")"
-	tmux kill-session -t "$session" 2>/dev/null || true
+	"$TMUX_BIN" kill-session -t "$session" 2>/dev/null || true
 	if [[ "$code" != "0" ]]; then
 		if [[ "$dump_stderr_on_fail" == "1" ]]; then
 			cat "$stderr" >&2 || true
@@ -292,7 +309,7 @@ printf '\''%%s\n'\'' "$code" > %q
 
 model_listed() {
 	local file="$1"
-	rg -q "composer-2\\.5" "$file"
+	"$RG_BIN" -q "composer-2\\.5" "$file"
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -300,11 +317,20 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 	exit 0
 fi
 
-require_cmd pi
-require_cmd node
-require_cmd npm
-require_cmd rg
-require_cmd tmux
+PI_BIN="$(resolve_cmd pi)"
+NODE_BIN="$(resolve_cmd node)"
+NPM_BIN="$(resolve_cmd npm)"
+RG_BIN="$(resolve_cmd rg)"
+TMUX_BIN="$(resolve_cmd tmux)"
+ENV_BIN="$(resolve_cmd env)"
+if [[ "$SHELL_BIN" != /* ]]; then
+	SHELL_BIN="$(resolve_cmd "$SHELL_BIN")"
+fi
+PI_BASE=(
+	"$PI_BIN" -e "$ROOT"
+	--cursor-no-fast
+	--model cursor/composer-2.5
+)
 
 if [[ -z "${CURSOR_API_KEY:-}" ]]; then
 	log "CURSOR_API_KEY is unset; relying on stored pi auth or other supported Cursor auth"
@@ -314,12 +340,16 @@ mkdir -p "$SMOKE_DIR"
 printf '%s\n' "$SMOKE_DIR" >"$SMOKE_DIR/smoke-dir.txt"
 
 log "SMOKE_DIR=$SMOKE_DIR"
+log "pi=$PI_BIN"
+log "node=$NODE_BIN"
+log "npm=$NPM_BIN"
+log "tmux=$TMUX_BIN"
 log "partial live smoke: prereq, basic, default-settings, noninteractive-math, tui, steering, diagnostics, jsonl"
 
-pi --version | tee "$SMOKE_DIR/prereq.pi-version.txt"
-npm --prefix "$ROOT" ls @cursor/sdk @earendil-works/pi-coding-agent @earendil-works/pi-ai @earendil-works/pi-tui | tee "$SMOKE_DIR/prereq.npm-ls.txt"
+"$PI_BIN" --version | tee "$SMOKE_DIR/prereq.pi-version.txt"
+"$NPM_BIN" --prefix "$ROOT" ls @cursor/sdk @earendil-works/pi-coding-agent @earendil-works/pi-ai @earendil-works/pi-tui | tee "$SMOKE_DIR/prereq.npm-ls.txt"
 
-if ! PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" --list-models cursor 2>"$SMOKE_DIR/prereq.stderr.txt" | tee "$SMOKE_DIR/prereq.models.txt" | rg -q "composer-2\\.5"; then
+if ! "$ENV_BIN" PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" --list-models cursor 2>"$SMOKE_DIR/prereq.stderr.txt" | tee "$SMOKE_DIR/prereq.models.txt" | "$RG_BIN" -q "composer-2\\.5"; then
 	if ! model_listed "$SMOKE_DIR/prereq.stderr.txt"; then
 		fail "cursor/composer-2.5 not listed"
 	fi
@@ -327,7 +357,7 @@ fi
 log "prereq PASS"
 
 run_direct basic 600 retry-empty-output "PI_CURSOR_SMOKE_OK" "PI_CURSOR_SMOKE_OK" \
-	env PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
+	"$ENV_BIN" PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/basic" \
 	--no-tools \
 	-p 'Live smoke. Reply exactly: PI_CURSOR_SMOKE_OK'
@@ -339,22 +369,22 @@ run_direct default-settings 300 strict "PRODUCT=42" "PRODUCT=42" \
 	-p 'Default settings smoke. Include PRODUCT=42 in the final answer.'
 
 run_direct noninteractive-math 300 strict "SUM=42" "SUM=42" \
-	env PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
+	"$ENV_BIN" PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/noninteractive-math" \
 	--no-tools \
 	-p 'Noninteractive math smoke. Compute 19 + 23. Reply only with SUM=42.'
 
 run_tui_math_footer_poll tui 420 \
-	env PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
+	"$ENV_BIN" PI_CURSOR_SETTING_SOURCES=none "${PI_BASE[@]}" \
 	--session-dir "$SMOKE_DIR/tui" \
 	--no-tools \
 	'TUI smoke. Compute 19 + 23. Reply only with SUM=<number>.'
 
 run_tmux steering 420 1 \
-	env "SMOKE_SESSION_DIR=$SMOKE_DIR/steering" node "$ROOT/scripts/steering-rpc-smoke.mjs"
-rg -q '"steerOk":true' "$SMOKE_DIR/steering.stdout.txt" || fail "steering missing steerOk"
-rg -q '"steerChain":true' "$SMOKE_DIR/steering.stdout.txt" || fail "steering missing steerChain"
-rg -q "already has active run|AgentBusyError" "$SMOKE_DIR/steering.stdout.txt" "$SMOKE_DIR/steering.stderr.txt" && fail "steering hit AgentBusyError" || true
+	"$ENV_BIN" "SMOKE_SESSION_DIR=$SMOKE_DIR/steering" "PI_BIN=$PI_BIN" "$NODE_BIN" "$ROOT/scripts/steering-rpc-smoke.mjs"
+"$RG_BIN" -q '"steerOk":true' "$SMOKE_DIR/steering.stdout.txt" || fail "steering missing steerOk"
+"$RG_BIN" -q '"steerChain":true' "$SMOKE_DIR/steering.stdout.txt" || fail "steering missing steerChain"
+"$RG_BIN" -q "already has active run|AgentBusyError" "$SMOKE_DIR/steering.stdout.txt" "$SMOKE_DIR/steering.stderr.txt" && fail "steering hit AgentBusyError" || true
 
 forbidden_files="$(find "$SMOKE_DIR" -type f \( -name '*stderr.txt' -o -name '*capture*.txt' \) -print0 |
 	xargs -0 grep -IlE 'CURSOR_API_KEY|Bearer [A-Za-z0-9._-]+|/cursor-pi-tool-bridge/[^ ]+/mcp|127\.0\.0\.1:[0-9]+/cursor-pi-tool-bridge|apiKey|cookie|session-cookie|secret-token' || true)"
@@ -372,6 +402,6 @@ if [[ -n "$forbidden_files" ]]; then
 fi
 log "diagnostics safety PASS"
 
-node "$ROOT/scripts/validate-smoke-jsonl.mjs" "$SMOKE_DIR"
+"$NODE_BIN" "$ROOT/scripts/validate-smoke-jsonl.mjs" "$SMOKE_DIR"
 log "jsonl structural scan PASS"
 log "partial live smoke checks passed (see --help for uncovered named release checks)"

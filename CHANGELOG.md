@@ -13,7 +13,7 @@
 - Bump Cursor SDK to exact `@cursor/sdk@1.0.14` and remove older SDK compatibility assumptions.
 - Bump the pi local validation baseline to `@earendil-works/*@0.76.0` while keeping peer dependencies minimum-only (`>=0.76.0`) with no upper bound.
 - Seed Cursor SDK mode through `Agent.create({ mode })` and pass the effective mode on every `agent.send(..., { mode })` call so `/cursor-mode` and `--cursor-mode` remain the source of truth for pooled agents.
-- Update live smoke and visual validation requirements for pi 0.76.0 `--session-id`, Cursor SDK plan mode, deterministic card-category proof, and mandatory browser-rendered card/color inspection through the canonical offscreen PTY + ANSI + PNG + JSONL path.
+- Update live smoke and visual validation requirements for pi 0.76.0 `--session-id`, Cursor SDK plan mode, deterministic native-replay-only card-category proof, resolved command paths in tmux-launched runners, and mandatory browser-rendered card/color inspection through the canonical offscreen PTY + ANSI + PNG + JSONL path.
 
 ## 0.1.20 - 2026-05-26
 

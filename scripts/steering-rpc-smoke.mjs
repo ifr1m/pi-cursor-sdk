@@ -2,7 +2,7 @@
 /**
  * RPC steering smoke: queue steer after a native-replay tool-use turn completes execution.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,7 @@ Usage:
 
 Environment:
   SMOKE_SESSION_DIR            Session directory for the RPC pi run. Defaults to /tmp/pi-cursor-steer-smoke-<timestamp>.
+  PI_BIN                       Optional absolute pi executable path. smoke:live injects the parent-resolved path.
   CURSOR_API_KEY               Optional fallback auth. Stored pi auth in ~/.pi/agent/auth.json is also supported.
 
 Options:
@@ -37,6 +38,20 @@ Notes:
 
 function fail(message) {
 	throw new Error(message);
+}
+
+function resolveCommand(command) {
+	const result = spawnSync("/bin/sh", ["-lc", `command -v -- ${JSON.stringify(command)}`], { encoding: "utf8" });
+	if (result.status !== 0) fail(`${command} is required on PATH`);
+	const path = result.stdout.trim().split("\n")[0];
+	if (!path || !path.startsWith("/")) fail(`${command} did not resolve to an absolute executable path: ${path || "<empty>"}`);
+	return path;
+}
+
+function resolvePiBin() {
+	const path = process.env.PI_BIN?.trim() || resolveCommand("pi");
+	if (!path.startsWith("/")) fail(`PI_BIN must be an absolute path when provided: ${path}`);
+	return path;
 }
 
 function assistantText(events) {
@@ -87,7 +102,7 @@ function waitFor(getStdout, predicate, timeoutMs = 300_000) {
 	});
 }
 
-async function runPiRpcSmoke(sessionDir) {
+async function runPiRpcSmoke(sessionDir, piBin) {
 	const args = ["-e", root, "--cursor-no-fast", "--model", "cursor/composer-2.5", "--mode", "rpc", "--session-dir", sessionDir];
 	const env = {
 		...process.env,
@@ -96,7 +111,7 @@ async function runPiRpcSmoke(sessionDir) {
 		PI_CURSOR_PI_TOOL_BRIDGE: "0",
 	};
 
-	const child = spawn("pi", args, { cwd: root, env, stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
+	const child = spawn(piBin, args, { cwd: root, env, stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
 	let closed = false;
 	let stdout = "";
 	let stderr = "";
@@ -181,8 +196,9 @@ async function main() {
 	}
 
 	const sessionDir = process.env.SMOKE_SESSION_DIR ?? join("/tmp", `pi-cursor-steer-smoke-${Date.now()}`);
+	const piBin = resolvePiBin();
 	mkdirSync(sessionDir, { recursive: true });
-	console.log(JSON.stringify(await runPiRpcSmoke(sessionDir)));
+	console.log(JSON.stringify(await runPiRpcSmoke(sessionDir, piBin)));
 }
 
 main().catch((error) => {
