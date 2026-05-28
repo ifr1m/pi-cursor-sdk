@@ -165,8 +165,8 @@ Recommended context-variant ID format:
 ```text
 cursor/gpt-5.5@1m
 cursor/gpt-5.5@272k
-cursor/claude-opus-4-7@1m
-cursor/claude-opus-4-7@300k
+cursor/claude-opus-4-8@1m
+cursor/claude-opus-4-8@300k
 cursor/composer-2.5
 ```
 
@@ -183,7 +183,7 @@ Avoid this old parameter encoding:
 
 ```text
 cursor/gpt-5.5:context=1m;fast=false;reasoning=medium
-cursor/claude-opus-4-7:context=1m;effort=xhigh;thinking=true
+cursor/claude-opus-4-8:context=1m;effort=xhigh;thinking=true
 ```
 
 Reason:
@@ -333,8 +333,8 @@ Examples:
 cursor/gpt-5.5@272k
 cursor/gpt-5.5@1m
 
-cursor/claude-opus-4-7@300k
-cursor/claude-opus-4-7@1m
+cursor/claude-opus-4-8@300k
+cursor/claude-opus-4-8@1m
 
 cursor/grok-4.3@200k
 cursor/grok-4.3@1m
@@ -630,12 +630,12 @@ Cursor params: reasoning=low; fast=true
 
 No context variant.
 
-### `claude-opus-4-7`
+### `claude-opus-4-8`
 
 Initial Cursor default:
 
 ```text
-pi model: cursor/claude-opus-4-7@1m
+pi model: cursor/claude-opus-4-8@1m
 Cursor params: thinking=true; context=1m; effort=xhigh
 pi thinking: xhigh
 ```
@@ -643,7 +643,7 @@ pi thinking: xhigh
 After selecting the 300k variant:
 
 ```text
-pi model: cursor/claude-opus-4-7@300k
+pi model: cursor/claude-opus-4-8@300k
 Cursor params: thinking=true; context=300k; effort=xhigh
 pi contextWindow: 300000
 ```

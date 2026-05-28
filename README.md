@@ -129,7 +129,7 @@ Choose Cursor models interactively with `/model`, or pass a model on the command
 pi --model cursor/composer-2.5
 pi --model cursor/gpt-5.5@1m
 pi --model cursor/gpt-5.5@272k
-pi --model cursor/claude-opus-4-7@300k
+pi --model cursor/claude-opus-4-8@300k
 ```
 
 How to read model IDs:

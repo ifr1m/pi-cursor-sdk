@@ -65,11 +65,13 @@ describe("discoverModels", () => {
 			expect.arrayContaining([
 				"claude-opus-4-7@1m",
 				"claude-opus-4-7@300k",
+				"claude-opus-4-8@1m",
+				"claude-opus-4-8@300k",
 				"claude-sonnet-4-6@1m",
 				"claude-sonnet-4-6@200k",
-				"composer-2",
 				"composer-2.5",
 				"composer-2-5",
+				"composer-latest",
 				"gpt-5.5@1m",
 				"gpt-5.5@272k",
 			]),
@@ -171,7 +173,7 @@ describe("discoverModels", () => {
 
 			const models = await discoverModels({ onFallback: (issue) => issues.push(issue) });
 
-			expect(models.some((model) => model.id === "composer-2")).toBe(true);
+			expect(models.some((model) => model.id === "composer-2.5")).toBe(true);
 			expect(issues).toEqual([expect.objectContaining({ reason: "missing-api-key" })]);
 			expect(issues[0].message).toContain("/login");
 			expect(mockedList).not.toHaveBeenCalled();
@@ -768,7 +770,7 @@ describe("discoverModels", () => {
 		const models = await discoverModels();
 		const modelIds = models.map((model) => model.id);
 
-		expect(modelIds).toEqual(expect.arrayContaining(["composer-2.5", "composer-2-5", "composer-2"]));
+		expect(modelIds).toEqual(expect.arrayContaining(["composer-2.5", "composer-2-5", "composer-latest"]));
 		expect(getCursorModelMetadata("composer-2.5")).toEqual(
 			expect.objectContaining({
 				baseModelId: "composer-2.5",
@@ -802,7 +804,7 @@ describe("discoverModels", () => {
 		const issues: CursorModelFallbackIssue[] = [];
 		mockedList.mockRejectedValueOnce(new Error("network error"));
 		const models = await discoverModels({ onFallback: (issue) => issues.push(issue) });
-		expect(models.some((model) => model.id === "composer-2")).toBe(true);
+		expect(models.some((model) => model.id === "composer-2.5")).toBe(true);
 		expect(issues).toEqual([
 			expect.objectContaining({
 				reason: "discovery-failed",
@@ -845,7 +847,7 @@ describe("discoverModels", () => {
 		const issues: CursorModelFallbackIssue[] = [];
 		mockedList.mockResolvedValueOnce([]);
 		const models = await discoverModels({ onFallback: (issue) => issues.push(issue) });
-		expect(models.some((model) => model.id === "claude-opus-4-7@1m")).toBe(true);
+		expect(models.some((model) => model.id === "claude-opus-4-8@1m")).toBe(true);
 		expect(issues).toEqual([
 			expect.objectContaining({
 				reason: "empty-model-list",

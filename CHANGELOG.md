@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.24 - 2026-05-28
+
+### Changed
+
+- Refresh the bundled Cursor fallback model catalog from `@cursor/sdk@1.0.15`, including Claude Opus 4.8 context variants and the updated `opus-latest` alias target.
+
 ## 0.1.23 - 2026-05-28
 
 ### Changed
