@@ -16,13 +16,6 @@ TMUX_BIN=""
 ENV_BIN=""
 SEALED_PATH=""
 PI_BASE=()
-DEBUG_ENV_NAMES=(
-	PI_CURSOR_SDK_EVENT_DEBUG
-	PI_CURSOR_SDK_EVENT_DEBUG_DIR
-	PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR
-	PI_CURSOR_SDK_EVENT_DEBUG_SESSION_DIR
-	PI_CURSOR_SDK_EVENT_DEBUG_STDERR
-)
 DEBUG_ENV_UNSETS=()
 BASE_ENV=()
 NONE_ENV=()
@@ -100,16 +93,10 @@ resolve_cmd() {
 	printf '%s\n' "$path"
 }
 
-build_sealed_path() {
-	local node_bin="$1"
-	local base_path="${2:-$PATH}"
-	printf '%s:%s\n' "$(dirname "$node_bin")" "$base_path"
-}
-
 build_smoke_env_arrays() {
 	local name
 	DEBUG_ENV_UNSETS=()
-	for name in "${DEBUG_ENV_NAMES[@]}"; do
+	for name in "${SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES[@]}"; do
 		DEBUG_ENV_UNSETS+=( -u "$name" )
 	done
 	BASE_ENV=( "$ENV_BIN" "${DEBUG_ENV_UNSETS[@]}" "PATH=$SEALED_PATH" )
@@ -367,8 +354,10 @@ EOF_SELFTEST_NODE
 
 	ENV_BIN="$(resolve_cmd env)"
 	NODE_BIN="$(resolve_cmd node)"
+	smoke_load_cursor_sdk_event_debug_env_names "$NODE_BIN" "$ROOT/shared/cursor-sdk-event-debug-env.mjs"
 	hostile_path="$bin_dir:$PATH"
-	SEALED_PATH="$(build_sealed_path "$NODE_BIN" "$hostile_path")"
+	[[ "$(smoke_build_sealed_node_path "$NODE_BIN" "")" != *: ]] || fail "self-test failed: empty inherited PATH left a trailing PATH separator"
+	SEALED_PATH="$(smoke_build_sealed_node_path "$NODE_BIN" "$hostile_path")"
 	build_smoke_env_arrays
 	node_dir="$(dirname "$NODE_BIN")"
 
@@ -383,7 +372,7 @@ EOF_SELFTEST_NODE
 	captured_path="$(awk -F= '$1 == "PATH" { print substr($0, 6); exit }' "$env_capture")"
 	[[ "${captured_path%%:*}" == "$node_dir" ]] || fail "self-test failed: PATH did not start with resolved node dir"
 	grep -qx 'PI_CURSOR_SETTING_SOURCES=none' "$env_capture" || fail "self-test failed: isolated env did not force PI_CURSOR_SETTING_SOURCES=none"
-	for name in "${DEBUG_ENV_NAMES[@]}"; do
+	for name in "${SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES[@]}"; do
 		if grep -q "^${name}=" "$env_capture"; then
 			fail "self-test failed: $name was not cleared"
 		fi
@@ -411,7 +400,8 @@ NPM_BIN="$(resolve_cmd npm)"
 RG_BIN="$(resolve_cmd rg)"
 TMUX_BIN="$(resolve_cmd tmux)"
 ENV_BIN="$(resolve_cmd env)"
-SEALED_PATH="$(build_sealed_path "$NODE_BIN" "$PATH")"
+smoke_load_cursor_sdk_event_debug_env_names "$NODE_BIN" "$ROOT/shared/cursor-sdk-event-debug-env.mjs"
+SEALED_PATH="$(smoke_build_sealed_node_path "$NODE_BIN" "$PATH")"
 build_smoke_env_arrays
 if [[ "$SHELL_BIN" != /* ]]; then
 	SHELL_BIN="$(resolve_cmd "$SHELL_BIN")"

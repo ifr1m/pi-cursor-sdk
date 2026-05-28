@@ -1,12 +1,21 @@
 import { resolve } from "node:path";
 import { CURSOR_SETTING_SOURCES_ENV, resolveCursorSettingSources } from "../../shared/cursor-setting-sources.mjs";
 
-export function readArgvValue(argv, index, flagName, fail) {
+export function readArgvValue(argv, index, flagName, fail, options = {}) {
 	const current = argv[index];
-	if (!current || current.startsWith("--")) {
+	if (!current || (!options.allowDashValue && current.startsWith("--"))) {
 		fail(`${flagName} requires a value`);
 	}
 	return current;
+}
+
+function assignParsedArg(args, key, spec, raw, flagName) {
+	const value = spec.assign ? spec.assign(raw, flagName) : raw;
+	if (spec.repeat) {
+		args[key] = [...(Array.isArray(args[key]) ? args[key] : []), value];
+		return;
+	}
+	args[key] = value;
 }
 
 export function parseArgv(argv, { defaults, flags, fail }) {
@@ -22,14 +31,19 @@ export function parseArgv(argv, { defaults, flags, fail }) {
 		for (const [key, spec] of Object.entries(flags)) {
 			for (const flagName of spec.names) {
 				if (arg === flagName) {
-					const raw = readArgvValue(argv, ++index, flagName, fail);
-					args[key] = spec.assign ? spec.assign(raw) : raw;
+					if (spec.takesValue === false) {
+						assignParsedArg(args, key, spec, true, flagName);
+					} else {
+						const raw = readArgvValue(argv, ++index, flagName, fail, { allowDashValue: spec.allowDashValue === true });
+						assignParsedArg(args, key, spec, raw, flagName);
+					}
 					matched = true;
 					break;
 				}
 				if (arg.startsWith(`${flagName}=`)) {
+					if (spec.takesValue === false) fail(`${flagName} does not accept a value`);
 					const raw = arg.slice(flagName.length + 1);
-					args[key] = spec.assign ? spec.assign(raw) : raw;
+					assignParsedArg(args, key, spec, raw, flagName);
 					matched = true;
 					break;
 				}
@@ -85,6 +99,16 @@ export const commonProbePathFlag = (key) => ({
 
 export const commonProbeStringFlag = (key) => ({
 	names: [`--${key}`],
+});
+
+export const commonBooleanFlag = (...names) => ({
+	names,
+	takesValue: false,
+});
+
+export const commonRepeatStringFlag = (...names) => ({
+	names,
+	repeat: true,
 });
 
 export const commonProbeFlags = {

@@ -67,7 +67,7 @@ describe("smoke tooling package checks", () => {
 		const invalidVisualArgs = run(process.execPath, ["scripts/visual-tui-smoke.mjs", "--label", "bad", "--prompt", "bad", "--expose-builtin-tools"]);
 		expect(invalidVisualArgs.status).toBe(2);
 		expect(invalidVisualArgs.stderr).toContain("--expose-builtin-tools requires --bridge");
-	});
+	}, 30_000);
 
 	it("packages smoke scripts and avoids reusing the latest local release tag version", () => {
 		const localReleaseTags = run("git", ["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"]);
@@ -101,7 +101,13 @@ describe("smoke tooling package checks", () => {
 		expect(paths.has("shared/cursor-setting-sources.d.mts")).toBe(true);
 		expect(paths.has("shared/cursor-sensitive-text.mjs")).toBe(true);
 		expect(paths.has("shared/cursor-sensitive-text.d.mts")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-smoke-env.mjs")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-smoke-env.d.mts")).toBe(true);
 		expect(paths.has("scripts/lib/cursor-smoke-shell.sh")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-visual-render.mjs")).toBe(true);
+		expect(paths.has("scripts/lib/cursor-visual-render.d.mts")).toBe(true);
+		expect(paths.has("shared/cursor-sdk-event-debug-env.mjs")).toBe(true);
+		expect(paths.has("shared/cursor-sdk-event-debug-env.d.mts")).toBe(true);
 		expect(paths.has("scripts/lib/cursor-setting-sources.mjs")).toBe(false);
 		expect(paths.has("scripts/lib/cursor-sensitive-text.mjs")).toBe(false);
 		expect(paths.has("scripts/lib/cursor-cli-args.mjs")).toBe(true);

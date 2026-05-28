@@ -9,16 +9,11 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseJsonLines, terminateChild, waitForChildClose } from "./lib/cursor-child-process.mjs";
 import { apiKeySecretsFromProcess } from "./lib/cursor-cli-args.mjs";
+import { buildCursorSmokeEnv, CURSOR_SDK_EVENT_DEBUG_ENV_NAMES } from "./lib/cursor-smoke-env.mjs";
 import { scrubSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const DEBUG_ENV_NAMES = [
-	"PI_CURSOR_SDK_EVENT_DEBUG",
-	"PI_CURSOR_SDK_EVENT_DEBUG_DIR",
-	"PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR",
-	"PI_CURSOR_SDK_EVENT_DEBUG_SESSION_DIR",
-	"PI_CURSOR_SDK_EVENT_DEBUG_STDERR",
-];
+const DEBUG_ENV_NAMES = CURSOR_SDK_EVENT_DEBUG_ENV_NAMES;
 
 function printHelp() {
 	console.log(`RPC steering smoke for pi-cursor-sdk live runs.
@@ -79,10 +74,6 @@ function resolvePiBin() {
 	return path;
 }
 
-function sealedPathForNode(nodePath = process.execPath, envPath = process.env.PATH ?? "") {
-	return `${dirname(nodePath)}${delimiter}${envPath}`;
-}
-
 function assistantText(events) {
 	return events
 		.filter((event) => event.type === "message_end" && event.message?.role === "assistant")
@@ -132,16 +123,14 @@ function waitFor(getStdout, predicate, timeoutMs = 300_000) {
 }
 
 function buildPiRpcEnv(baseEnv = process.env, nodePath = process.execPath) {
-	const env = {
-		...baseEnv,
-		PATH: sealedPathForNode(nodePath, baseEnv.PATH ?? ""),
-		PI_CURSOR_SETTING_SOURCES: "none",
-		PI_CURSOR_NATIVE_TOOL_DISPLAY: "1",
-		PI_CURSOR_REGISTER_NATIVE_TOOLS: "1",
-		PI_CURSOR_PI_TOOL_BRIDGE: "0",
-	};
-	for (const name of DEBUG_ENV_NAMES) delete env[name];
-	return env;
+	return buildCursorSmokeEnv({
+		baseEnv,
+		nodePath,
+		settingSources: "none",
+		nativeToolDisplay: true,
+		registerNativeTools: true,
+		bridge: false,
+	});
 }
 
 async function runPiRpcSmoke(sessionDir, piBin) {
@@ -244,6 +233,7 @@ function runSelfTest() {
 		chmodSync(fakePi, 0o755);
 		chmodSync(fakeNode, 0o755);
 		const hostilePath = `${binDir}${delimiter}${process.env.PATH ?? ""}`;
+		if (buildPiRpcEnv({ PATH: "" }).PATH?.includes(delimiter)) fail("self-test failed: empty inherited PATH left an empty PATH segment");
 		if (resolveCommand("pi", hostilePath) !== fakePi) fail("self-test failed: direct PATH resolver did not prefer fake PATH head");
 		const originalPiBin = process.env.PI_BIN;
 		const originalPath = process.env.PATH;
@@ -254,15 +244,11 @@ function runSelfTest() {
 			process.env.PI_BIN = fakePi;
 			if (resolvePiBin() !== fakePi) fail("self-test failed: resolvePiBin should honor absolute PI_BIN");
 			const hostileEnv = buildPiRpcEnv({
+				...Object.fromEntries(DEBUG_ENV_NAMES.map((name) => [name, join(tempDir, name)])),
 				PATH: hostilePath,
 				PI_CURSOR_REGISTER_NATIVE_TOOLS: "0",
 				PI_CURSOR_SETTING_SOURCES: "all",
 				PI_CURSOR_PI_TOOL_BRIDGE: "1",
-				PI_CURSOR_SDK_EVENT_DEBUG: "1",
-				PI_CURSOR_SDK_EVENT_DEBUG_DIR: join(tempDir, "debug-dir"),
-				PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR: join(tempDir, "debug-run-dir"),
-				PI_CURSOR_SDK_EVENT_DEBUG_SESSION_DIR: join(tempDir, "debug-session-dir"),
-				PI_CURSOR_SDK_EVENT_DEBUG_STDERR: "1",
 			});
 			if ((hostileEnv.PATH ?? "").split(delimiter)[0] !== dirname(process.execPath)) fail("self-test failed: sealed PATH should start with resolved node directory");
 			if (hostileEnv.PI_CURSOR_REGISTER_NATIVE_TOOLS !== "1") fail("self-test failed: native registration should be forced on");

@@ -29,9 +29,11 @@ import {
 	type CursorSdkEventJsonlSink,
 } from "../scripts/debug-sdk-events.mjs";
 import {
+	commonBooleanFlag,
 	commonProbeFlags,
 	commonProbePathFlag,
 	commonProbeStringFlag,
+	commonRepeatStringFlag,
 	defaultApiKeyFromEnv,
 	defaultSettingSourcesFromEnv,
 	defaultTimestampedDir,
@@ -39,6 +41,12 @@ import {
 	readArgvValue,
 	requireApiKey,
 } from "../scripts/lib/cursor-cli-args.mjs";
+import {
+	buildCursorSmokeEnv,
+	buildCursorSmokeEnvPlan,
+	CURSOR_SDK_EVENT_DEBUG_ENV_NAMES as SCRIPT_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES,
+	sealedNodePath,
+} from "../scripts/lib/cursor-smoke-env.mjs";
 import {
 	DEFAULT_CHILD_SHUTDOWN_GRACE_MS,
 	parseJsonLines,
@@ -54,6 +62,7 @@ import {
 	isCursorSdkStartupNoise,
 	suppressCursorSdkOutput,
 } from "../scripts/lib/cursor-sdk-output-filter.mjs";
+import { buildTerminalHtml, writeTerminalScreenshot } from "../scripts/lib/cursor-visual-render.mjs";
 import { scrubSensitiveText as scrubSensitiveTextFromScriptLib } from "../shared/cursor-sensitive-text.mjs";
 import {
 	CURSOR_SETTING_SOURCES_ENV as SCRIPT_CURSOR_SETTING_SOURCES_ENV,
@@ -66,6 +75,7 @@ import {
 	resolveCursorSettingSources,
 	serializeCursorSettingSources,
 } from "../shared/cursor-setting-sources.mjs";
+import { CURSOR_SDK_EVENT_DEBUG_ENV_NAMES } from "../shared/cursor-sdk-event-debug-env.mjs";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { files: string[] };
@@ -86,8 +96,10 @@ const DECLARATION_TYPE_ONLY_EXPORTS: Record<string, readonly string[]> = {
 		"CursorSdkEventJsonlSink",
 	],
 	"scripts/lib/cursor-cli-args.d.mts": [
+		"CursorCliBooleanFlagSpec",
 		"CursorCliFlagSpec",
 		"CursorCliFlagSpecMap",
+		"CursorCliValueFlagSpec",
 		"ParsedCursorCliArgs",
 	],
 };
@@ -206,6 +218,8 @@ const _scrubbedFromShared: string = scrubSensitiveText("token", "token");
 const _scrubbedFromScriptLib: string = scrubSensitiveTextFromScriptLib("token", "token");
 const _settingSourcesEnv: "PI_CURSOR_SETTING_SOURCES" = CURSOR_SETTING_SOURCES_ENV;
 const _scriptSettingSourcesEnv: "PI_CURSOR_SETTING_SOURCES" = SCRIPT_CURSOR_SETTING_SOURCES_ENV;
+const _sdkEventDebugEnvNames: readonly string[] = CURSOR_SDK_EVENT_DEBUG_ENV_NAMES;
+const _scriptSdkEventDebugEnvNames: readonly string[] = SCRIPT_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES;
 const _resolvedSharedSources: string[] | undefined = resolveCursorSettingSources("all");
 const _resolvedScriptSources: string[] | undefined = resolveCursorSettingSourcesFromScriptLib("all");
 const _serializedSharedSources: string = serializeCursorSettingSources(["project"]);
@@ -214,9 +228,20 @@ const _defaultApiKey: string | undefined = defaultApiKeyFromEnv({ CURSOR_API_KEY
 const _timestampedDir: string = defaultTimestampedDir("debug");
 const _commonPathFlag: Record<string, unknown> = commonProbePathFlag("cwd");
 const _commonStringFlag: Record<string, unknown> = commonProbeStringFlag("model");
+const _commonBooleanFlag: Record<string, unknown> = commonBooleanFlag("--self-test");
+const _commonRepeatStringFlag: Record<string, unknown> = commonRepeatStringFlag("--leftover-pattern");
 const _commonFlags: Record<string, unknown> = commonProbeFlags;
 const _readArgvValue: string = readArgvValue(["--model", "cursor"], 1, "--model", createScriptFail("test"));
 const _parsedArgv: Record<string, unknown> = parseArgv([], { defaults: {}, flags: {}, fail: createScriptFail("test") });
+const _sealedNodePath: string = sealedNodePath("/usr/local/bin/node", "/tmp/bin");
+const _smokeEnv: Record<string, string | undefined> = buildCursorSmokeEnv({ settingSources: "none", nativeToolDisplay: true });
+const _smokeEnvPlan: { envEntries: Array<[string, string]> } = buildCursorSmokeEnvPlan({ settingSources: "none" });
+const _terminalHtml: string = buildTerminalHtml({
+	ansi: "ok",
+	plain: "ok",
+	options: { label: "test", model: "cursor/composer-2.5", mode: "plan", cwd: "/tmp", sessionId: "s", width: 80, height: 24, historyLines: 100 },
+});
+const _writeTerminalScreenshot: (htmlPath: string, pngPath: string, width: number, height: number) => Promise<void> = writeTerminalScreenshot;
 const _requiredApiKey: string = requireApiKey({ apiKey: "key" }, {}, createScriptFail("test"));
 const _signalChild: (child: ChildProcess, signal: NodeJS.Signals) => void = signalChild;
 const _terminateChild: (child: ChildProcess, options?: { graceMs?: number }) => Promise<void> = terminateChild;

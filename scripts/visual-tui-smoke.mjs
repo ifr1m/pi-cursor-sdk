@@ -3,8 +3,10 @@ import { spawnSync } from "node:child_process";
 import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { commonBooleanFlag, commonRepeatStringFlag, parseArgv } from "./lib/cursor-cli-args.mjs";
+import { buildCursorSmokeEnvPlan, CURSOR_SDK_EVENT_DEBUG_ENV_NAMES, sealedNodePath } from "./lib/cursor-smoke-env.mjs";
+import { buildTerminalHtml, writeTerminalScreenshot } from "./lib/cursor-visual-render.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_WIDTH = 150;
@@ -15,13 +17,7 @@ const DEFAULT_HISTORY_LINES = 3_000;
 const DEFAULT_MODEL = "cursor/composer-2.5";
 const DEFAULT_MODE = "plan";
 const DEFAULT_SETTING_SOURCES = "none";
-const DEBUG_ENV_NAMES = [
-	"PI_CURSOR_SDK_EVENT_DEBUG",
-	"PI_CURSOR_SDK_EVENT_DEBUG_DIR",
-	"PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR",
-	"PI_CURSOR_SDK_EVENT_DEBUG_SESSION_DIR",
-	"PI_CURSOR_SDK_EVENT_DEBUG_STDERR",
-];
+const DEBUG_ENV_NAMES = CURSOR_SDK_EVENT_DEBUG_ENV_NAMES;
 
 const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
@@ -128,115 +124,66 @@ function readPromptFile(path) {
 	}
 }
 
+function parseMode(value) {
+	if (value !== "agent" && value !== "plan") fail(`--mode must be agent or plan: ${value}`, EXIT_USAGE);
+	return value;
+}
+
+function parseSettingSources(value) {
+	if (!value.trim()) fail("--setting-sources requires a non-empty value", EXIT_USAGE);
+	return value;
+}
+
 function parseArgs(argv) {
-	const options = {
-		ext: ROOT,
-		cwd: process.cwd(),
-		waitMs: DEFAULT_WAIT_MS,
-		startupMs: DEFAULT_STARTUP_MS,
-		model: DEFAULT_MODEL,
-		mode: DEFAULT_MODE,
-		settingSources: DEFAULT_SETTING_SOURCES,
-		bridge: false,
-		exposeBuiltinTools: false,
-		leftoverPatterns: [],
-		width: DEFAULT_WIDTH,
-		height: DEFAULT_HEIGHT,
-		historyLines: DEFAULT_HISTORY_LINES,
-		eventDebug: false,
-		screenshot: true,
-	};
+	const options = parseArgv(argv, {
+		defaults: {
+			ext: ROOT,
+			cwd: process.cwd(),
+			waitMs: DEFAULT_WAIT_MS,
+			startupMs: DEFAULT_STARTUP_MS,
+			model: DEFAULT_MODEL,
+			mode: DEFAULT_MODE,
+			settingSources: DEFAULT_SETTING_SOURCES,
+			bridge: false,
+			exposeBuiltinTools: false,
+			leftoverPatterns: [],
+			width: DEFAULT_WIDTH,
+			height: DEFAULT_HEIGHT,
+			historyLines: DEFAULT_HISTORY_LINES,
+			eventDebug: false,
+			screenshot: true,
+			selfTest: false,
+		},
+		flags: {
+			label: { names: ["--label"] },
+			prompt: { names: ["--prompt", "--prompt-file"], allowDashValue: true, assign: (value, flagName) => (flagName === "--prompt-file" ? readPromptFile(value) : value) },
+			ext: { names: ["--ext"], assign: (value) => resolve(value) },
+			cwd: { names: ["--cwd"], assign: (value) => resolve(value) },
+			outDir: { names: ["--out-dir"], assign: (value) => resolve(value) },
+			waitMs: { names: ["--wait-ms"], assign: (value) => parseInteger(value, "--wait-ms") },
+			startupMs: { names: ["--startup-ms"], assign: (value) => parseInteger(value, "--startup-ms") },
+			model: { names: ["--model"] },
+			mode: { names: ["--mode"], assign: parseMode },
+			sessionDir: { names: ["--session-dir"], assign: (value) => resolve(value) },
+			sessionId: { names: ["--session-id"] },
+			width: { names: ["--width"], assign: (value) => parseInteger(value, "--width") },
+			height: { names: ["--height"], assign: (value) => parseInteger(value, "--height") },
+			historyLines: { names: ["--history-lines"], assign: (value) => parseInteger(value, "--history-lines") },
+			settingSources: { names: ["--setting-sources"], assign: parseSettingSources },
+			bridge: commonBooleanFlag("--bridge"),
+			exposeBuiltinTools: commonBooleanFlag("--expose-builtin-tools"),
+			eventDebug: commonBooleanFlag("--event-debug"),
+			leftoverPatterns: { ...commonRepeatStringFlag("--leftover-pattern"), allowDashValue: true },
+			screenshot: { ...commonBooleanFlag("--no-screenshot"), assign: () => false },
+			selfTest: commonBooleanFlag("--self-test"),
+		},
+		fail: (message) => fail(message, EXIT_USAGE),
+	});
 
-	for (let index = 0; index < argv.length; index += 1) {
-		const arg = argv[index];
-		const next = () => {
-			index += 1;
-			if (index >= argv.length) fail(`${arg} requires a value`, EXIT_USAGE);
-			return argv[index];
-		};
-
-		switch (arg) {
-			case "-h":
-			case "--help":
-				printHelp();
-				process.exit(0);
-			case "--label":
-				options.label = next();
-				break;
-			case "--prompt":
-				options.prompt = next();
-				break;
-			case "--prompt-file":
-				options.prompt = readPromptFile(next());
-				break;
-			case "--ext":
-				options.ext = resolve(next());
-				break;
-			case "--cwd":
-				options.cwd = resolve(next());
-				break;
-			case "--out-dir":
-				options.outDir = resolve(next());
-				break;
-			case "--wait-ms":
-				options.waitMs = parseInteger(next(), arg);
-				break;
-			case "--startup-ms":
-				options.startupMs = parseInteger(next(), arg);
-				break;
-			case "--model":
-				options.model = next();
-				break;
-			case "--mode": {
-				const mode = next();
-				if (mode !== "agent" && mode !== "plan") fail(`--mode must be agent or plan: ${mode}`, EXIT_USAGE);
-				options.mode = mode;
-				break;
-			}
-			case "--session-dir":
-				options.sessionDir = resolve(next());
-				break;
-			case "--session-id":
-				options.sessionId = next();
-				break;
-			case "--width":
-				options.width = parseInteger(next(), arg);
-				break;
-			case "--height":
-				options.height = parseInteger(next(), arg);
-				break;
-			case "--history-lines":
-				options.historyLines = parseInteger(next(), arg);
-				break;
-			case "--setting-sources": {
-				const settingSources = next();
-				if (!settingSources.trim()) fail("--setting-sources requires a non-empty value", EXIT_USAGE);
-				options.settingSources = settingSources;
-				break;
-			}
-			case "--bridge":
-				options.bridge = true;
-				break;
-			case "--expose-builtin-tools":
-				options.exposeBuiltinTools = true;
-				break;
-			case "--event-debug":
-				options.eventDebug = true;
-				break;
-			case "--leftover-pattern":
-				options.leftoverPatterns.push(next());
-				break;
-			case "--no-screenshot":
-				options.screenshot = false;
-				break;
-			case "--self-test":
-				options.selfTest = true;
-				break;
-			default:
-				fail(`unknown option: ${arg}`, EXIT_USAGE);
-		}
+	if (options.help) {
+		printHelp();
+		process.exit(0);
 	}
-
 	if (options.selfTest) return options;
 	if (!options.label?.trim()) fail("--label is required", EXIT_USAGE);
 	if (!options.prompt?.trim()) fail("--prompt or --prompt-file is required", EXIT_USAGE);
@@ -293,10 +240,6 @@ function resolveCommand(command, envPath = process.env.PATH ?? "") {
 		if (isExecutable(candidate)) return candidate;
 	}
 	fail(`${command} is required on PATH`, EXIT_USAGE);
-}
-
-function sealedPathForNode(nodePath, envPath = process.env.PATH ?? "") {
-	return `${dirname(nodePath)}${delimiter}${envPath}`;
 }
 
 function requireCommand(command, options = {}) {
@@ -361,111 +304,6 @@ function findLatestJsonl(root) {
 	return matches[0]?.path;
 }
 
-function escapeHtml(text) {
-	return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function htmlJson(value) {
-	return JSON.stringify(value).replace(/</g, "\\u003c");
-}
-
-function loadXtermAssets() {
-	const require = createRequire(import.meta.url);
-	try {
-		return {
-			css: readFileSync(require.resolve("@xterm/xterm/css/xterm.css"), "utf8"),
-			js: readFileSync(require.resolve("@xterm/xterm/lib/xterm.js"), "utf8"),
-		};
-	} catch (error) {
-		throw new Error(`failed to load @xterm/xterm assets; run npm install: ${error instanceof Error ? error.message : String(error)}`);
-	}
-}
-
-function buildHtml({ ansi, plain, options }) {
-	const assets = loadXtermAssets();
-	return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>pi-cursor-sdk visual smoke: ${escapeHtml(options.label)}</title>
-<style>
-${assets.css}
-:root { color-scheme: dark; }
-body {
-	margin: 0;
-	padding: 16px;
-	background: #0b0f14;
-	color: #d8dee9;
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-header {
-	margin: 0 0 12px;
-	font-size: 13px;
-	line-height: 1.4;
-	color: #9aa4b2;
-}
-header code { color: #d8dee9; }
-#terminal {
-	display: inline-block;
-	padding: 12px;
-	border: 1px solid #303846;
-	border-radius: 8px;
-	background: #0b0f14;
-	box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-}
-.fallback {
-	white-space: pre-wrap;
-	font-family: Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-	font-size: 12px;
-}
-</style>
-<script>${assets.js}</script>
-</head>
-<body>
-<header>
-	<div><strong>pi-cursor-sdk visual smoke</strong> <code>${escapeHtml(options.label)}</code></div>
-	<div>model <code>${escapeHtml(options.model)}</code> · mode <code>${escapeHtml(options.mode)}</code> · cwd <code>${escapeHtml(options.cwd)}</code></div>
-	<div>session <code>${escapeHtml(options.sessionId)}</code> · captured ${new Date().toISOString()}</div>
-</header>
-<div id="terminal"></div>
-<noscript><pre class="fallback">${escapeHtml(plain)}</pre></noscript>
-<script>
-const ansi = ${htmlJson(ansi)};
-const fallbackText = ${htmlJson(plain)};
-const terminalElement = document.getElementById("terminal");
-try {
-	const term = new Terminal({
-		cols: ${options.width},
-		rows: ${options.height},
-		convertEol: true,
-		fontFamily: 'Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-		fontSize: 13,
-		lineHeight: 1.18,
-		scrollback: ${options.historyLines},
-		theme: {
-			background: '#0b0f14',
-			foreground: '#d8dee9',
-			cursor: '#d8dee9'
-		}
-	});
-	term.open(terminalElement);
-	term.resize(${options.width}, ${options.height});
-	term.write(ansi, () => {
-		document.body.setAttribute("data-render-ready", "true");
-	});
-} catch (error) {
-	const pre = document.createElement("pre");
-	pre.className = "fallback";
-	pre.textContent = fallbackText + "\\n\\n[xterm render failed: " + String(error) + "]";
-	terminalElement.replaceChildren(pre);
-	document.body.setAttribute("data-render-ready", "true");
-}
-</script>
-</body>
-</html>
-`;
-}
-
 function checkLeftovers(patterns) {
 	if (patterns.length === 0) return;
 	const result = run("ps", ["-axo", "pid,etime,command"]);
@@ -494,20 +332,20 @@ function checkLeftovers(patterns) {
 }
 
 function buildLaunchPlan(options, commands, shell) {
-	const sealedPath = commands.sealedPath ?? sealedPathForNode(commands.node);
-	const envAssignments = [
-		["PI_CURSOR_NATIVE_TOOL_DISPLAY", "1"],
-		["PI_CURSOR_REGISTER_NATIVE_TOOLS", "1"],
-		["PI_CURSOR_SETTING_SOURCES", options.settingSources],
-		["PI_CURSOR_PI_TOOL_BRIDGE", options.bridge ? "1" : "0"],
-		["PI_CURSOR_EXPOSE_BUILTIN_TOOLS", options.exposeBuiltinTools ? "1" : "0"],
-		["TERM", "xterm-256color"],
-	];
-	const clearEnvNames = [...DEBUG_ENV_NAMES];
-	if (options.eventDebug) {
-		envAssignments.push(["PI_CURSOR_SDK_EVENT_DEBUG", "1"]);
-		envAssignments.push(["PI_CURSOR_SDK_EVENT_DEBUG_DIR", resolve(options.outDir, `${options.safeLabel ?? "visual-smoke"}.cursor-sdk-events`)]);
-	}
+	const smokeEnvPlan = buildCursorSmokeEnvPlan({
+		baseEnv: process.env,
+		nodePath: commands.node,
+		settingSources: options.settingSources,
+		nativeToolDisplay: true,
+		registerNativeTools: true,
+		bridge: options.bridge,
+		exposeBuiltinTools: options.exposeBuiltinTools,
+		term: "xterm-256color",
+		eventDebugDir: options.eventDebug ? resolve(options.outDir, `${options.safeLabel ?? "visual-smoke"}.cursor-sdk-events`) : undefined,
+	});
+	const sealedPath = commands.sealedPath ?? smokeEnvPlan.sealedPath;
+	const envAssignments = smokeEnvPlan.envEntries;
+	const clearEnvNames = smokeEnvPlan.clearEnvNames;
 	const command = [
 		...envAssignments.map(([name, value]) => `${name}=${shellQuote(value)}`),
 		"exec",
@@ -531,32 +369,9 @@ function buildLaunchPlan(options, commands, shell) {
 	return { command, clearEnvNames, envAssignments, script, shell };
 }
 
-async function writeScreenshot(htmlPath, pngPath, width, height) {
-	let browser;
-	try {
-		const { chromium } = await import("playwright");
-		browser = await chromium.launch();
-		const page = await browser.newPage({
-			viewport: {
-				width: Math.max(1_200, width * 10),
-				height: Math.max(800, height * 22),
-			},
-			deviceScaleFactor: 1,
-		});
-		await page.goto(pathToFileURL(htmlPath).href);
-		await page.waitForSelector('body[data-render-ready="true"]', { timeout: 30_000 });
-		await page.locator("#terminal").screenshot({ path: pngPath });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`failed to capture PNG with Playwright: ${message}\nInstall Chromium with: npx playwright install chromium\nOr rerun with --no-screenshot and capture ${htmlPath} with agent_browser.`);
-	} finally {
-		if (browser) await browser.close();
-	}
-}
-
 function runVisualSmoke(options) {
 	const node = requireNode();
-	const sealedPath = sealedPathForNode(node);
+	const sealedPath = sealedNodePath(node);
 	const commands = {
 		pi: requireCommand("pi", { env: { ...process.env, PATH: sealedPath } }),
 		node,
@@ -614,7 +429,7 @@ function runVisualSmoke(options) {
 
 		writeUtf8(ansiPath, ansi);
 		writeUtf8(textPath, plain);
-		writeUtf8(htmlPath, buildHtml({ ansi, plain, options }));
+		writeUtf8(htmlPath, buildTerminalHtml({ ansi, plain, options }));
 
 		const jsonlPath = findLatestJsonl(options.sessionDir);
 		if (!jsonlPath) throw new Error(`no persisted .jsonl found under ${options.sessionDir}`);
@@ -664,8 +479,15 @@ function runSelfTest() {
 		chmodSync(fakePi, 0o755);
 		chmodSync(fakeNode, 0o755);
 
+		const promptFile = join(tempDir, "prompt.txt");
+		writeFileSync(promptFile, "file prompt", "utf8");
+		assertSelfTest(parseArgs(["--label", "prompt-order", "--prompt-file", promptFile, "--prompt", "inline prompt"]).prompt === "inline prompt", "--prompt should override an earlier --prompt-file");
+		assertSelfTest(parseArgs(["--label", "prompt-dash", "--prompt", "--starts-with-dash"]).prompt === "--starts-with-dash", "--prompt should accept dash-prefixed free-form text");
+		assertSelfTest(parseArgs(["--label", "prompt-order", "--prompt", "inline prompt", "--prompt-file", promptFile]).prompt === "file prompt", "--prompt-file should override an earlier --prompt");
+
+		assertSelfTest(!sealedNodePath(process.execPath, "").includes(delimiter), "empty inherited PATH must not leave an empty PATH segment");
 		const hostilePath = `${binDir}${delimiter}${process.env.PATH ?? ""}`;
-		const sealedHostilePath = sealedPathForNode(process.execPath, hostilePath);
+		const sealedHostilePath = sealedNodePath(process.execPath, hostilePath);
 		assertSelfTest(resolveCommand("pi", hostilePath) === fakePi, "direct PATH resolver did not prefer fake PATH head");
 		assertSelfTest(requireNode() === process.execPath, "node resolver must use process.execPath");
 		assertSelfTest(requireCommand("pi", { envPath: hostilePath, env: { ...process.env, PATH: sealedHostilePath } }) === fakePi, "pi prereq should use sealed PATH when executing the shim");
@@ -699,16 +521,12 @@ function runSelfTest() {
 		assertSelfTest(!plan.script.includes(" exec pi "), "launch script must not use bare pi");
 		const hostileEnv = {
 			...process.env,
+			...Object.fromEntries(DEBUG_ENV_NAMES.map((name) => [name, join(tempDir, name)])),
 			PATH: hostilePath,
 			PI_CURSOR_REGISTER_NATIVE_TOOLS: "0",
 			PI_CURSOR_SETTING_SOURCES: "all",
 			PI_CURSOR_PI_TOOL_BRIDGE: "1",
 			PI_CURSOR_EXPOSE_BUILTIN_TOOLS: "1",
-			PI_CURSOR_SDK_EVENT_DEBUG: "1",
-			PI_CURSOR_SDK_EVENT_DEBUG_DIR: join(tempDir, "debug-dir"),
-			PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR: join(tempDir, "debug-run-dir"),
-			PI_CURSOR_SDK_EVENT_DEBUG_SESSION_DIR: join(tempDir, "debug-session-dir"),
-			PI_CURSOR_SDK_EVENT_DEBUG_STDERR: "1",
 		};
 		const probe = run("/bin/sh", ["-c", plan.script], { env: hostileEnv });
 		assertSelfTest(probe.status === 0, `fake-pi env capture exited ${probe.status}: ${probe.stderr?.toString() ?? ""}`);
@@ -761,7 +579,7 @@ try {
 	const artifacts = runVisualSmoke(options);
 	checkLeftovers(options.leftoverPatterns);
 	if (options.screenshot) {
-		await writeScreenshot(artifacts.htmlPath, artifacts.pngPath, options.width, options.height);
+		await writeTerminalScreenshot(artifacts.htmlPath, artifacts.pngPath, options.width, options.height);
 	}
 	console.log("[visual-smoke] artifacts:");
 	console.log(`  ansi:       ${artifacts.ansiPath}`);
