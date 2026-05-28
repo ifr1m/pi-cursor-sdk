@@ -14,6 +14,8 @@ export interface CursorPromptOptions {
 	maxInputTokens?: number;
 	charsPerToken?: number;
 	imageTokenEstimate?: number;
+	/** Compact callable-surface summary; included on bootstrap prompts when set. */
+	toolManifest?: string;
 }
 
 export const CURSOR_APPROX_CHARS_PER_TOKEN = 4;
@@ -371,6 +373,9 @@ export function buildCursorIncrementalPrompt(context: Context, options: CursorPr
 
 export function buildCursorPrompt(context: Context, options: CursorPromptOptions = {}): CursorPrompt {
 	const sectionsBeforeMessages: string[] = [getCursorToolBoundaryText()];
+	if (options.toolManifest) {
+		sectionsBeforeMessages.push(options.toolManifest);
+	}
 
 	if (context.systemPrompt) {
 		sectionsBeforeMessages.push(`System instructions from pi:\n${sanitizeSystemPromptForCursor(context.systemPrompt)}`);

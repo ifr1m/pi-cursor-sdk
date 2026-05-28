@@ -226,6 +226,16 @@ function hasUnifiedDiffHunk(text: string): boolean {
 	return text.split("\n").some((line) => Boolean(parseUnifiedDiffHunkHeader(line)));
 }
 
+/** First unified-diff marker (`---`/`+++`/`@@`) so collapsed previews budget diff lines, not transcript preamble. */
+function extractUnifiedDiffSection(text: string): string | undefined {
+	const lines = text.split("\n");
+	const markerIndex = lines.findIndex((line) => line.startsWith("--- ") || line.startsWith("+++ "));
+	const hunkIndex = lines.findIndex((line) => Boolean(parseUnifiedDiffHunkHeader(line)));
+	const start = markerIndex >= 0 ? markerIndex : hunkIndex;
+	if (start < 0) return undefined;
+	return lines.slice(start).join("\n");
+}
+
 function formatCursorReplayActivityDiffPreview(
 	text: string,
 	theme: CursorReplayRenderTheme,
@@ -233,31 +243,54 @@ function formatCursorReplayActivityDiffPreview(
 	stripHeader: boolean,
 ): string | undefined {
 	const body = (stripHeader ? stripCursorReplayHeader(text) : text).trimEnd();
-	if (!body || !hasUnifiedDiffHunk(body)) return undefined;
-	const slice = Number.isFinite(maxLines) ? sliceCursorReplayPreview(body, maxLines) : undefined;
-	const previewText = slice?.text ?? replaceCursorReplayTabs(body);
-	const rendered: string[] = [];
-	let inHunk = false;
-	for (const line of previewText.split("\n")) {
-		if (parseUnifiedDiffHunkHeader(line)) {
-			inHunk = true;
-			rendered.push(theme.fg("toolDiffContext", line));
-		} else if (!inHunk) {
-			const color = line.startsWith("--- ") || line.startsWith("+++ ") ? "toolDiffContext" : "muted";
-			rendered.push(theme.fg(color, line));
-		} else if (line.startsWith("--- ") || line.startsWith("+++ ")) {
-			rendered.push(theme.fg("toolDiffContext", line));
-		} else if (line.startsWith("+")) {
-			rendered.push(theme.fg("toolDiffAdded", line));
-		} else if (line.startsWith("-")) {
-			rendered.push(theme.fg("toolDiffRemoved", line));
-		} else {
-			rendered.push(theme.fg("toolDiffContext", line));
-		}
+	const diffSection = body ? extractUnifiedDiffSection(body) : undefined;
+	if (!diffSection || !hasUnifiedDiffHunk(diffSection)) return undefined;
+	// Legacy-only shim (old JSONL with no diffString on the activity details).
+	// All actual diff coloring now lives in the single `formatCursorReplayDiff` renderer.
+	// This path exists solely so pre-structured sessions still get colored diffs via the same
+	// high-quality implementation used for nativeEdit and new structured activity cases.
+	return formatCursorReplayDiff(diffSection, theme, maxLines);
+}
+
+function formatCursorReplayActivityEditPreview(
+	details: CursorReplayExpandableResultDetails,
+	text: string,
+	theme: CursorReplayRenderTheme,
+	maxLines: number,
+	stripHeader: boolean,
+): string | undefined {
+	const structuredDiff = details.diffString ?? details.diff;
+	if (structuredDiff) {
+		return formatCursorReplayDiff(structuredDiff, theme, maxLines);
 	}
-	const omission = slice ? formatCursorReplayOmission(slice) : undefined;
-	if (omission) rendered.push(theme.fg("muted", omission));
-	return rendered.join("\n");
+	const diffPreview = formatCursorReplayActivityDiffPreview(text, theme, maxLines, stripHeader);
+	if (diffPreview) return diffPreview;
+	return stripHeader ? formatCursorReplayPreview(text, theme, maxLines, true) : formatMutedBlock(text, theme);
+}
+
+function formatCursorReplayActivityWritePreview(
+	details: CursorReplayExpandableResultDetails,
+	text: string,
+	theme: CursorReplayRenderTheme,
+	maxLines: number,
+	stripHeader: boolean,
+): string | undefined {
+	const structuredDiff = details.diffString ?? details.diff;
+	if (structuredDiff) {
+		return formatCursorReplayDiff(structuredDiff, theme, maxLines);
+	}
+	if (details.fileContentAfterWrite) {
+		return formatCursorReplayFilePreview(
+			details.fileContentAfterWrite,
+			details.path,
+			theme,
+			maxLines,
+			false,
+		);
+	}
+	const diffPreview = formatCursorReplayActivityDiffPreview(text, theme, maxLines, stripHeader);
+	if (diffPreview) return diffPreview;
+	return stripHeader ? formatCursorReplayPreview(text, theme, maxLines, true) : formatMutedBlock(text, theme);
 }
 
 function formatCursorReplayActivityPreview(
@@ -267,9 +300,11 @@ function formatCursorReplayActivityPreview(
 	maxLines: number,
 	stripHeader: boolean,
 ): string | undefined {
-	if (details.sourceToolName === "edit" || details.sourceToolName === "write") {
-		const diffPreview = formatCursorReplayActivityDiffPreview(text, theme, maxLines, stripHeader);
-		if (diffPreview) return diffPreview;
+	if (details.sourceToolName === "edit") {
+		return formatCursorReplayActivityEditPreview(details, text, theme, maxLines, stripHeader);
+	}
+	if (details.sourceToolName === "write") {
+		return formatCursorReplayActivityWritePreview(details, text, theme, maxLines, stripHeader);
 	}
 	return stripHeader ? formatCursorReplayPreview(text, theme, maxLines, true) : formatMutedBlock(text, theme);
 }
@@ -401,6 +436,14 @@ type CursorReplayExpandableResultDetails = {
 	imagePath?: string;
 	imageMimeType?: string;
 	sourceToolName?: CursorReplayActivityDetails["sourceToolName"];
+	path?: string;
+	/** Structured diff fields populated on activity edit/write details for canonical coloring (primary over text parse). */
+	diffString?: string;
+	diff?: string;
+	linesAdded?: number;
+	linesRemoved?: number;
+	/** Structured post-write content for activity write fallbacks; drives canonical file preview (mirrors nativeWrite). */
+	fileContentAfterWrite?: string;
 };
 
 function hasCursorReplayDisplayTitle(details: CursorReplayToolDetails | undefined): boolean {

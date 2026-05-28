@@ -227,6 +227,8 @@ Images from the latest user message are forwarded to Cursor. Historical images a
 
 ## Cursor provider tool contract
 
+See [Cursor tool surfaces in pi](docs/cursor-tool-surfaces.md) for a concise guide to callable vs display-only tools, MCP catalog limits, JSONL ID patterns, and how pi toggles differ from Cursor ambient MCP.
+
 Cursor runs use local Cursor SDK agents with two separate tool surfaces:
 
 - **Cursor-native surface:** Cursor local-agent tools, Cursor settings, plugins, and configured Cursor MCP servers. These remain owned by the Cursor SDK local agent path.
@@ -255,9 +257,14 @@ PI_CURSOR_MCP_TOOL_TIMEOUT_MS=7200000 pi --model cursor/composer-2.5
 PI_CURSOR_MCP_CONNECT_TIMEOUT_SECONDS=5 pi --model cursor/composer-2.5
 PI_CURSOR_MCP_CONNECT_TIMEOUT_MS=5000 pi --model cursor/composer-2.5
 
+# Disable bootstrap callable-surface manifest (on by default).
+PI_CURSOR_TOOL_MANIFEST=0 pi --model cursor/composer-2.5
+
 # Emit scrubbed bridge diagnostics as JSONL to stderr with prefix [pi-cursor-sdk:bridge].
 PI_CURSOR_PI_TOOL_BRIDGE_DEBUG=1 pi --model cursor/composer-2.5
 ```
+
+On bootstrap sends, a compact **callable tool surfaces** block is injected into the Cursor prompt by default so models see host-tool categories, exposed `pi__*` bridge names for the current run, and a reminder that configured Cursor MCP servers are discovered at runtime (not via pi's tool catalog). Disable with `PI_CURSOR_TOOL_MANIFEST=0`.
 
 `PI_CURSOR_PI_TOOL_BRIDGE=0` is the supported rollback flag and disables the bridge entirely. The bridge also treats `false`, `off`, `none`, `no`, and `disabled` as off; `1`, `true`, `on`, `yes`, and `enabled` as on. `PI_CURSOR_EXPOSE_BUILTIN_TOOLS=1` opts in to exposing overlapping pi tool names that Cursor already has native equivalents for. The installed Cursor SDK uses a 60-second MCP protocol default with no public per-server timeout option. pi-cursor-sdk overrides that seam in two directions by default: MCP `callTool` requests are extended to 3600 seconds for long-running local MCP tools (including the pi bridge and configured Cursor MCP servers), and known MCP initialize/listTools requests on first send are shortened to 10 seconds so unavailable configured MCP servers fail fast instead of blocking for a full minute. Unknown Cursor SDK MCP protocol timeout stacks keep the SDK default instead of being shortened. Override tool-call timeouts with `PI_CURSOR_MCP_TOOL_TIMEOUT_MS` or `PI_CURSOR_MCP_TOOL_TIMEOUT_SECONDS`, and first-send initialize/listTools timeouts with `PI_CURSOR_MCP_CONNECT_TIMEOUT_MS` or `PI_CURSOR_MCP_CONNECT_TIMEOUT_SECONDS`. `PI_CURSOR_PI_TOOL_BRIDGE_DEBUG=1` is off by default and emits typed, allowlisted, scrubbed single-line JSONL records to `process.stderr`. These records are operational diagnostics, not anonymous telemetry: they intentionally include tool names, safe correlation IDs, bridge run state, exposed pi↔MCP name pairs, queued requests, result resolution, rejection, cancellation, and pending counts. They must not include endpoint URLs, endpoint path components, endpoint tokens, raw args/results, stdout/stderr payloads, file contents, Cursor settings output, API keys, bearer tokens, cookies, session credentials, or secrets. Do not enable or share bridge debug logs where tool names themselves are sensitive.
 
@@ -357,6 +364,10 @@ Known SDK boundary: some local Cursor web search activity is not emitted through
 Many runs never expose web activity as replayable SDK tool completions or local transcript web tool records. The model may still answer from internal Cursor web tooling or only mention search in assistant text/thinking. In that case pi cannot render a tool card because there is no completed SDK tool-call payload to replay. Capture a run with `npm run debug:provider-events` when investigating; if `on-delta.jsonl`, `on-step.jsonl`, `stream-events.jsonl`, `coordinator-events.jsonl`, and `display-decisions.jsonl` have no completed or transcript web tool data, the limitation is on the Cursor SDK surface, not pi replay registration.
 
 **Web fetch:** `pi-cursor-sdk` can display `webFetchToolCall` transcript records and web-fetch-shaped MCP/host completions when Cursor reports them. It cannot make Cursor expose or execute a `WebFetch` tool. If Cursor's current local SDK tool set does not include WebFetch, pi cannot fetch a URL through Cursor web fetch; use an allowed browser/shell/MCP tool instead.
+
+### I disabled MCP in pi but Cursor still has extra tools
+
+pi extension toggles and pi's MCP catalog do not control Cursor ambient MCP. Local Cursor agents load MCP servers from Cursor setting sources (`PI_CURSOR_SETTING_SOURCES=all` by default), including `~/.cursor/mcp.json`. To remove a server, edit or clear that file (or Cursor MCP settings) and restart the pi session, or narrow/disable sources with `PI_CURSOR_SETTING_SOURCES=none` or a comma-separated subset. See [Cursor tool surfaces in pi](docs/cursor-tool-surfaces.md).
 
 ### Cursor does not call my pi extension tool
 

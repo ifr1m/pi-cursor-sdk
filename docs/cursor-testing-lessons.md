@@ -340,7 +340,7 @@ Ask the reporter (or capture yourself) for:
 | `pi --version` and installed `pi-cursor-sdk` version | Confirms extension/runtime in use |
 | Model ID (for example `cursor/composer-2.5`) | Routing/replay behavior is model-scoped |
 | Exact repro prompt and prior turns | Multi-turn replay history affects prompt text |
-| Flags: `--cursor-no-fast`, `PI_CURSOR_PI_TOOL_BRIDGE`, `PI_CURSOR_EXPOSE_BUILTIN_TOOLS`, `PI_CURSOR_SETTING_SOURCES` | Bridge vs native-only vs narrowed settings |
+| Flags: `--cursor-no-fast`, `PI_CURSOR_PI_TOOL_BRIDGE`, `PI_CURSOR_EXPOSE_BUILTIN_TOOLS`, `PI_CURSOR_SETTING_SOURCES`, `PI_CURSOR_TOOL_MANIFEST` | Bridge vs native-only vs narrowed settings; bootstrap callable-surface manifest |
 | Whether the listed names are `pi__*` bridge MCP, Cursor-native (`browser_navigate`, `WebSearch`), or `cursor-replay-*` replay IDs | Three different surfaces (see [Cursor native tool replay](./cursor-native-tool-replay.md#live-bridge-vs-replay)) |
 | Red toast / `errorMessage` text, if any | Distinguishes #55 failure surfacing from silent text echo |
 | Process exit / uncaught `ConnectError` / `ETIMEDOUT` stack trace, if any | Hard network crash (**#43**), not #40 model text echo |

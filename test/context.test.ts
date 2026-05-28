@@ -510,6 +510,23 @@ describe("buildCursorPrompt", () => {
 		expect(result.text.endsWith(getCursorToolTailGuardText())).toBe(true);
 	});
 
+	it("places tool manifest after boundary and before system instructions when provided", () => {
+		const ctx: Context = {
+			systemPrompt: "Be helpful.",
+			messages: [{ role: "user", content: "test", timestamp: 1 }],
+		};
+		const manifest = "Callable tool surfaces this run:\n- sample";
+		const result = buildCursorPrompt(ctx, { toolManifest: manifest });
+		expect(result.text).toContain(manifest);
+		expect(result.text.indexOf("Cursor SDK tool boundary:")).toBeLessThan(result.text.indexOf(manifest));
+		expect(result.text.indexOf(manifest)).toBeLessThan(result.text.indexOf("System instructions from pi:"));
+	});
+
+	it("omits tool manifest by default", () => {
+		const result = buildCursorPrompt({ messages: [{ role: "user", content: "test", timestamp: 1 }] });
+		expect(result.text).not.toContain("Callable tool surfaces this run:");
+	});
+
 	it("instructs Cursor not to claim web search without an actual Cursor web tool", () => {
 		const ctx: Context = {
 			systemPrompt: "You can use WebSearch and WebFetch.",

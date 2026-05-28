@@ -1,5 +1,7 @@
 # Cursor native tool replay
 
+User-facing overview of callable vs display-only tools: [Cursor tool surfaces in pi](./cursor-tool-surfaces.md).
+
 pi-cursor-sdk has two separate pi-facing paths plus Cursor's own local-agent tool surface:
 
 1. **Local pi MCP bridge:** default-on for local Cursor agents. It exposes the current pi session's bridgeable active tools to Cursor through a tokenized `127.0.0.1` MCP endpoint, excluding internal Cursor replay activity names and, by default, overlapping built-in pi tools (`read`, `bash`, `write`, `edit`, `grep`, `find`, `ls`). When Cursor calls one of those MCP tools, pi executes the real pi tool through the normal pi tool path.
@@ -69,6 +71,8 @@ Edit and write activity replays through pi-facing `edit` and `write` cards only 
 Source of truth for SDK tool names: `@cursor/sdk@1.0.14` conversation `ToolType` values and https://cursor.com/docs/sdk/typescript
 
 Implementation owners: `src/cursor-tool-presentation-registry.ts` (canonical names, labels, visibility, replay policy, bridge exclusions for internal replay wrappers, and display-spec key completeness), `src/cursor-transcript-tool-specs.ts` (registry-keyed `TOOL_DISPLAY_SPECS` formatters/builders), `src/cursor-native-tool-display-replay.ts` (replay card rendering derived from registry replay metadata), and `src/cursor-transcript-utils.ts` (`normalizeToolName()` delegating to the registry).
+
+**Maintainer invariants — edit/write replay previews:** All colored diff rendering (native `edit` cards and `Cursor edit` activity fallbacks) flows through the single `formatCursorReplayDiff()` in `src/cursor-native-tool-display-replay.ts`. Activity write fallbacks with structured `fileContentAfterWrite` use the same `formatCursorReplayFilePreview()` path as native `write` cards. Structured `diffString` (and `diff`/`lines*`) or `fileContentAfterWrite` on `CursorReplay*Details` (including activity variants) is the source of truth for TUI preview coloring/highlighting. `expandedText` on activity details is for summary/expansion and legacy JSONL compatibility only; it is never the primary preview source when structured fields are present. Legacy paths retain `extractUnifiedDiffSection` + delegation solely for old session JSONL that predates structured population; no parallel +/- coloring loops exist for new paths.
 
 This matrix covers **Cursor native tool replay only**. It does not describe the [live pi MCP bridge](#live-bridge-vs-replay) or Cursor-native host tools, settings, plugins, and configured MCP servers from the Cursor SDK local-agent path.
 

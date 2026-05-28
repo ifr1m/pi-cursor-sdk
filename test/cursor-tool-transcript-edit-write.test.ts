@@ -48,11 +48,48 @@ describe("formatCursorToolTranscript edit and write", () => {
 		expect(editDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: { path: ".tool-demo-temp.txt", activityTitle: "Cursor edit", activitySummary: ".tool-demo-temp.txt" },
-			result: { details: { variant: "activity", sourceToolName: "edit", title: "Cursor edit", summary: ".tool-demo-temp.txt added 1 line" } },
+			result: {
+				details: {
+					variant: "activity",
+					sourceToolName: "edit",
+					title: "Cursor edit",
+					summary: ".tool-demo-temp.txt added 1 line",
+					// Producer regression: activity edit details now carry structured diff when SDK result has it (primary for coloring).
+					diffString: expect.stringContaining("--- a/.tool-demo-temp.txt"),
+					diff: expect.stringContaining("--- a/.tool-demo-temp.txt"),
+					linesAdded: 1,
+					linesRemoved: 0,
+				},
+			},
 			isError: false,
 		});
 		expect(editDisplay.args).not.toHaveProperty("edits");
 		expect(editDisplay.result.content[0].text).toContain("edit .tool-demo-temp.txt");
+	});
+
+	it("falls back path-only Cursor write replay to neutral cursor activity with structured file content", () => {
+		const writeDisplay = buildCursorPiToolDisplay({
+			name: "write",
+			args: { path: ".tool-demo-temp.txt" },
+			result: { status: "success", value: { linesCreated: 1, fileSize: 6, fileContentAfterWrite: "hello\n" } },
+		});
+
+		expect(writeDisplay).toMatchObject({
+			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
+			args: { path: ".tool-demo-temp.txt", activityTitle: "Cursor write", activitySummary: ".tool-demo-temp.txt" },
+			result: {
+				details: {
+					variant: "activity",
+					sourceToolName: "write",
+					title: "Cursor write",
+					path: ".tool-demo-temp.txt",
+					fileContentAfterWrite: "hello\n",
+				},
+			},
+			isError: false,
+		});
+		expect(writeDisplay.args).not.toHaveProperty("content");
+		expect(writeDisplay.result.content[0].text).toContain("write .tool-demo-temp.txt");
 	});
 
 	it("maps Cursor StrReplace to schema-valid edit replay and notebook edits to neutral cursor activity", () => {

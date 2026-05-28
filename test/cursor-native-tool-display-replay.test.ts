@@ -64,6 +64,7 @@ describe("cursor native replay rendering", () => {
 	});
 
 	it("colors unified diff body lines in neutral Cursor edit activity cards", () => {
+		// Legacy path (no diffString): still exercises extract + canonical renderer for old JSONL.
 		const rendered = renderReplayResultWithDetails({
 			variant: "activity",
 			sourceToolName: "edit",
@@ -72,17 +73,61 @@ describe("cursor native replay rendering", () => {
 			expandedText: "edit file.txt\n\n+1 -1\n\n--- a/file.txt\n+++ b/file.txt\n@@ -1,3 +1,3 @@\n-old line\n+new line\n keep line\n final line",
 		});
 
-		expect(rendered).toContain("<muted>+1 -1</muted>");
-		expect(rendered).toContain("<toolDiffRemoved>-old line</toolDiffRemoved>");
-		expect(rendered).toContain("<toolDiffAdded>+new line</toolDiffAdded>");
-		expect(rendered).toContain("<toolDiffContext> keep line</toolDiffContext>");
-		expect(rendered).toContain("<toolDiffContext>--- a/file.txt</toolDiffContext>");
-		expect(rendered).toContain("<toolDiffContext>+++ b/file.txt</toolDiffContext>");
-		expect(rendered).not.toContain("<toolDiffRemoved>--- a/file.txt</toolDiffRemoved>");
-		expect(rendered).not.toContain("<toolDiffAdded>+++ b/file.txt</toolDiffAdded>");
+		// Canonical output: numbered lines, raw headers omitted (consistent with nativeEdit + structured activity).
+		expect(rendered).toContain("<toolDiffRemoved>-1 old line</toolDiffRemoved>");
+		expect(rendered).toContain("<toolDiffAdded>+1 new line</toolDiffAdded>");
+		expect(rendered).toContain("<toolDiffContext> 2 keep line</toolDiffContext>");
+		expect(rendered).toContain("<toolDiffContext> 3 final line</toolDiffContext>");
+		expect(rendered).not.toContain("--- a/file.txt");
+		expect(rendered).not.toContain("+++ b/file.txt");
+	});
+
+	it("colors collapsed diff lines when transcript preamble exceeds preview budget", () => {
+		// This test (explicitly required to be kept) exercises the legacy extract path for old JSONL
+		// that only have diff in expandedText + no diffString on details. It now routes through the
+		// single canonical renderer (no duplicate coloring code) while still proving preamble is ignored.
+		const preamble = Array.from({ length: 12 }, (_, index) => `note ${index + 1}`).join("\n");
+		const rendered = renderReplayResultWithDetails({
+			variant: "activity",
+			sourceToolName: "edit",
+			title: "Cursor edit",
+			summary: "src/file.ts added 1 line",
+			expandedText: `${preamble}\n\nedit src/file.ts\n\n+1 -0\n\n--- a/src/file.ts\n+++ b/src/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line\n context line`,
+		});
+
+		// Canonical numbered output from formatCursorReplayDiff after extract.
+		expect(rendered).toContain("<toolDiffRemoved>-1 old line</toolDiffRemoved>");
+		expect(rendered).toContain("<toolDiffAdded>+1 new line</toolDiffAdded>");
+	});
+
+	it("activity edit with structured diffString uses canonical colored diff renderer (ignores expandedText preamble; legacy extract not used)", () => {
+		// Structured primary path (new sessions): diffString present on details -> formatCursorReplayDiff directly.
+		// Long preamble in expandedText must not affect; no reliance on extractUnifiedDiffSection for coloring.
+		const preamble = Array.from({ length: 20 }, (_, index) => `preamble note ${index + 1}`).join("\n");
+		const structuredDiff = "--- a/src/file.ts\n+++ b/src/file.ts\n@@ -1,2 +1,2 @@\n-old\n+new\n context";
+		const rendered = renderReplayResultWithDetails({
+			variant: "activity",
+			sourceToolName: "edit",
+			title: "Cursor edit",
+			summary: "src/file.ts updated",
+			diffString: structuredDiff,
+			// expandedText has long preamble (as in old JSONL); structured must win for colors.
+			expandedText: `${preamble}\n\nsome transcript\n${structuredDiff}`,
+		});
+
+		// Uses formatCursorReplayDiff output shape (numbered, headers skipped, context/added/removed tags).
+		expect(rendered).toContain("<toolDiffRemoved>-1 old</toolDiffRemoved>");
+		expect(rendered).toContain("<toolDiffAdded>+1 new</toolDiffAdded>");
+		expect(rendered).toContain("<toolDiffContext> 2 context</toolDiffContext>");
+		// Headers from structured are omitted by canonical renderer (consistent with nativeEdit).
+		expect(rendered).not.toContain("--- a/src/file.ts");
+		expect(rendered).not.toContain("+++ b/src/file.ts");
+		// Preamble must not leak into diff preview.
+		expect(rendered).not.toContain("preamble note");
 	});
 
 	it("colors unified diff body lines in neutral Cursor write activity cards", () => {
+		// Legacy write path (no diffString) still exercises extract + canonical renderer.
 		const rendered = renderReplayResultWithDetails({
 			variant: "activity",
 			sourceToolName: "write",
@@ -92,11 +137,28 @@ describe("cursor native replay rendering", () => {
 		});
 
 		expect(rendered).toContain("Cursor write");
-		expect(rendered).toContain("<muted>+2 -0</muted>");
-		expect(rendered).toContain("<toolDiffAdded>+first line</toolDiffAdded>");
-		expect(rendered).toContain("<toolDiffAdded>+second line</toolDiffAdded>");
-		expect(rendered).toContain("<toolDiffContext>+++ b/file.txt</toolDiffContext>");
-		expect(rendered).not.toContain("<toolDiffAdded>+++ b/file.txt</toolDiffAdded>");
+		// Canonical output (numbered, headers omitted).
+		expect(rendered).toContain("<toolDiffAdded>+1 first line</toolDiffAdded>");
+		expect(rendered).toContain("<toolDiffAdded>+2 second line</toolDiffAdded>");
+		expect(rendered).not.toContain("--- /dev/null");
+		expect(rendered).not.toContain("+++ b/file.txt");
+	});
+
+	it("activity write with structured fileContentAfterWrite uses canonical file preview (ignores expandedText preamble)", () => {
+		const preamble = Array.from({ length: 20 }, (_, index) => `preamble note ${index + 1}`).join("\n");
+		const rendered = renderReplayResultWithDetails({
+			variant: "activity",
+			sourceToolName: "write",
+			title: "Cursor write",
+			summary: "new.txt",
+			path: "new.txt",
+			fileContentAfterWrite: "hello world\n",
+			expandedText: `${preamble}\n\nwrite new.txt\n\nCreated 1 lines\n\nhello world\n`,
+		});
+
+		expect(rendered).toContain("<toolOutput>hello world</toolOutput>");
+		expect(rendered).not.toContain("preamble note");
+		expect(rendered).not.toContain("<muted>hello world</muted>");
 	});
 
 	it("shows local read preview disclaimer in collapsed native read replay results", () => {

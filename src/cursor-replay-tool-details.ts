@@ -70,6 +70,13 @@ export interface CursorReplayActivityDetails {
 	collapseDetailsByDefault?: boolean;
 	path?: string;
 	fileSize?: number;
+	/** Structured unified diff for edit (and similar) activity cards; drives canonical colored diff rendering. */
+	diffString?: string;
+	diff?: string;
+	linesAdded?: number;
+	linesRemoved?: number;
+	/** Optional post-write content for write activity fallbacks (mirrors nativeWrite). */
+	fileContentAfterWrite?: string;
 }
 
 /** Parsed replay details without a display title (legacy or malformed payloads). */
@@ -104,7 +111,16 @@ export type CursorReplayUnknownCursorToolName = CursorReplayUnknownSourceToolNam
 
 export type CursorReplayActivityDetailFields = Pick<
 	CursorReplayActivityDetails,
-	"summary" | "expandedText" | "collapseDetailsByDefault" | "path" | "fileSize"
+	| "summary"
+	| "expandedText"
+	| "collapseDetailsByDefault"
+	| "path"
+	| "fileSize"
+	| "diffString"
+	| "diff"
+	| "linesAdded"
+	| "linesRemoved"
+	| "fileContentAfterWrite"
 >;
 
 export type CursorReplayGenerateImageDetailFields = Pick<
@@ -203,6 +219,11 @@ function parseCursorReplayActivityDetails(
 		collapseDetailsByDefault: readOptionalBoolean(record, "collapseDetailsByDefault"),
 		path: readOptionalString(record, "path"),
 		fileSize: readOptionalNumber(record, "fileSize"),
+		diffString: readOptionalString(record, "diffString"),
+		diff: readOptionalString(record, "diff"),
+		linesAdded: readOptionalNumber(record, "linesAdded"),
+		linesRemoved: readOptionalNumber(record, "linesRemoved"),
+		fileContentAfterWrite: readOptionalString(record, "fileContentAfterWrite"),
 	};
 }
 
@@ -373,6 +394,11 @@ export function assembleCursorReplayActivityDetails(
 		...(fields.collapseDetailsByDefault !== undefined ? { collapseDetailsByDefault: fields.collapseDetailsByDefault } : {}),
 		...(fields.path !== undefined ? { path: fields.path } : {}),
 		...(fields.fileSize !== undefined ? { fileSize: fields.fileSize } : {}),
+		...(fields.diffString !== undefined ? { diffString: fields.diffString } : {}),
+		...(fields.diff !== undefined ? { diff: fields.diff } : {}),
+		...(fields.linesAdded !== undefined ? { linesAdded: fields.linesAdded } : {}),
+		...(fields.linesRemoved !== undefined ? { linesRemoved: fields.linesRemoved } : {}),
+		...(fields.fileContentAfterWrite !== undefined ? { fileContentAfterWrite: fields.fileContentAfterWrite } : {}),
 	};
 }
 

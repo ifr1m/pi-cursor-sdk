@@ -414,4 +414,29 @@ it("keeps the session agent alive after a successful text-only turn", async () =
 			await transport.close().catch(() => undefined);
 		}
 	});
+
+	it("injects bootstrap callable-surface manifest into the first send when enabled", async () => {
+		process.env.PI_CURSOR_TOOL_MANIFEST = "1";
+		const mockSend = vi.fn().mockResolvedValue({
+			id: "run-1",
+			agentId: "agent-1",
+			status: "finished",
+			wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished", result: "ok" }),
+			cancel: vi.fn(),
+			supports: () => true,
+			unsupportedReason: () => undefined,
+		});
+		mockCreatedAgent({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+
+		const firstPrompt = mockSend.mock.calls[0]?.[0] as { text?: string };
+		expect(firstPrompt.text).toContain("Callable tool surfaces this run:");
+		expect(firstPrompt.text).toContain("not listed in MCP listTools");
+		expect(firstPrompt.text).toContain("pi__cursor_ask_question");
+	});
 });

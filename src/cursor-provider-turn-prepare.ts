@@ -17,6 +17,11 @@ import { createCursorNativeReplayId } from "./cursor-provider-live-run-drain.js"
 import { getEffectiveCursorAgentMode, getEffectiveFastForModelId } from "./cursor-state.js";
 import { buildCursorModelSelection } from "./model-discovery.js";
 import { getEffectiveCursorSettingSources } from "./cursor-setting-sources.js";
+import { resolveCursorPiToolBridgeEnabled } from "./cursor-pi-tool-bridge-snapshot.js";
+import {
+	buildCursorToolManifestText,
+	resolveCursorToolManifestEnabled,
+} from "./cursor-tool-manifest.js";
 import { isCursorNativeToolDisplayRuntimeEnabled } from "./cursor-native-tool-display.js";
 import { MISSING_CURSOR_API_KEY_MESSAGE } from "./cursor-provider-errors.js";
 import { CursorSdkTurnCoordinator } from "./cursor-provider-turn-coordinator.js";
@@ -78,14 +83,28 @@ export async function prepareCursorProviderTurn(
 		sessionAgentScopeKey = sessionAgentLease.scopeKey;
 		throwIfAborted();
 
-		const promptOptions = getCursorPromptOptions(model);
+		const buildPromptOptions = (plan: ReturnType<typeof planCursorSessionSend>) => {
+			const promptOptions = getCursorPromptOptions(model);
+			if (plan.mode !== "bootstrap" || !resolveCursorToolManifestEnabled()) {
+				return promptOptions;
+			}
+			return {
+				...promptOptions,
+				toolManifest: buildCursorToolManifestText({
+					bridgeSnapshot: sessionAgentLease.bridgeRun?.snapshot,
+					piBridgeEnabled: resolveCursorPiToolBridgeEnabled(),
+				}),
+			};
+		};
 		let sendPlan = planCursorSessionSend(sessionAgentLease.sendState, context);
+		let promptOptions = buildPromptOptions(sendPlan);
 		let prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
 		if (sendPlan.resetAgent) {
 			await resetSessionCursorAgent(sessionAgentScopeKey);
 			sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
 			sessionAgentScopeKey = sessionAgentLease.scopeKey;
 			sendPlan = planCursorSessionSend(sessionAgentLease.sendState, context);
+			promptOptions = buildPromptOptions(sendPlan);
 			prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
 		}
 		const bootstrap = sendPlan.mode === "bootstrap";
@@ -112,6 +131,7 @@ export async function prepareCursorProviderTurn(
 			sendState: sessionAgentLease.sendState,
 			sendPlan,
 			promptOptions,
+			toolManifestEnabled: resolveCursorToolManifestEnabled(),
 			agentMode,
 			activeToolNames: activeToolNames ? [...activeToolNames] : [],
 			sessionAgentScopeKey,
