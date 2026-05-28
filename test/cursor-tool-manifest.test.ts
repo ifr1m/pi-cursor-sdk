@@ -57,5 +57,6 @@ describe("cursor-tool-manifest", () => {
 		);
 		expect(prompt.text).toContain("Callable tool surfaces this run:");
 		expect(prompt.text).toContain("Cursor SDK tool boundary:");
+		expect(prompt.text).toContain("See callable tool surfaces block below.");
 	});
 });

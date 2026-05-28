@@ -559,4 +559,26 @@ describe("Cursor runtime state", () => {
 		expect(report).toContain("PI_CURSOR_SETTING_SOURCES: project (effective: project)");
 		expect(report).toContain("Callable tool surfaces this run:");
 	});
+
+	it("formatCursorToolsDebugReport notes disabled manifest", () => {
+		const pi = createPiHarness();
+		const report = formatCursorToolsDebugReport(pi, {
+			PI_CURSOR_TOOL_MANIFEST: "0",
+		});
+		expect(report).toContain("PI_CURSOR_TOOL_MANIFEST: disabled");
+	});
+
+	it("logs /cursor-tools to stdout when UI is unavailable", async () => {
+		const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+		try {
+			const pi = createPiHarness();
+			registerCursorRuntimeControls(pi);
+			await pi.runCommand("cursor-tools", "", { hasUI: false });
+
+			expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Cursor tool surfaces (current session):"));
+			expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Callable tool surfaces this run:"));
+		} finally {
+			consoleSpy.mockRestore();
+		}
+	});
 });
