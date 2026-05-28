@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveCursorSettingSources as resolveProviderSettingSources } from "../src/cursor-setting-sources.js";
 import {
+	commonBooleanFlag,
 	commonProbeFlags,
+	commonRepeatStringFlag,
 	apiKeySecretsFromProcess,
 	defaultApiKeyFromEnv,
 	defaultSettingSourcesFromEnv,
@@ -12,11 +14,18 @@ import {
 } from "../scripts/lib/cursor-cli-args.mjs";
 import { parseJsonLines, terminateChild, waitForChildClose } from "../scripts/lib/cursor-child-process.mjs";
 import {
+	buildCursorSmokeEnv,
+	buildCursorSmokeEnvPlan,
+	CURSOR_SDK_EVENT_DEBUG_ENV_NAMES as scriptSdkEventDebugEnvNames,
+	sealedNodePath,
+} from "../scripts/lib/cursor-smoke-env.mjs";
+import {
 	CURSOR_SETTING_SOURCES_ENV as sharedSettingSourcesEnv,
 	resolveCursorSettingSources as resolveSharedSettingSources,
 	serializeCursorSettingSources as serializeSharedSettingSources,
 } from "../shared/cursor-setting-sources.mjs";
 import { scrubSensitiveText as scrubSharedSensitiveText } from "../shared/cursor-sensitive-text.mjs";
+import { CURSOR_SDK_EVENT_DEBUG_ENV_NAMES as sharedSdkEventDebugEnvNames } from "../shared/cursor-sdk-event-debug-env.mjs";
 import {
 	CURSOR_SETTING_SOURCES_ENV,
 	resolveCursorSettingSources,
@@ -36,6 +45,49 @@ describe("maintainer scripts shared lib", () => {
 		const sample = `Bearer ${leakedKey} http://127.0.0.1:4242/cursor-pi-tool-bridge/abc/mcp`;
 		expect(scrubSharedSensitiveText(sample, leakedKey)).toBe(scrubSensitiveText(sample, leakedKey));
 		expect(serializeSharedSettingSources(["project", "user"])).toBe(serializeCursorSettingSources(["project", "user"]));
+	});
+
+	it("builds sealed smoke env without leaking debug or setting-source state", () => {
+		expect(scriptSdkEventDebugEnvNames).toEqual(sharedSdkEventDebugEnvNames);
+		expect(sealedNodePath("/opt/node/bin/node", "/tmp/bin:/usr/bin")).toBe("/opt/node/bin:/tmp/bin:/usr/bin");
+		expect(sealedNodePath("/opt/node/bin/node", "")).toBe("/opt/node/bin");
+		const env = buildCursorSmokeEnv({
+			baseEnv: {
+				PATH: "/tmp/fake:/usr/bin",
+				PI_CURSOR_SETTING_SOURCES: "all",
+				PI_CURSOR_SDK_EVENT_DEBUG: "1",
+				PI_CURSOR_SDK_EVENT_DEBUG_DIR: "/tmp/stale",
+			},
+			nodePath: "/opt/node/bin/node",
+			settingSources: "none",
+			nativeToolDisplay: true,
+			registerNativeTools: true,
+			bridge: false,
+			exposeBuiltinTools: false,
+		});
+		expect(env.PATH).toBe("/opt/node/bin:/tmp/fake:/usr/bin");
+		expect(env.PI_CURSOR_SETTING_SOURCES).toBe("none");
+		expect(env.PI_CURSOR_NATIVE_TOOL_DISPLAY).toBe("1");
+		expect(env.PI_CURSOR_REGISTER_NATIVE_TOOLS).toBe("1");
+		expect(env.PI_CURSOR_PI_TOOL_BRIDGE).toBe("0");
+		expect(env.PI_CURSOR_EXPOSE_BUILTIN_TOOLS).toBe("0");
+		expect(env.PI_CURSOR_SDK_EVENT_DEBUG).toBeUndefined();
+		expect(env.PI_CURSOR_SDK_EVENT_DEBUG_DIR).toBeUndefined();
+		expect(() => (sharedSdkEventDebugEnvNames as unknown as string[]).push("MUTATED")).toThrow(TypeError);
+
+		const defaultSettingsEnv = buildCursorSmokeEnv({
+			baseEnv: { PATH: "/usr/bin", PI_CURSOR_SETTING_SOURCES: "none" },
+			nodePath: "/opt/node/bin/node",
+			settingSources: null,
+		});
+		expect(defaultSettingsEnv.PI_CURSOR_SETTING_SOURCES).toBeUndefined();
+
+		const plan = buildCursorSmokeEnvPlan({
+			baseEnv: { PATH: "/bin", PI_CURSOR_NATIVE_TOOL_DISPLAY: "0", PI_CURSOR_PI_TOOL_BRIDGE: "1", TERM: "bad" },
+			nodePath: "/opt/node/bin/node",
+		});
+		expect(plan.envEntries).toEqual([]);
+		expect(plan.env.PI_CURSOR_NATIVE_TOOL_DISPLAY).toBe("0");
 	});
 
 	it("keeps setting-source parsing aligned with provider runtime", () => {
@@ -117,6 +169,24 @@ describe("maintainer scripts shared lib", () => {
 			settingSources: undefined,
 			apiKey: "from-env",
 		});
+		const flagArgs = parseArgv(["--self-test", "--leftover-pattern", "one", "--leftover-pattern=two", "--prompt", "--starts-with-dash"], {
+			defaults: { selfTest: false, leftoverPatterns: [] as string[], prompt: "" },
+			flags: {
+				selfTest: commonBooleanFlag("--self-test"),
+				leftoverPatterns: commonRepeatStringFlag("--leftover-pattern"),
+				prompt: { names: ["--prompt"], allowDashValue: true },
+			},
+			fail,
+		});
+		expect(flagArgs).toMatchObject({ selfTest: true, leftoverPatterns: ["one", "two"], prompt: "--starts-with-dash" });
+		expect(() =>
+			parseArgv(["--self-test=true"], {
+				defaults: { selfTest: false },
+				flags: { selfTest: commonBooleanFlag("--self-test") },
+				fail,
+			}),
+		).toThrow(/--self-test does not accept a value/);
+
 		expect(requireApiKey({ apiKey: "key" }, {}, fail)).toBe("key");
 		expect(() => requireApiKey({}, {}, fail)).toThrow(/Cursor API key is required/);
 	});

@@ -1,6 +1,6 @@
 # Investigation: Cursor SDK `/session` Token Tracking
 
-> **Point-in-time record:** This investigation was captured on 2026-05-21 (MDT) against pi dev baseline `@earendil-works/*` **0.75.3**. The repo dev baseline is now **0.75.5**; package-version references below describe the environment at investigation time unless noted otherwise.
+> **Point-in-time record:** This investigation was captured on 2026-05-21 (MDT) against pi dev baseline `@earendil-works/*` **0.75.3**. The repo dev baseline is now **0.76.0**; package-version references below describe the environment at investigation time unless noted otherwise.
 
 ## Summary
 

@@ -1,8 +1,21 @@
-export interface CursorCliFlagSpec<TValue = string> {
+export interface CursorCliValueFlagSpec<TValue = string> {
 	[key: string]: unknown;
 	names: readonly string[];
-	assign?: (value: string) => TValue;
+	takesValue?: true;
+	repeat?: boolean;
+	allowDashValue?: boolean;
+	assign?: (value: string, flagName: string) => TValue;
 }
+
+export interface CursorCliBooleanFlagSpec<TValue = boolean> {
+	[key: string]: unknown;
+	names: readonly string[];
+	takesValue: false;
+	repeat?: boolean;
+	assign?: (value: true, flagName: string) => TValue;
+}
+
+export type CursorCliFlagSpec<TValue = string> = CursorCliValueFlagSpec<TValue> | CursorCliBooleanFlagSpec<TValue>;
 
 export type CursorCliFlagSpecMap<TArgs extends Record<string, unknown>> = {
 	[K in keyof TArgs]?: CursorCliFlagSpec<unknown>;
@@ -15,6 +28,7 @@ export declare function readArgvValue(
 	index: number,
 	flagName: string,
 	fail: (message: string) => never,
+	options?: { allowDashValue?: boolean },
 ): string;
 export declare function parseArgv<TDefaults extends Record<string, unknown>>(
 	argv: readonly string[],
@@ -33,15 +47,17 @@ export declare function requireApiKey(
 	fail: (message: string) => never,
 ): string;
 export declare function defaultTimestampedDir(prefix: string, baseDir?: string): string;
-export declare const commonProbePathFlag: <TKey extends string>(key: TKey) => CursorCliFlagSpec<string>;
-export declare const commonProbeStringFlag: <TKey extends string>(key: TKey) => CursorCliFlagSpec<string>;
+export declare const commonProbePathFlag: <TKey extends string>(key: TKey) => CursorCliValueFlagSpec<string>;
+export declare const commonProbeStringFlag: <TKey extends string>(key: TKey) => CursorCliValueFlagSpec<string>;
+export declare const commonBooleanFlag: (...names: string[]) => CursorCliBooleanFlagSpec<boolean>;
+export declare const commonRepeatStringFlag: (...names: string[]) => CursorCliValueFlagSpec<string>;
 export declare const commonProbeFlags: {
-	readonly cwd: CursorCliFlagSpec<string>;
-	readonly model: CursorCliFlagSpec<string>;
-	readonly prompt: CursorCliFlagSpec<string>;
-	readonly out: CursorCliFlagSpec<string>;
-	readonly sessionDir: CursorCliFlagSpec<string>;
-	readonly promptFile: CursorCliFlagSpec<string>;
-	readonly apiKey: CursorCliFlagSpec<string>;
-	readonly settingSources: CursorCliFlagSpec<string[] | undefined>;
+	readonly cwd: CursorCliValueFlagSpec<string>;
+	readonly model: CursorCliValueFlagSpec<string>;
+	readonly prompt: CursorCliValueFlagSpec<string>;
+	readonly out: CursorCliValueFlagSpec<string>;
+	readonly sessionDir: CursorCliValueFlagSpec<string>;
+	readonly promptFile: CursorCliValueFlagSpec<string>;
+	readonly apiKey: CursorCliValueFlagSpec<string>;
+	readonly settingSources: CursorCliValueFlagSpec<string[] | undefined>;
 };

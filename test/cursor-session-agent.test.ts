@@ -25,6 +25,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -36,6 +37,49 @@ describe("cursor-session-agent", () => {
 		expect(first.created).toBe(true);
 		expect(second.created).toBe(false);
 		expect(first.agent).toBe(second.agent);
+		expect(createAgent).toHaveBeenCalledTimes(1);
+		expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ mode: "agent" }));
+		expect(mockDispose).not.toHaveBeenCalled();
+	});
+
+	it("passes the desired Cursor SDK mode to Agent.create", async () => {
+		const createAgent = vi.fn().mockResolvedValue({
+			agentId: "agent-plan",
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
+
+		await acquireSessionCursorAgent({
+			apiKey: "test-key",
+			agentMode: "plan",
+			cwd: "/tmp/project",
+			modelSelection: { id: "composer-2.5" },
+			createAgent,
+		});
+
+		expect(createAgent).toHaveBeenCalledWith(expect.objectContaining({ mode: "plan" }));
+	});
+
+	it("keeps Cursor SDK mode out of the session agent pool key", async () => {
+		const mockDispose = vi.fn().mockResolvedValue(undefined);
+		const createAgent = vi.fn().mockResolvedValue({
+			agentId: "agent-1",
+			[Symbol.asyncDispose]: mockDispose,
+		});
+		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
+		const params = {
+			apiKey: "test-key",
+			agentMode: "agent" as const,
+			cwd: "/tmp/project",
+			modelSelection: { id: "composer-2.5" },
+			createAgent,
+		};
+
+		const first = await acquireSessionCursorAgent(params);
+		const second = await acquireSessionCursorAgent({ ...params, agentMode: "plan" });
+
+		expect(second.created).toBe(false);
+		expect(second.agent).toBe(first.agent);
 		expect(createAgent).toHaveBeenCalledTimes(1);
 		expect(mockDispose).not.toHaveBeenCalled();
 	});
@@ -49,6 +93,7 @@ describe("cursor-session-agent", () => {
 		const scopeKey = "/tmp/sessions/test.jsonl";
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -88,6 +133,7 @@ describe("cursor-session-agent", () => {
 		const scopeKey = "/tmp/sessions/test.jsonl";
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -116,6 +162,7 @@ describe("cursor-session-agent", () => {
 		});
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const baseParams = {
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -147,6 +194,7 @@ describe("cursor-session-agent", () => {
 		const scopeKey = "/tmp/sessions/test.jsonl";
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -178,6 +226,7 @@ describe("cursor-session-agent", () => {
 		const scopeKey = "/tmp/sessions/test.jsonl";
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -211,6 +260,7 @@ describe("cursor-session-agent", () => {
 		const scopeKey = "/tmp/sessions/test.jsonl";
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -244,6 +294,7 @@ describe("cursor-session-agent", () => {
 		const scopeKey = "/tmp/sessions/test.jsonl";
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -281,6 +332,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -310,6 +362,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -337,6 +390,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -377,6 +431,7 @@ describe("cursor-session-agent", () => {
 
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const baseParams = {
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -411,6 +466,7 @@ describe("cursor-session-agent", () => {
 		sessionAgentTestUtils.invalidateSessionAgent("/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -445,6 +501,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -491,6 +548,7 @@ describe("cursor-session-agent", () => {
 
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const baseParams = {
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -515,6 +573,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		await acquireSessionCursorAgent({
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -538,6 +597,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -565,6 +625,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/session-a.jsonl");
 		await acquireSessionCursorAgent({
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -595,6 +656,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -621,6 +683,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		await acquireSessionCursorAgent({
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
@@ -644,6 +707,7 @@ describe("cursor-session-agent", () => {
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
+			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,

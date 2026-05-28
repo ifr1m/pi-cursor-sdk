@@ -118,9 +118,9 @@ export interface PiHarnessOptions {
 	/** Active tool names returned by getActiveTools. */
 	activeTools?: string[];
 	/** Default value returned by getFlag when a name is not in flagValues. */
-	defaultFlagValue?: boolean;
+	defaultFlagValue?: boolean | string;
 	/** Per-flag values returned by getFlag. */
-	flagValues?: Record<string, boolean>;
+	flagValues?: Record<string, boolean | string | undefined>;
 }
 
 export type HarnessEventInvokeResult<E extends HarnessEventName> = E extends keyof HarnessEventResultMap

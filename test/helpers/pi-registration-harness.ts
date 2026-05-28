@@ -41,9 +41,9 @@ export function createPiHarness(options: PiHarnessOptions = {}): PiHarness {
 		options.initialTools ?? [...DEFAULT_BUILTIN_TOOL_NAMES].map((name) => createBuiltinToolInfo(name));
 	let activeToolNames = [...(options.activeTools ?? DEFAULT_ACTIVE_TOOL_NAMES)];
 
-	const resolveFlagValue = (name: string): boolean => {
+	const resolveFlagValue = (name: string): boolean | string | undefined => {
 		if (Object.prototype.hasOwnProperty.call(options.flagValues ?? {}, name)) {
-			return options.flagValues?.[name] ?? false;
+			return options.flagValues?.[name];
 		}
 		return options.defaultFlagValue ?? false;
 	};

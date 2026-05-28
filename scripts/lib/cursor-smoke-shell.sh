@@ -3,6 +3,8 @@
 
 : "${SMOKE_LOG_PREFIX:=smoke}"
 SMOKE_KILL_GRACE_SECS="${SMOKE_KILL_GRACE_SECS:-2}"
+SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES=()
+SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_UNSETS=()
 
 smoke_log() {
 	printf '[%s] %s\n' "$SMOKE_LOG_PREFIX" "$*"
@@ -15,6 +17,55 @@ smoke_fail() {
 
 smoke_require_cmd() {
 	command -v "$1" >/dev/null 2>&1 || smoke_fail "missing required command: $1"
+}
+
+smoke_resolve_cmd() {
+	local name="$1"
+	local path
+	if ! path="$(command -v -- "$name" 2>/dev/null)" || [[ -z "$path" ]]; then
+		smoke_fail "missing required command: $name"
+	fi
+	if [[ "$path" != /* ]]; then
+		smoke_fail "required command $name did not resolve to an absolute path: $path"
+	fi
+	printf '%s\n' "$path"
+}
+
+smoke_build_sealed_node_path() {
+	local node_bin="$1"
+	local base_path
+	if (( $# >= 2 )); then
+		base_path="$2"
+	else
+		base_path="$PATH"
+	fi
+	if [[ -n "$base_path" ]]; then
+		printf '%s:%s\n' "$(dirname "$node_bin")" "$base_path"
+	else
+		printf '%s\n' "$(dirname "$node_bin")"
+	fi
+}
+
+smoke_load_cursor_sdk_event_debug_env_names() {
+	local node_bin="$1"
+	local module_path="$2"
+	local name
+	SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES=()
+	while IFS= read -r name; do
+		[[ -n "$name" ]] || continue
+		SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES+=( "$name" )
+	done < <("$node_bin" --input-type=module -e 'import { pathToFileURL } from "node:url"; const mod = await import(pathToFileURL(process.argv[1]).href); for (const name of mod.CURSOR_SDK_EVENT_DEBUG_ENV_NAMES) console.log(name);' "$module_path")
+	if [[ "${#SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES[@]}" -eq 0 ]]; then
+		smoke_fail "failed to load Cursor SDK event-debug env names from $module_path"
+	fi
+}
+
+smoke_build_cursor_sdk_event_debug_unsets() {
+	local name
+	SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_UNSETS=()
+	for name in "${SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES[@]}"; do
+		SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_UNSETS+=( -u "$name" )
+	done
 }
 
 # Run a command with a wall-clock timeout. Prefer GNU/BSD timeout; fall back to a

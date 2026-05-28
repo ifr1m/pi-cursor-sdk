@@ -11,14 +11,21 @@ import {
 	mockCreatedAgent,
 	asMockCursorRun,
 	registerNativeToolDisplayForTest,
+	createPiHarness,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor } from "../src/cursor-provider.js";
+import { registerCursorRuntimeControls } from "../src/cursor-state.js";
 import { __testUtils as sdkEventDebugTestUtils } from "../src/cursor-sdk-event-debug.js";
 import type { SDKMessage } from "@cursor/sdk";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+async function setCursorModeForProviderDebugTest(mode: "agent" | "plan"): Promise<void> {
+	const pi = createPiHarness({ flagValues: { "cursor-mode": mode } });
+	registerCursorRuntimeControls(pi);
+	await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
+}
 
 describe("streamCursor debug artifacts", () => {
 	beforeEach(resetCursorProviderTestState);
@@ -60,6 +67,44 @@ describe("streamCursor debug artifacts", () => {
 					artifactDir,
 					waitResultRecorded: true,
 				});
+			} finally {
+				if (previousDebug === undefined) delete process.env.PI_CURSOR_SDK_EVENT_DEBUG;
+				else process.env.PI_CURSOR_SDK_EVENT_DEBUG = previousDebug;
+				if (previousRunDir === undefined) delete process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR;
+				else process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR = previousRunDir;
+				rmSync(artifactDir, { recursive: true, force: true });
+			}
+		});
+
+		it("records Cursor agent mode in provider debug metadata", async () => {
+			const firstSend = vi.fn().mockResolvedValue({
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished" }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			});
+			mockCreatedAgent({
+				send: firstSend,
+				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+			});
+			await setCursorModeForProviderDebugTest("agent");
+			await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+
+			const artifactDir = mkdtempSync(join(tmpdir(), "pi-cursor-provider-mode-debug-"));
+			const previousDebug = process.env.PI_CURSOR_SDK_EVENT_DEBUG;
+			const previousRunDir = process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR;
+			process.env.PI_CURSOR_SDK_EVENT_DEBUG = "1";
+			process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR = artifactDir;
+			try {
+				await setCursorModeForProviderDebugTest("plan");
+				await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+
+				const metadata = JSON.parse(readFileSync(join(artifactDir, "metadata.json"), "utf8"));
+				expect(metadata.providerMeta).toMatchObject({ agentMode: "plan" });
+				expect(metadata.send).toMatchObject({ agentMode: "plan" });
 			} finally {
 				if (previousDebug === undefined) delete process.env.PI_CURSOR_SDK_EVENT_DEBUG;
 				else process.env.PI_CURSOR_SDK_EVENT_DEBUG = previousDebug;

@@ -7,7 +7,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { Agent } from "@cursor/sdk";
-import type { ModelSelection, SDKAgent, SettingSource } from "@cursor/sdk";
+import type { AgentModeOption, ModelSelection, SDKAgent, SettingSource } from "@cursor/sdk";
 import type { Context } from "@earendil-works/pi-ai";
 import {
 	getRegisteredCursorPiToolBridge,
@@ -103,6 +103,7 @@ function rethrowSupersededWhenReplacedByDifferentPoolKey(scopeKey: string, poolK
 
 interface SessionCursorAgentCreateParams {
 	apiKey: string;
+	agentMode: AgentModeOption;
 	cwd: string;
 	modelSelection: ModelSelection;
 	settingSources?: SettingSource[];
@@ -382,6 +383,7 @@ async function createSessionAgentEntry(
 		agent = await createAgent({
 			apiKey: params.apiKey,
 			model: params.modelSelection,
+			mode: params.agentMode,
 			local: params.settingSources ? { cwd: params.cwd, settingSources: params.settingSources } : { cwd: params.cwd },
 			...(bridgeRun?.mcpServers ? { mcpServers: bridgeRun.mcpServers } : {}),
 		});

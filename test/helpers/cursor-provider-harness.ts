@@ -35,6 +35,7 @@ vi.mock("@cursor/sdk", () => {
 
 import { Agent, createAgentPlatform } from "@cursor/sdk";
 import { __testUtils as cursorSessionCwdTestUtils } from "../../src/cursor-session-cwd.js";
+import { __testUtils as cursorStateTestUtils } from "../../src/cursor-state.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../../src/cursor-provider.js";
 import { registerCursorPiToolBridge, __testUtils as cursorPiToolBridgeTestUtils } from "../../src/cursor-pi-tool-bridge.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../../src/model-discovery.js";
@@ -349,6 +350,7 @@ export async function resetCursorProviderTestState(): Promise<void> {
 	cursorProviderTestUtils.resetCursorNativeReplayIdleDisposeMs();
 	await cursorProviderTestUtils.resetSessionCursorAgents();
 	cursorSessionCwdTestUtils.reset();
+	cursorStateTestUtils.resetCursorModeStateForTests();
 	nativeToolDisplayTestUtils.reset();
 	modelDiscoveryTestUtils.registerModelItems(cursorModelItems);
 	mockCreatedAgent({ send: vi.fn() });

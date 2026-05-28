@@ -65,6 +65,7 @@ describe("cursor sdk event debug sink", () => {
 				bridgeEnabled: false,
 				nativeReplayId: "replay-1",
 				promptInputTokens: 12,
+				agentMode: "agent" as const,
 			});
 			sink?.recordSendPayload({ text: "hello" });
 			sink?.recordPiStreamEvent({ type: "text_delta", delta: "Hi" });
@@ -321,6 +322,7 @@ describe("cursor sdk event debug session grouping", () => {
 				bridgeEnabled: false,
 				nativeReplayId: "replay-1",
 				promptInputTokens: 12,
+				agentMode: "agent" as const,
 			});
 			await sink1?.finalize();
 
@@ -343,6 +345,7 @@ describe("cursor sdk event debug session grouping", () => {
 				bridgeEnabled: false,
 				nativeReplayId: "replay-2",
 				promptInputTokens: 8,
+				agentMode: "agent" as const,
 			});
 			await sink2?.finalize();
 

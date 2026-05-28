@@ -6,7 +6,7 @@ import type {
 	Model,
 	SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
-import type { SDKAgent, SDKImage } from "@cursor/sdk";
+import type { AgentModeOption, SDKAgent, SDKImage } from "@cursor/sdk";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
 import type { SessionCursorAgentLease } from "./cursor-session-agent.js";
 import type { planCursorSessionSend } from "./cursor-session-agent.js";
@@ -36,6 +36,7 @@ export interface CursorProviderTurnSendMeta {
 	useNativeToolReplay: boolean;
 	bridgeEnabled: boolean;
 	nativeReplayId: string;
+	agentMode: AgentModeOption;
 }
 
 interface CursorProviderTurnRuntimeBase {

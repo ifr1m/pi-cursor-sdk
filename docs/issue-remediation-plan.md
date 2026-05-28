@@ -29,7 +29,7 @@ Closed issues (#1, #2, #13, #15) were already remediated on `main`; no action re
 
 ### #20 — Investigation doc version drift
 
-**Fix:** Mark `docs/investigations/token-tracking-session-2026-05-21.md` as a point-in-time record (2026-05-21, pi 0.75.3) and note current dev baseline 0.75.5.
+**Fix:** Mark `docs/investigations/token-tracking-session-2026-05-21.md` as a point-in-time record (2026-05-21, pi 0.75.3) and note current dev baseline 0.76.0.
 
 ### #21 — Module decomposition
 

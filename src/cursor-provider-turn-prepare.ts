@@ -14,7 +14,7 @@ import { getActiveContextToolNames } from "./cursor-context-tools.js";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
 import { abandonSessionCursorAgent, cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
 import { createCursorNativeReplayId } from "./cursor-provider-live-run-drain.js";
-import { getEffectiveFastForModelId } from "./cursor-state.js";
+import { getEffectiveCursorAgentMode, getEffectiveFastForModelId } from "./cursor-state.js";
 import { buildCursorModelSelection } from "./model-discovery.js";
 import { getEffectiveCursorSettingSources } from "./cursor-setting-sources.js";
 import { isCursorNativeToolDisplayRuntimeEnabled } from "./cursor-native-tool-display.js";
@@ -48,6 +48,7 @@ export async function prepareCursorProviderTurn(
 
 	try {
 		const fastEnabled = getEffectiveFastForModelId(model.id);
+		const agentMode = getEffectiveCursorAgentMode();
 		const selection = buildCursorModelSelection(model.id, options?.reasoning ?? "off", fastEnabled);
 		const settingSources = getEffectiveCursorSettingSources();
 
@@ -58,6 +59,7 @@ export async function prepareCursorProviderTurn(
 
 		const sessionAgentAcquireParams = {
 			apiKey: resolvedApiKey,
+			agentMode,
 			cwd,
 			modelSelection: selection,
 			settingSources,
@@ -110,6 +112,7 @@ export async function prepareCursorProviderTurn(
 			sendState: sessionAgentLease.sendState,
 			sendPlan,
 			promptOptions,
+			agentMode,
 			activeToolNames: activeToolNames ? [...activeToolNames] : [],
 			sessionAgentScopeKey,
 			bridgeRunId: bridgeRun?.id,
@@ -161,6 +164,7 @@ export async function prepareCursorProviderTurn(
 				useNativeToolReplay,
 				bridgeEnabled: bridgeRun !== undefined,
 				nativeReplayId,
+				agentMode,
 			},
 			contextWindowAgentId: agent.agentId,
 			textDeltas,

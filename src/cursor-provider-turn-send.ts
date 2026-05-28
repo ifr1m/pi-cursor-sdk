@@ -1,3 +1,4 @@
+import type { SendOptions } from "@cursor/sdk";
 import { CursorLiveRunAbortError } from "./cursor-live-run-coordinator.js";
 import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
 import { getCursorAgentMessageOffset } from "./cursor-provider-turn-message-offset.js";
@@ -53,10 +54,12 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			bridgeEnabled: meta.bridgeEnabled,
 			nativeReplayId: meta.nativeReplayId,
 			promptInputTokens: meta.promptInputTokens,
+			agentMode: meta.agentMode,
 		});
 		sdkEventDebug?.recordSendPayload(payload);
 		sdkEventDebug?.recordProviderEvent("agent_send_start", payload);
-		const run = await agent.send(payload, {
+		const sendOptions: SendOptions = {
+			mode: meta.agentMode,
 			onDelta: (args) => {
 				sdkEventDebug?.recordOnDelta(args.update);
 				turnCoordinator.handleDelta(args.update);
@@ -65,7 +68,8 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 				sdkEventDebug?.recordOnStep(args.step);
 				turnCoordinator.handleStep(args.step);
 			},
-		});
+		};
+		const run = await agent.send(payload, sendOptions);
 		sdkRun = run;
 		sdkEventDebug?.recordRunMeta({
 			runId: run.id,
