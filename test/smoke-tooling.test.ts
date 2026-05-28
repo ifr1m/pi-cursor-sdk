@@ -91,6 +91,7 @@ describe("smoke tooling package checks", () => {
 		expect(pack.filename).not.toBe(`pi-cursor-sdk-${latestReleasedVersion}.tgz`);
 		expect(paths.has("scripts/tmux-live-smoke.sh")).toBe(true);
 		expect(paths.has("scripts/isolated-cursor-smoke.sh")).toBe(true);
+		expect(paths.has("scripts/fixtures/plan-strip-shim/index.ts")).toBe(true);
 		expect(paths.has("scripts/steering-rpc-smoke.mjs")).toBe(true);
 		expect(paths.has("scripts/visual-tui-smoke.mjs")).toBe(true);
 		expect(paths.has("scripts/validate-smoke-jsonl.mjs")).toBe(true);

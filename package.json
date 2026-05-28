@@ -29,6 +29,7 @@
 		"scripts/tmux-live-smoke.sh",
 		"scripts/visual-tui-smoke.mjs",
 		"scripts/isolated-cursor-smoke.sh",
+		"scripts/fixtures/plan-strip-shim",
 		"scripts/validate-smoke-jsonl.mjs",
 		"scripts/probe-mcp-coldstart.mjs",
 		"scripts/debug-sdk-events.mjs",

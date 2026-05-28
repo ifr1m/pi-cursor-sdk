@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -281,8 +281,8 @@ function capturePane(tmuxBin, sessionName, args) {
 	return result.stdout.toString();
 }
 
-function findLatestJsonl(root) {
-	const matches = [];
+function collectJsonlMtimes(root) {
+	const files = [];
 	function visit(dir) {
 		let entries;
 		try {
@@ -295,11 +295,24 @@ function findLatestJsonl(root) {
 			if (entry.isDirectory()) {
 				visit(path);
 			} else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-				matches.push({ path, mtimeMs: statSync(path).mtimeMs });
+				files.push({ path, mtimeMs: statSync(path).mtimeMs });
 			}
 		}
 	}
 	visit(root);
+	return files;
+}
+
+function snapshotJsonlMtimes(root) {
+	return new Map(collectJsonlMtimes(root).map(({ path, mtimeMs }) => [path, mtimeMs]));
+}
+
+function findLatestJsonl(root, { sinceMs = 0, previousMtimes = new Map() } = {}) {
+	const matches = [];
+	for (const file of collectJsonlMtimes(root)) {
+		const previousMtimeMs = previousMtimes.get(file.path);
+		if (previousMtimeMs === undefined ? file.mtimeMs >= sinceMs : file.mtimeMs > previousMtimeMs) matches.push(file);
+	}
 	matches.sort((a, b) => b.mtimeMs - a.mtimeMs);
 	return matches[0]?.path;
 }
@@ -398,6 +411,9 @@ function runVisualSmoke(options) {
 	);
 
 	let sessionStarted = false;
+	let bufferLoaded = false;
+	const jsonlMtimesBeforeRun = snapshotJsonlMtimes(options.sessionDir);
+	const runStartedAtMs = Date.now();
 	try {
 		const start = run(commands.tmux, ["new-session", "-d", "-s", sessionName, "-x", String(options.width), "-y", String(options.height), "--", shell, "-lc", script]);
 		if (start.status !== 0) throw new Error(`tmux new-session failed: ${start.stderr?.toString().trim() || start.status}`);
@@ -406,13 +422,18 @@ function runVisualSmoke(options) {
 		sleep(options.startupMs);
 		const load = run(commands.tmux, ["load-buffer", "-b", bufferName, "-"], { input: Buffer.from(options.prompt, "utf8") });
 		if (load.status !== 0) throw new Error(`tmux load-buffer failed: ${load.stderr?.toString().trim() || load.status}`);
-		const paste = run(commands.tmux, ["paste-buffer", "-b", bufferName, "-t", sessionName]);
-		if (paste.status !== 0) throw new Error(`tmux paste-buffer failed: ${paste.stderr?.toString().trim() || paste.status}`);
-		// Give bracketed paste handling a moment to finish before submitting.
-		sleep(250);
-		const enter = run(commands.tmux, ["send-keys", "-t", sessionName, "Enter"]);
-		if (enter.status !== 0) throw new Error(`tmux send-keys failed: ${enter.stderr?.toString().trim() || enter.status}`);
-		run(commands.tmux, ["delete-buffer", "-b", bufferName]);
+		bufferLoaded = true;
+		try {
+			const paste = run(commands.tmux, ["paste-buffer", "-b", bufferName, "-t", sessionName]);
+			if (paste.status !== 0) throw new Error(`tmux paste-buffer failed: ${paste.stderr?.toString().trim() || paste.status}`);
+			// Give bracketed paste handling a moment to finish before submitting.
+			sleep(250);
+			const enter = run(commands.tmux, ["send-keys", "-t", sessionName, "Enter"]);
+			if (enter.status !== 0) throw new Error(`tmux send-keys failed: ${enter.stderr?.toString().trim() || enter.status}`);
+		} finally {
+			run(commands.tmux, ["delete-buffer", "-b", bufferName]);
+			bufferLoaded = false;
+		}
 
 		sleep(options.waitMs);
 
@@ -431,12 +452,13 @@ function runVisualSmoke(options) {
 		writeUtf8(textPath, plain);
 		writeUtf8(htmlPath, buildTerminalHtml({ ansi, plain, options }));
 
-		const jsonlPath = findLatestJsonl(options.sessionDir);
-		if (!jsonlPath) throw new Error(`no persisted .jsonl found under ${options.sessionDir}`);
+		const jsonlPath = findLatestJsonl(options.sessionDir, { sinceMs: runStartedAtMs, previousMtimes: jsonlMtimesBeforeRun });
+		if (!jsonlPath) throw new Error(`no current-run persisted .jsonl found under ${options.sessionDir}`);
 		writeUtf8(jsonlPathFile, `${jsonlPath}\n`);
 
 		return { ansiPath, textPath, htmlPath, pngPath, jsonlPathFile, jsonlPath };
 	} finally {
+		if (bufferLoaded) run(commands.tmux, ["delete-buffer", "-b", bufferName]);
 		if (sessionStarted) run(commands.tmux, ["kill-session", "-t", sessionName]);
 	}
 }
@@ -484,6 +506,18 @@ function runSelfTest() {
 		assertSelfTest(parseArgs(["--label", "prompt-order", "--prompt-file", promptFile, "--prompt", "inline prompt"]).prompt === "inline prompt", "--prompt should override an earlier --prompt-file");
 		assertSelfTest(parseArgs(["--label", "prompt-dash", "--prompt", "--starts-with-dash"]).prompt === "--starts-with-dash", "--prompt should accept dash-prefixed free-form text");
 		assertSelfTest(parseArgs(["--label", "prompt-order", "--prompt", "inline prompt", "--prompt-file", promptFile]).prompt === "file prompt", "--prompt-file should override an earlier --prompt");
+
+		const jsonlDir = join(tempDir, "jsonl-filter");
+		mkdirSync(jsonlDir, { recursive: true });
+		const staleJsonl = join(jsonlDir, "stale.jsonl");
+		const freshJsonl = join(jsonlDir, "fresh.jsonl");
+		writeFileSync(staleJsonl, "{}\n", "utf8");
+		utimesSync(staleJsonl, new Date(1_000), new Date(1_000));
+		const previousJsonlMtimes = snapshotJsonlMtimes(jsonlDir);
+		writeFileSync(freshJsonl, "{}\n", "utf8");
+		utimesSync(freshJsonl, new Date(3_000), new Date(3_000));
+		assertSelfTest(findLatestJsonl(jsonlDir, { sinceMs: 2_000, previousMtimes: previousJsonlMtimes }) === freshJsonl, "JSONL discovery should ignore unchanged stale files before run start");
+		assertSelfTest(findLatestJsonl(jsonlDir, { sinceMs: 4_000, previousMtimes: snapshotJsonlMtimes(jsonlDir) }) === undefined, "JSONL discovery should not return stale evidence when current run has no changed JSONL");
 
 		assertSelfTest(!sealedNodePath(process.execPath, "").includes(delimiter), "empty inherited PATH must not leave an empty PATH segment");
 		const hostilePath = `${binDir}${delimiter}${process.env.PATH ?? ""}`;
@@ -564,6 +598,38 @@ function runSelfTest() {
 		assertSelfTest(!capturedEventDebugEnv.has("PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR"), "stale event debug run dir should be cleared");
 		assertSelfTest(!capturedEventDebugEnv.has("PI_CURSOR_SDK_EVENT_DEBUG_SESSION_DIR"), "stale event debug session dir should be cleared");
 		assertSelfTest(!capturedEventDebugEnv.has("PI_CURSOR_SDK_EVENT_DEBUG_STDERR"), "stale event debug stderr flag should be cleared");
+
+		const fakeTmux = join(binDir, "tmux");
+		const deleteBufferMarker = join(tempDir, "delete-buffer-called");
+		writeFileSync(
+			fakeTmux,
+			`#!/bin/sh\ncase "$1" in\n  -V) echo 'tmux fake'; exit 0 ;;\n  new-session) exit 0 ;;\n  load-buffer) cat >/dev/null; exit 0 ;;\n  paste-buffer) exit 77 ;;\n  delete-buffer) echo deleted > ${shellQuote(deleteBufferMarker)}; exit 0 ;;\n  kill-session) exit 0 ;;\n  *) echo "unexpected tmux command: $*" >&2; exit 64 ;;\nesac\n`,
+			"utf8",
+		);
+		chmodSync(fakeTmux, 0o755);
+		const originalPath = process.env.PATH;
+		try {
+			process.env.PATH = hostilePath;
+			let pasteFailed = false;
+			try {
+				runVisualSmoke({
+					...baseOptions,
+					prompt: "buffer cleanup prompt",
+					startupMs: 1,
+					waitMs: 1,
+					width: 80,
+					height: 24,
+					historyLines: 100,
+				});
+			} catch (error) {
+				pasteFailed = /paste-buffer failed/.test(error instanceof Error ? error.message : String(error));
+			}
+			assertSelfTest(pasteFailed, "fake tmux paste failure should exercise prompt-buffer cleanup path");
+			assertSelfTest(existsSync(deleteBufferMarker), "prompt tmux buffer should be deleted when paste/send fails");
+		} finally {
+			if (originalPath === undefined) delete process.env.PATH;
+			else process.env.PATH = originalPath;
+		}
 		console.log("[visual-smoke] self-test PASS");
 	} finally {
 		rmSync(tempDir, { recursive: true, force: true });

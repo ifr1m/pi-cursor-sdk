@@ -3,6 +3,7 @@
  * RPC steering smoke: queue steer after a native-replay tool-use turn completes execution.
  */
 import { spawn, spawnSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { accessSync, chmodSync, constants, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
@@ -14,6 +15,7 @@ import { scrubSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const DEBUG_ENV_NAMES = CURSOR_SDK_EVENT_DEBUG_ENV_NAMES;
+const DEFAULT_CHILD_CLOSE_TIMEOUT_MS = 30_000;
 
 function printHelp() {
 	console.log(`RPC steering smoke for pi-cursor-sdk live runs.
@@ -42,6 +44,35 @@ Notes:
 
 function fail(message) {
 	throw new Error(message);
+}
+
+function scrubForReport(text) {
+	let scrubbed = scrubSensitiveText(text);
+	for (const secret of apiKeySecretsFromProcess()) {
+		if (secret) scrubbed = scrubSensitiveText(scrubbed, secret);
+	}
+	return scrubbed;
+}
+
+function smokeOutputTail(stdout, stderr) {
+	return `stdoutTail=${scrubForReport(stdout.slice(-2000))}\nstderrTail=${scrubForReport(stderr.slice(-2000))}`;
+}
+
+async function waitForChildCloseWithTimeout(child, timeoutMs, outputSummary = () => "") {
+	let timeout;
+	try {
+		return await Promise.race([
+			waitForChildClose(child),
+			new Promise((_, reject) => {
+				timeout = setTimeout(() => {
+					const summary = outputSummary();
+					reject(new Error(`pi did not exit within ${timeoutMs}ms after agent_end${summary ? `\n${summary}` : ""}`));
+				}, timeoutMs);
+			}),
+		]);
+	} finally {
+		clearTimeout(timeout);
+	}
 }
 
 function isExecutable(path) {
@@ -194,14 +225,10 @@ async function runPiRpcSmoke(sessionDir, piBin) {
 		}
 
 		child.stdin.end();
-		const exitCode = await waitForChildClose(child);
+		const exitCode = await waitForChildCloseWithTimeout(child, DEFAULT_CHILD_CLOSE_TIMEOUT_MS, () => smokeOutputTail(stdout, stderr));
 		closed = true;
 		if (exitCode !== 0) {
-			let scrubbedStderr = scrubSensitiveText(stderr.slice(-2000));
-			for (const secret of apiKeySecretsFromProcess()) {
-				if (secret) scrubbedStderr = scrubSensitiveText(scrubbedStderr, secret);
-			}
-			fail(`pi exited ${exitCode}\nstderr=${scrubbedStderr}`);
+			fail(`pi exited ${exitCode}\nstderr=${scrubForReport(stderr.slice(-2000))}`);
 		}
 
 		return {
@@ -215,7 +242,7 @@ async function runPiRpcSmoke(sessionDir, piBin) {
 	}
 }
 
-function runSelfTest() {
+async function runSelfTest() {
 	const tempDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-steering-self-test-"));
 	try {
 		const binDir = join(tempDir, "bin");
@@ -267,6 +294,17 @@ function runSelfTest() {
 				// Expected: sealed PATH should keep /usr/bin/env node away from the hostile fake node.
 			}
 			if (fakeNodeUsed) fail("self-test failed: steering child env used hostile fake node");
+			const hangingChild = new EventEmitter();
+			hangingChild.exitCode = null;
+			hangingChild.signalCode = null;
+			let closeTimedOut = false;
+			try {
+				await waitForChildCloseWithTimeout(hangingChild, 10, () => smokeOutputTail("STEER_OK=yes", ""));
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				closeTimedOut = message.includes("pi did not exit within 10ms after agent_end") && message.includes("stdoutTail=STEER_OK=yes");
+			}
+			if (!closeTimedOut) fail("self-test failed: post-agent_end child close wait should be bounded and report output tail");
 		} finally {
 			if (originalPiBin === undefined) delete process.env.PI_BIN;
 			else process.env.PI_BIN = originalPiBin;
@@ -285,7 +323,7 @@ async function main() {
 		return;
 	}
 	if (process.argv.includes("--self-test")) {
-		runSelfTest();
+		await runSelfTest();
 		return;
 	}
 
