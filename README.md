@@ -106,6 +106,18 @@ pi --api-key "your-key" --model cursor/composer-2.5 --cursor-no-fast -p "Say ok 
 
 Discovery uses pi's native resolution order for this extension: `--api-key`, the stored `cursor` key in `~/.pi/agent/auth.json`, then `CURSOR_API_KEY`.
 
+### Model catalog cache
+
+To avoid a live `Cursor.models.list` network round-trip on every pi startup, the discovered catalog is cached on disk at `~/.pi/agent/cursor-sdk-model-list.json` (written `0600`, keyed by an API-key fingerprint — the key itself is never stored). Warm startups within the cache TTL skip the network call; `/cursor-refresh-models` always bypasses the cache and refreshes the live catalog. If a refresh fails, a previously cached catalog is preferred over the generic bundled fallback.
+
+```bash
+# Cache lifetime in milliseconds (default 86400000 = 24h).
+PI_CURSOR_SDK_MODEL_CACHE_TTL_MS=3600000 pi --model cursor/composer-2.5
+
+# Disable the cache and always discover live.
+PI_CURSOR_SDK_DISABLE_MODEL_CACHE=1 pi --model cursor/composer-2.5
+```
+
 Do not store the API key in `~/.pi/agent/cursor-sdk.json`. That file is only for non-secret extension state such as Cursor fast defaults. `PATH` is only for executable lookup and should not contain the API key.
 
 ## Verify your setup

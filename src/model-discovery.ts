@@ -10,6 +10,12 @@ import type { ModelThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai
 import { loadContextWindowCache } from "./context-window-cache.js";
 import { CURSOR_API_KEY_ENV_VAR, resolveCursorApiKey } from "./cursor-api-key.js";
 import { FALLBACK_MODEL_ITEMS } from "./cursor-fallback-models.generated.js";
+import {
+	fingerprintApiKey,
+	loadAnyCachedModelCatalog,
+	loadFreshCachedModels,
+	saveModelListCache,
+} from "./model-list-cache.js";
 
 const CURSOR_PROVIDER_ID = "cursor";
 const FALLBACK_CONTEXT_WINDOW = 128000;
@@ -20,7 +26,7 @@ const AUTH_SETUP_HINT = "/login (Use an API key -> Cursor), CURSOR_API_KEY, or -
 const CATALOG_REFRESH_HINT =
 	"After adding auth to an already-started pi session, run /cursor-refresh-models to refresh the full live Cursor model catalog without restarting pi.";
 
-export type CursorModelFallbackReason = "missing-api-key" | "discovery-failed" | "empty-model-list";
+export type CursorModelFallbackReason = "missing-api-key" | "discovery-failed" | "empty-model-list" | "cached-after-error";
 
 export interface CursorModelFallbackIssue {
 	reason: CursorModelFallbackReason;
@@ -30,6 +36,10 @@ export interface CursorModelFallbackIssue {
 
 export interface DiscoverModelsOptions {
 	onFallback?: (issue: CursorModelFallbackIssue) => void;
+	// Bypass the on-disk model cache and always hit the live catalog. Used by the
+	// /cursor-refresh-models command; the startup path leaves this false so warm
+	// boots skip the slow network round-trip.
+	forceRefresh?: boolean;
 }
 
 function getCliApiKeyFromArgv(argv: string[] = process.argv): string | undefined {
@@ -442,9 +452,19 @@ export async function discoverModels(options: DiscoverModelsOptions = {}): Promi
 		});
 	}
 
+	const keyFingerprint = fingerprintApiKey(apiKey);
+
+	if (!options.forceRefresh) {
+		const cachedModels = loadFreshCachedModels(keyFingerprint);
+		if (cachedModels && cachedModels.length > 0) {
+			return registerModelItems(cachedModels);
+		}
+	}
+
 	try {
 		const models = await Cursor.models.list({ apiKey });
 		if (models.length > 0) {
+			saveModelListCache(keyFingerprint, models);
 			return registerModelItems(models);
 		}
 		return useFallbackModels(options, {
@@ -453,6 +473,18 @@ export async function discoverModels(options: DiscoverModelsOptions = {}): Promi
 		});
 	} catch (error) {
 		const errorMessage = sanitizeDiscoveryError(error, apiKey);
+		// Prefer a previously cached catalog over the generic bundled fallback when
+		// a live refresh fails (e.g. transient network/auth errors), but keep the
+		// provenance visible so refresh commands do not claim a live refresh worked.
+		const cachedCatalog = loadAnyCachedModelCatalog(keyFingerprint);
+		if (cachedCatalog && cachedCatalog.models.length > 0) {
+			options.onFallback?.({
+				reason: "cached-after-error",
+				message: `Cursor model discovery failed; using cached Cursor model catalog from ${new Date(cachedCatalog.fetchedAt).toISOString()}. ${errorMessage}`,
+				errorMessage,
+			});
+			return registerModelItems(cachedCatalog.models);
+		}
 		return useFallbackModels(options, {
 			reason: "discovery-failed",
 			message: `Cursor model discovery failed${errorMessage ? `: ${errorMessage}` : ""}. Using fallback Cursor models; verify ${AUTH_SETUP_HINT}. ${CATALOG_REFRESH_HINT}`,

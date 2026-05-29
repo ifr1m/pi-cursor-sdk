@@ -67,6 +67,7 @@ export default async function (pi: CursorExtensionApi) {
 		handler: async (_args, ctx) => {
 			let refreshFallbackIssue: CursorModelFallbackIssue | undefined;
 			const refreshedModels = await discoverModels({
+				forceRefresh: true,
 				onFallback: (issue) => {
 					refreshFallbackIssue = issue;
 				},
@@ -74,7 +75,7 @@ export default async function (pi: CursorExtensionApi) {
 			registerCursorProvider(pi, refreshedModels);
 			if (!ctx.hasUI) return;
 			if (refreshFallbackIssue) {
-				ctx.ui.notify(`Cursor model catalog refresh still using fallback models: ${refreshFallbackIssue.message}`, "warning");
+				ctx.ui.notify(`Cursor model catalog refresh did not use a live catalog: ${refreshFallbackIssue.message}`, "warning");
 			} else {
 				ctx.ui.notify(`Cursor model catalog refreshed with ${refreshedModels.length} model${refreshedModels.length === 1 ? "" : "s"}.`, "info");
 			}

@@ -299,7 +299,7 @@ describe("extension registration and discovery", () => {
 		expect(notify).toHaveBeenCalledWith("Cursor model catalog refreshed with 1 model.", "info");
 	});
 
-	it("warns when live Cursor model refresh still uses fallback models", async () => {
+	it("warns when live Cursor model refresh does not use a live catalog", async () => {
 		mockedDiscover
 			.mockResolvedValueOnce([])
 			.mockImplementationOnce(async (options: DiscoverOptions) => {
@@ -322,7 +322,7 @@ describe("extension registration and discovery", () => {
 
 		expect(pi.registerProvider).toHaveBeenCalledTimes(2);
 		expect(notify).toHaveBeenCalledWith(
-			"Cursor model catalog refresh still using fallback models: missing key; using fallback models",
+			"Cursor model catalog refresh did not use a live catalog: missing key; using fallback models",
 			"warning",
 		);
 	});
