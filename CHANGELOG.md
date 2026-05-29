@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.25 - 2026-05-28
+
+### Fixed
+
+- Keep fallback Cursor models visible before `/login` on pi 0.77 by using a non-secret provider API-key sentinel while still resolving real keys from pi auth, `--api-key`, and `CURSOR_API_KEY`.
+
 ## 0.1.24 - 2026-05-28
 
 ### Changed

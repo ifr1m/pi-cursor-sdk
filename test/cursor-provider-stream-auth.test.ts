@@ -74,7 +74,7 @@ describe("streamCursor auth and abort", () => {
 		expect(error.error.errorMessage).toContain("--api-key");
 	});
 
-	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}"])(
+	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}", "pi-cursor-sdk-cursor-api-key-placeholder"])(
 		"treats unresolved %s provider placeholders as a missing API key",
 		async (placeholder) => {
 			const originalKey = process.env.CURSOR_API_KEY;
@@ -99,7 +99,7 @@ describe("streamCursor auth and abort", () => {
 		},
 	);
 
-	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}"])(
+	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}", "pi-cursor-sdk-cursor-api-key-placeholder"])(
 		"resolves %s provider placeholders through the env var when present",
 		async (placeholder) => {
 			const originalKey = process.env.CURSOR_API_KEY;

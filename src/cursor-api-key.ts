@@ -1,10 +1,16 @@
 export const CURSOR_API_KEY_ENV_VAR = "CURSOR_API_KEY";
-export const CURSOR_API_KEY_CONFIG_VALUE = `$${CURSOR_API_KEY_ENV_VAR}`;
+
+// Non-secret literal sentinel for pi's provider registry. Pi 0.77 treats `$ENV_VAR`
+// values as unconfigured when the env var is absent, which hides fallback models
+// before `/login`. Keep the provider available and resolve the real key in the
+// Cursor provider turn path from pi auth, --api-key, or CURSOR_API_KEY.
+export const CURSOR_API_KEY_CONFIG_VALUE = "pi-cursor-sdk-cursor-api-key-placeholder";
 
 const CURSOR_API_KEY_PLACEHOLDERS = new Set([
 	CURSOR_API_KEY_ENV_VAR,
-	CURSOR_API_KEY_CONFIG_VALUE,
+	`$${CURSOR_API_KEY_ENV_VAR}`,
 	`\${${CURSOR_API_KEY_ENV_VAR}}`,
+	CURSOR_API_KEY_CONFIG_VALUE,
 ]);
 
 export function resolveCursorApiKey(apiKey?: string): string | undefined {

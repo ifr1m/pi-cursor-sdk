@@ -165,7 +165,7 @@ describe("discoverModels", () => {
 		expect(mockedList).toHaveBeenCalledWith({ apiKey: "stored-key-123" });
 	});
 
-	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}"])(
+	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}", "pi-cursor-sdk-cursor-api-key-placeholder"])(
 		"treats unresolved stored %s auth as missing when env is absent",
 		async (placeholder) => {
 			writeStoredCursorApiKey(placeholder);
@@ -180,7 +180,7 @@ describe("discoverModels", () => {
 		},
 	);
 
-	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}"])(
+	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}", "pi-cursor-sdk-cursor-api-key-placeholder"])(
 		"resolves stored %s auth through the env var when present",
 		async (placeholder) => {
 			writeStoredCursorApiKey(placeholder);

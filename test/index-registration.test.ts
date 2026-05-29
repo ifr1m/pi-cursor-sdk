@@ -118,7 +118,7 @@ describe("extension registration and discovery", () => {
 		const [call] = pi._registered;
 		expect(call.name).toBe("cursor");
 		expect(call.config.name).toBe("Cursor");
-		expect(call.config.apiKey).toBe("$CURSOR_API_KEY");
+		expect(call.config.apiKey).toBe("pi-cursor-sdk-cursor-api-key-placeholder");
 		expect(call.config.api).toBe("cursor-sdk");
 		expect(call.config.models).toBe(mockModels);
 		expect(call.config.streamSimple).toBe(mockedStreamCursor);
