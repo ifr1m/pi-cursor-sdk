@@ -66,7 +66,7 @@ The replay scan flags only error `toolResult` / error assistant messages with `T
 Pass criteria:
 
 - `pi --version` reports pi 0.77.0 for this cutover baseline.
-- `npm ls` shows `@cursor/sdk@1.0.15` and local `@earendil-works/*@0.77.0` packages.
+- `npm ls` shows `@cursor/sdk@1.0.16` and local `@earendil-works/*@0.77.0` packages.
 - `cursor/composer-2.5` appears in the model list.
 - No Cursor key or auth token is printed.
 - If neither `~/.pi/agent/auth.json` cursor auth nor `CURSOR_API_KEY` is available, stop and report the live smoke as blocked.
@@ -115,7 +115,7 @@ Run a real interactive session under tmux:
 ```bash
 SESSION="pi-cursor-sdk-smoke-$(date +%s)"
 tmux new-session -d -s "$SESSION" -x 120 -y 40 -- zsh -lc \
-  "cd '$PWD' && PI_CURSOR_SETTING_SOURCES=none pi -e . --cursor-no-fast --model cursor/composer-2.5 --session-dir '$SMOKE_DIR/tui' --session-id cursor-sdk-1015-tui --no-tools 'TUI smoke. Compute 19 + 23. Reply only with SUM=<number>.'"
+  "cd '$PWD' && PI_CURSOR_SETTING_SOURCES=none pi -e . --cursor-no-fast --model cursor/composer-2.5 --session-dir '$SMOKE_DIR/tui' --session-id cursor-sdk-1016-tui --no-tools 'TUI smoke. Compute 19 + 23. Reply only with SUM=<number>.'"
 ```
 
 Observe with `tmux capture-pane -pt "$SESSION"` or attach manually.
@@ -131,10 +131,10 @@ Pass criteria:
 
 ## 4. Mandatory visual card/color rendering check
 
-This is the canonical visual release path for Cursor provider/runtime changes. It requires offscreen TUI visual inspection, not only JSONL or code review. Use pi 0.77.0, `@cursor/sdk@1.0.15`, a fresh temporary session dir, Cursor SDK `plan` mode, native replay enabled, and the checked-in visual runner. The runner resolves `pi` by directly walking the parent `PATH`, uses `process.execPath` for Node, and prepends that Node directory for both prereq checks and tmux launches so `#!/usr/bin/env node` shims use the validated Node. The default matrix is native replay only: native replay registration is forced on, settings sources are `none`, the pi bridge is off, overlapping built-in pi tools are not exposed, and inherited Cursor SDK event-debug artifact env is cleared. With `--event-debug`, debug capture writes to a deterministic directory under `VISUAL_DIR`.
+This is the canonical visual release path for Cursor provider/runtime changes. It requires offscreen TUI visual inspection, not only JSONL or code review. Use pi 0.77.0, `@cursor/sdk@1.0.16`, a fresh temporary session dir, Cursor SDK `plan` mode, native replay enabled, and the checked-in visual runner. The runner resolves `pi` by directly walking the parent `PATH`, uses `process.execPath` for Node, and prepends that Node directory for both prereq checks and tmux launches so `#!/usr/bin/env node` shims use the validated Node. The default matrix is native replay only: native replay registration is forced on, settings sources are `none`, the pi bridge is off, overlapping built-in pi tools are not exposed, and inherited Cursor SDK event-debug artifact env is cleared. With `--event-debug`, debug capture writes to a deterministic directory under `VISUAL_DIR`.
 
 ```bash
-VISUAL_DIR="$(mktemp -d /tmp/pi-cursor-sdk-1015-visual.XXXXXX)"
+VISUAL_DIR="$(mktemp -d /tmp/pi-cursor-sdk-1016-visual.XXXXXX)"
 VISUAL_ARGS=(
   --ext "$PWD"
   --cwd "$PWD"
@@ -204,7 +204,7 @@ Pass criteria:
 PI_CURSOR_SETTING_SOURCES=none \
 pi -e . --cursor-no-fast --cursor-mode plan --model cursor/composer-2.5 \
   --session-dir "$SMOKE_DIR/cursor-mode-plan" \
-  --session-id cursor-sdk-1015-plan \
+  --session-id cursor-sdk-1016-plan \
   --no-tools \
   -p 'Cursor mode smoke. Reply with one short implementation plan for printing hello.' \
   > "$SMOKE_DIR/cursor-mode-plan.stdout.txt" \

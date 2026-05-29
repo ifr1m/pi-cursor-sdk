@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.1.27 - 2026-05-29
+
+### Changed
+
+- Upgrade the pinned Cursor SDK runtime dependency to `@cursor/sdk@1.0.16` and keep the local validation baseline on pi `0.77.0`.
+- Align Cursor context-window checkpoint reads with the SDK 1.0.16 local platform options by scoping direct `createAgentPlatform()` calls to the pi session cwd, matching the workspace used for `Agent.create()`.
+- Review SDK 1.0.16 public-surface changes: new custom `LocalAgentStore` exports (`JsonlLocalAgentStore`, `SqliteLocalAgentStore`, store filters/paginators), per-call `store` options on local agent/list/message APIs, `Cursor.configure()` / `configureCursorSdk()` local defaults, HTTP/1 agent override support, public `CursorAgentPlatformOptions` local-store fields, and the removal of `AgentOptions.platform`. The extension continues to use the SDK default SQLite store and does not install a custom global SDK configuration because pi session cwd remains the source of truth for local persistence.
+
 ## 0.1.26 - 2026-05-29
 
 ### Added

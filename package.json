@@ -1,6 +1,6 @@
 {
 	"name": "pi-cursor-sdk",
-	"version": "0.1.26",
+	"version": "0.1.27",
 	"description": "pi provider extension backed by @cursor/sdk local agents",
 	"author": "Mitch Fultz (https://github.com/fitchmultz)",
 	"license": "MIT",
@@ -82,7 +82,7 @@
 		"debug:mcp-coldstart": "node scripts/probe-mcp-coldstart.mjs"
 	},
 	"dependencies": {
-		"@cursor/sdk": "1.0.15",
+		"@cursor/sdk": "1.0.16",
 		"@modelcontextprotocol/sdk": "^1.29.0"
 	},
 	"peerDependencies": {

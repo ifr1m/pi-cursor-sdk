@@ -34,7 +34,7 @@ If pi started without a key, run `/cursor-refresh-models` after `/login` to refr
 - pi 0.76.0 or newer
 - a Cursor SDK API key saved through `/login`, available as `CURSOR_API_KEY`, or passed with pi's `--api-key`
 
-No global `@cursor/sdk` install is required. This package depends on exact `@cursor/sdk@1.0.15`, so normal package installation brings in the SDK version this extension was built and tested against. This package declares a pi **minimum** of 0.76.0 with no maximum peer version, so users who update pi before this extension is republished are not blocked from trying the existing extension. The current validation baseline is pi 0.77.0 plus Cursor SDK 1.0.15; older pi or Cursor SDK compatibility paths are not maintained.
+No global `@cursor/sdk` install is required. This package depends on exact `@cursor/sdk@1.0.16`, so normal package installation brings in the SDK version this extension was built and tested against. This package declares a pi **minimum** of 0.76.0 with no maximum peer version, so users who update pi before this extension is republished are not blocked from trying the existing extension. The current validation baseline is pi 0.77.0 plus Cursor SDK 1.0.16; older pi or Cursor SDK compatibility paths are not maintained.
 
 ## Install
 

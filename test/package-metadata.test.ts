@@ -16,7 +16,7 @@ const PI_PACKAGES = [
 
 describe("package metadata cutover baselines", () => {
 	it("pins Cursor SDK exactly and validates against pi 0.77.0", () => {
-		expect(packageJson.dependencies["@cursor/sdk"]).toBe("1.0.15");
+		expect(packageJson.dependencies["@cursor/sdk"]).toBe("1.0.16");
 		for (const packageName of PI_PACKAGES) {
 			expect(packageJson.devDependencies[packageName]).toBe("0.77.0");
 		}

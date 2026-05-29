@@ -11,10 +11,12 @@ import {
 import type { CursorProviderTurnPrepareResult } from "./cursor-provider-turn-types.js";
 import { loadCursorSdk } from "./cursor-sdk-runtime.js";
 
-export async function cacheSdkContextWindow(agentId: string, modelId: string): Promise<void> {
+export async function cacheSdkContextWindow(agentId: string, modelId: string, cwd?: string): Promise<void> {
 	try {
 		const { createAgentPlatform } = await loadCursorSdk();
-		const platform = await createAgentPlatform();
+		const platform = await createAgentPlatform(
+			cwd ? { workspaceRef: cwd, scopedWorkspaceRef: cwd } : undefined,
+		);
 		const checkpoint = await platform.checkpointStore.loadLatest(agentId);
 		const contextWindow = getCheckpointContextWindow(checkpoint);
 		if (contextWindow) saveCachedContextWindow(modelId, contextWindow);
@@ -114,7 +116,7 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 	params.prepared.runtime.turnCoordinator.discardIncompleteStartedToolCalls(outcome.incompleteTools);
 	await params.sdkEventDebug?.captureRunArtifacts(params.run);
 	if (params.cacheContextWindow !== false) {
-		await cacheSdkContextWindow(params.contextWindowAgentId ?? params.run.agentId, params.modelId);
+		await cacheSdkContextWindow(params.contextWindowAgentId ?? params.run.agentId, params.modelId, params.prepared.cwd);
 	}
 	return outcome;
 }
