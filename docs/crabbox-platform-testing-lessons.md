@@ -2,19 +2,19 @@
 
 ## Purpose
 
-This document is a portable field guide for agents adding local cross-platform smoke tests to other pi extension repositories. It records what worked in `pi-cursor-sdk` without making this repository's exact implementation mandatory elsewhere.
+This document is a portable field guide for agents adding local cross-platform smoke tests to pi extension repositories. It is generic on purpose: do not add project-specific model IDs, package names, VM names, credentials, paths, prompts, or release decisions here.
 
-Use it as a pattern library. Each project must keep its own source of truth, package names, artifact roots, environment variables, and release criteria.
+Use it as a pattern library. Each project must keep its own source of truth for package names, artifact roots, target setup, environment variables, suites, evidence, and release criteria.
 
 ## Core rule: copy the architecture, not the state
 
-Do **not** copy project-specific paths, package names, VM names, credentials, or artifact folders into another extension. Start by defining the other project's own:
+Do **not** copy another project's paths, package names, VM names, credentials, artifact folders, prompts, or slugs. Start by defining the target project's own:
 
 - package name;
 - supported operating systems;
 - release-blocking user paths;
-- target fixtures;
-- required visual/JSONL/tool evidence;
+- deterministic target fixtures;
+- required visual, session, log, and artifact evidence;
 - artifact root;
 - environment variable prefix;
 - Crabbox work roots and slugs.
@@ -31,11 +31,11 @@ scripts/platform-smoke/*.mjs    # target runner, artifacts, assertions, scenario
 Bad portable shape:
 
 ```text
-# Hard-coded state from this repo in another project
-.artifacts/platform-smoke/
-PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT=C:\crabbox\pi-cursor-sdk
-pi-cursor-sdk-windows-native
-cursor/composer-2-5 when the target project does not use Cursor
+# Hard-coded state from another repo
+.artifacts/platform-smoke/ shared across repositories
+<OTHER_PROJECT>_SMOKE_WINDOWS_WORK_ROOT=C:\crabbox\other-project
+other-project-windows-native
+provider/model IDs from a different extension
 ```
 
 ## Keep the release gate local and explicit
@@ -43,14 +43,14 @@ cursor/composer-2-5 when the target project does not use Cursor
 The useful split is:
 
 ```bash
-npm run smoke:platform:doctor   # no live model/API calls; validates local prerequisites
+npm run smoke:platform:doctor   # no expensive provider/API work; validates local prerequisites
 npm run smoke:platform:all      # release gate; all required targets and suites
 ```
 
 `doctor` should fail before expensive work when prerequisites are missing:
 
 - Crabbox binary exists and is the expected version/commit;
-- Docker/local-container backend works;
+- Docker/local-container backend works if used;
 - SSH/static macOS backend works if used;
 - Parallels/Windows template and snapshot are usable if used;
 - Node/npm/git/rsync/tar are present on host and targets;
@@ -76,7 +76,7 @@ To avoid collisions between multiple pi extensions using Crabbox on the same mac
 | Session IDs | include project, suite, and timestamp |
 | Debug dirs | suite-scoped under the artifact/run root |
 
-Never reuse another repo's `.artifacts`, `.debug`, session dirs, Windows work root, or Crabbox slug unless the repositories are intentionally sharing state and the owner has documented why.
+Never reuse another repo's `.artifacts`, `.debug`, session dirs, Windows work root, or Crabbox slug unless the repositories intentionally share state and the owner has documented why.
 
 ## Use target sessions, not one fresh lease per suite
 
@@ -88,7 +88,7 @@ sync checkout once
 run platform-build
 run live/visual suite 1
 run live/visual suite 2
-run abort/cleanup suite
+run cleanup/abort suite if applicable
 stop lease
 ```
 
@@ -96,7 +96,7 @@ Benefits:
 
 - much lower Windows runtime;
 - one target checkout per target;
-- less repeated npm install/setup work;
+- less repeated install/setup work;
 - easier artifact grouping.
 
 Still keep per-suite commands for diagnosis, but do not make one-lease-per-suite the normal release path unless the target cannot safely share state.
@@ -116,7 +116,7 @@ npm pack
 npm install --no-save <tarball> in a test workspace
 pi install -l ./node_modules/<package>
 pi list assertion
-run the live/visual smoke against the installed package
+run smoke checks against the installed package
 ```
 
 Do **not** treat `pi -e .` as release proof. It is useful for inner-loop debugging because it loads the working tree directly, but it can miss packaging and install bugs.
@@ -156,11 +156,11 @@ Required artifacts should include enough evidence to debug failures without reru
 - suite/target metadata;
 - assertions and failures markdown;
 - terminal ANSI/text/HTML/PNG for visual suites;
-- session JSONL and discovered JSONL path list;
-- tool/result summaries;
-- bridge/diagnostic files if applicable;
+- pi session JSONL and discovered JSONL path list when session state matters;
+- tool/result summaries when tool behavior matters;
+- diagnostic files when diagnostics are part of the contract;
 - redaction scan output when violations exist;
-- cleanup/abort evidence for abort suites.
+- cleanup/abort evidence for cleanup suites.
 
 ## Treat cleanup as a test result
 
@@ -197,7 +197,7 @@ Fixed sleeps create slow flakes. Poll for concrete readiness instead:
 - TUI prompt/status visible;
 - PTY output contains readiness text;
 - session JSONL exists and contains expected final text/tool result;
-- marker appears in the final assistant text block, not only in progress text;
+- required markers appear in the final user-visible result, not only in progress text;
 - abort marker file exists before sending interrupt;
 - process list no longer contains the marker after abort.
 
@@ -208,25 +208,27 @@ Keep bounded timeouts and write timeout artifacts. Do not spin forever.
 Stdout can look correct while persisted JSONL or artifact state is wrong. For pi extensions, include structural checks over session JSONL where possible:
 
 - expected tool calls/results exist;
+- expected extension messages or statuses exist;
 - error tool results are absent unless expected;
-- final answer markers are in the final text part;
-- usage/cache counters meet the project's contract;
-- replay/tool IDs are stable enough for later turns;
+- final answer markers are in the final text part when final text matters;
+- usage/cache counters meet the project's contract when usage matters;
+- replay/tool IDs are stable enough for later turns when ID stability matters;
 - abort runs do not contain false success claims.
 
 Avoid naive substring scans over all JSONL. Restrict checks to the message type and field that proves the claim.
 
 ## Keep secrets out of every layer
 
-Assume artifacts may contain prompts, paths, tool args, and local output. The runner should:
+Assume artifacts may contain prompts, paths, tool args, local output, and auth-adjacent diagnostics. The runner should:
 
+- pass auth only to subprocesses that need it;
 - redact known API keys before writing logs;
 - scan stdout/stderr, JSONL, HTML, ANSI, and debug files for secrets;
 - fail if a required redaction invariant is violated;
 - keep auth files under user-owned locations, not repo state;
 - document that debug artifacts may include sensitive local data.
 
-Never paste API keys, auth JSON, endpoint tokens, cookies, or raw bridge URLs into docs or PR comments.
+Never paste API keys, auth JSON, endpoint tokens, cookies, private URLs, or raw local paths into docs or PR comments.
 
 ## Make false green states impossible
 
@@ -238,7 +240,7 @@ The most important guardrails from this setup:
 - no `pi -e .` release proof when package install matters;
 - no skipped required OS because local setup is missing;
 - no prompt-text-only visual assertions;
-- no one-prompt-per-card matrix that burns live model calls unnecessarily;
+- no one-prompt-per-card matrix that burns live provider calls unnecessarily;
 - no hidden target-specific assumptions without docs.
 
 ## Project adoption checklist
@@ -282,7 +284,9 @@ Add tests for cheap invariants:
 - cleanup failure fails a target result;
 - path traversal is rejected when unpacking bundles;
 - prompt-only visual matches are rejected;
-- final marker semantics match the project contract.
+- final marker semantics match the project contract;
+- auth env is stripped from subprocesses unless explicitly allowed;
+- text artifacts are redacted before writing and raw findings still fail the suite.
 
 ## Documentation placement in other projects
 
@@ -299,4 +303,4 @@ To avoid conflicts with existing project instructions:
 
 Do not cargo-cult the whole matrix if the project does not need it. A smaller project may only need packed install plus one local OS. A UI/TUI extension may need visual proof. A provider/runtime extension usually needs all supported OSes and persisted session evidence.
 
-The standard is not "use every file from `pi-cursor-sdk`." The standard is: define the failure modes that matter for that extension, then make the local smoke gate produce durable evidence for them without conflicting with other repositories.
+The standard is not "use every file from another project." The standard is: define the failure modes that matter for that extension, then make the local smoke gate produce durable evidence for them without conflicting with other repositories.

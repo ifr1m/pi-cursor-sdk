@@ -1,5 +1,4 @@
-import { getField } from "./cursor-record-utils.js";
-import { getToolName } from "./cursor-transcript-utils.js";
+import { getToolArgs, getToolName } from "./cursor-transcript-utils.js";
 
 export type CursorToolDisplaySource = "started" | "fallback" | "transcript";
 
@@ -122,5 +121,5 @@ export function getToolFingerprint(value: unknown): string {
 }
 
 export function getStartedToolCallFingerprint(toolCall: unknown): string {
-	return getToolFingerprint({ toolName: getToolName(toolCall), args: getField(toolCall, "args") });
+	return getToolFingerprint({ toolName: getToolName(toolCall), args: getToolArgs(toolCall) });
 }

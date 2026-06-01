@@ -13,6 +13,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSy
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { redactSecrets, scanForSecrets } from "./artifacts.mjs";
 import { extractContentText, jsonlHasAssistantFinalTextMarker } from "./jsonl-text.mjs";
 import { getScenario, renderPrompt } from "./scenarios.mjs";
 
@@ -25,6 +26,10 @@ const SESSION_JSONL_WAIT_MS = 60_000;
 const COLS = 150;
 const ROWS = 45;
 const MAX_BUNDLE_FILE_BYTES = 5 * 1024 * 1024;
+
+function writeRedactedTextFile(path, text) {
+	writeFileSync(path, redactSecrets(text ?? ""));
+}
 
 function usage() {
 	console.log(`Run one live platform-smoke suite inside a Crabbox target.
@@ -99,8 +104,8 @@ function runLogged(logDir, label, command, args, options = {}) {
 		timeout: options.timeout ?? 300_000,
 	});
 	const safeLabel = label.replace(/[^A-Za-z0-9_.-]+/g, "-");
-	writeFileSync(join(logDir, `${safeLabel}.stdout.txt`), result.stdout ?? "");
-	writeFileSync(join(logDir, `${safeLabel}.stderr.txt`), result.stderr ?? (result.error?.message ?? ""));
+	writeRedactedTextFile(join(logDir, `${safeLabel}.stdout.txt`), result.stdout ?? "");
+	writeRedactedTextFile(join(logDir, `${safeLabel}.stderr.txt`), result.stderr ?? (result.error?.message ?? ""));
 	writeFileSync(join(logDir, `${safeLabel}.json`), JSON.stringify({
 		label,
 		command,
@@ -384,8 +389,8 @@ async function runPtyPi({ artifactDir, piCli, piArgs, env, cwd, sessionDir, prom
 	await waitForSessionJsonl(sessionDir, null, startedAt, events);
 	await delay(1_000);
 
-	writeFileSync(join(artifactDir, "terminal.ansi"), ansi);
-	writeFileSync(join(artifactDir, "terminal.txt"), plain);
+	writeRedactedTextFile(join(artifactDir, "terminal.ansi"), ansi);
+	writeRedactedTextFile(join(artifactDir, "terminal.txt"), plain);
 	writeFileSync(join(artifactDir, "pty.events.jsonl"), events.map((event) => JSON.stringify(event)).join("\n") + "\n");
 	writeFileSync(join(artifactDir, "pty.exit.json"), JSON.stringify(exitEvent ?? null, null, 2));
 	return { observed, abortObserved, exitEvent, plain };
@@ -459,18 +464,11 @@ function findJsonlFiles(root) {
 
 function writeJsonlArtifacts(artifactDir, sessionDir) {
 	const jsonlFiles = findJsonlFiles(sessionDir);
-	writeFileSync(join(artifactDir, "session-jsonl-files.txt"), jsonlFiles.join("\n") + (jsonlFiles.length ? "\n" : ""));
+	writeRedactedTextFile(join(artifactDir, "session-jsonl-files.txt"), jsonlFiles.join("\n") + (jsonlFiles.length ? "\n" : ""));
 	if (jsonlFiles[0]) {
-		writeFileSync(join(artifactDir, "session.jsonl"), readFileSync(jsonlFiles[0]));
+		writeRedactedTextFile(join(artifactDir, "session.jsonl"), readFileSync(jsonlFiles[0], "utf8"));
 	}
 	return jsonlFiles;
-}
-
-function redactSensitiveText(text) {
-	let redacted = text;
-	const cursorKey = process.env.CURSOR_API_KEY;
-	if (cursorKey) redacted = redacted.split(cursorKey).join("[REDACTED_CURSOR_API_KEY]");
-	return redacted;
 }
 
 function writeProcessSnapshot(logDir, name, platform) {
@@ -481,8 +479,8 @@ function writeProcessSnapshot(logDir, name, platform) {
 			"Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress",
 		], { encoding: "utf8", timeout: 30_000 })
 		: spawnSync("sh", ["-lc", "ps -axo pid,ppid,comm,args"], { encoding: "utf8", timeout: 30_000 });
-	writeFileSync(join(logDir, `${name}.stdout.txt`), redactSensitiveText(result.stdout ?? ""));
-	writeFileSync(join(logDir, `${name}.stderr.txt`), redactSensitiveText(result.stderr ?? ""));
+	writeRedactedTextFile(join(logDir, `${name}.stdout.txt`), result.stdout ?? "");
+	writeRedactedTextFile(join(logDir, `${name}.stderr.txt`), result.stderr ?? "");
 	writeFileSync(join(logDir, `${name}.json`), JSON.stringify({ label: name, status: result.status, signal: result.signal, durationMs: Date.now() - startedAt, error: result.error?.message }, null, 2));
 	requireOk({ status: result.status, stderr: result.stderr, error: result.error }, `${name} snapshot`);
 }
@@ -498,23 +496,6 @@ function assertNoAbortLeftover(logDir, platform) {
 	}
 	const result = runLogged(logDir, "leftover-process-check", "sh", ["-lc", "if ps -axo pid,command | grep PLATFORM_ABORT_MARKER | grep -v grep; then exit 1; fi"], { timeout: 30_000 });
 	requireOk(result, "leftover process check");
-}
-
-function scanForSecrets(text) {
-	const violations = [];
-	const cursorKey = process.env.CURSOR_API_KEY;
-	if (cursorKey && cursorKey.length > 10 && text.includes(cursorKey)) violations.push("CURSOR_API_KEY literal found");
-	for (const [pattern, label] of [
-		[/bearer\s+[A-Za-z0-9\-._~+/]{20,}=*/gi, "bearer token"],
-		[/Authorization:\s*Bearer\s+[A-Za-z0-9\-._~+/]{20,}=*/gi, "Authorization header"],
-		[/connect\.sid=[A-Za-z0-9%]+/gi, "session cookie"],
-		[/https?:\/\/[^/\s]*\/cursor-pi-tool-bridge\/[A-Za-z0-9_.:-]+\/mcp/gi, "bridge endpoint URL"],
-		[/"(?:apiKey|accessToken|refreshToken|session|cookie)"\s*:\s*"[^"\s]{12,}"/gi, "auth/token JSON field"],
-	]) {
-		pattern.lastIndex = 0;
-		if (pattern.test(text)) violations.push(`potential ${label}`);
-	}
-	return violations;
 }
 
 function shouldBundleFile(root, path) {

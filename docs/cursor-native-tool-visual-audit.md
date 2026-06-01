@@ -63,7 +63,7 @@ The canonical workflow is now offscreen and browser-rendered:
 5. Save PNG screenshots with `agent_browser` when the harness is available, or Playwright directly when running outside that harness.
 6. Inspect the session JSONL for exact persisted `toolCall` / `toolResult` data.
 
-This is the best default release path because it exercises the real pi TUI, captures card class/color/label/order/truncation issues before users see them, avoids desktop focus stealing, and leaves reviewable artifacts. Use visible Terminal/Ghostty screenshots only for terminal-specific or pixel-level bugs that cannot be judged through browser-rendered ANSI.
+This is the best default focused visual-debug path because it exercises the real pi TUI, captures card class/color/label/order/truncation issues before users see them, avoids desktop focus stealing, and leaves reviewable artifacts. Use visible Terminal/Ghostty screenshots only for terminal-specific or pixel-level bugs that cannot be judged through browser-rendered ANSI. The cross-platform release gate remains [Platform Smoke](./platform-smoke.md).
 
 ## Tool stack
 

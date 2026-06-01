@@ -55,7 +55,7 @@ Follow-up issues #23/#24/#25 were completed after the phase-1 remediation PR:
 - `npm test`
 - `npm run typecheck`
 - `npm pack --dry-run`
-- Before any Cursor provider/runtime release, follow the full live smoke gate in `docs/cursor-live-smoke-checklist.md`.
+- Before any Cursor provider/runtime release, pass the platform smoke gate in `docs/platform-smoke.md`: `npm run smoke:platform:doctor && npm run smoke:platform:all`. Use `docs/cursor-live-smoke-checklist.md` only for focused inner-loop/debug checks.
 
 ## Issue closure mapping
 

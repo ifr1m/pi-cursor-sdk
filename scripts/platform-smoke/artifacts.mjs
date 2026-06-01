@@ -34,21 +34,37 @@ export function writeManifest(dir, expectedFiles) {
 	return manifest;
 }
 
+const SECRET_PATTERNS = [
+	[/Authorization:\s*Bearer\s+[A-Za-z0-9\-._~+/]{20,}=*/gi, "Authorization header", "Authorization: Bearer [REDACTED_BEARER_TOKEN]"],
+	[/(bearer\s+)[A-Za-z0-9\-._~+/]{20,}=*/gi, "bearer token", "$1[REDACTED_BEARER_TOKEN]"],
+	[/connect\.sid=[A-Za-z0-9%]+/gi, "session cookie", "connect.sid=[REDACTED_SESSION_COOKIE]"],
+	[/https?:\/\/[^/\s]*\/cursor-pi-tool-bridge\/[A-Za-z0-9_.:-]+\/mcp/gi, "bridge endpoint URL", "[REDACTED_BRIDGE_ENDPOINT_URL]"],
+	[/"(apiKey|accessToken|refreshToken|session|cookie)"\s*:\s*"[^"\s]{12,}"/gi, "auth/token JSON field", '"$1":"[REDACTED_SECRET]"'],
+];
+
+/** Redact known secret material before writing logs/artifacts. */
+export function redactSecrets(text) {
+	let redacted = String(text ?? "");
+	const cursorKey = process.env.CURSOR_API_KEY;
+	if (cursorKey && cursorKey.length > 10) {
+		redacted = redacted.split(cursorKey).join("[REDACTED_CURSOR_API_KEY]");
+	}
+	for (const [pattern, , replacement] of SECRET_PATTERNS) {
+		redacted = redacted.replace(pattern, replacement);
+	}
+	return redacted;
+}
+
 /** Scan text content for secrets. Returns array of violation descriptions. */
 export function scanForSecrets(text) {
 	const violations = [];
 	const cursorKey = process.env.CURSOR_API_KEY;
-	if (cursorKey && cursorKey.length > 10 && text.includes(cursorKey)) {
+	if (cursorKey && cursorKey.length > 10 && String(text ?? "").includes(cursorKey)) {
 		violations.push("CURSOR_API_KEY literal found");
 	}
-	for (const pattern of [
-		[/bearer\s+[A-Za-z0-9\-._~+/]{20,}=*/gi, "bearer token"],
-		[/Authorization:\s*Bearer\s+[A-Za-z0-9\-._~+/]{20,}=*/gi, "Authorization header"],
-		[/connect\.sid=[A-Za-z0-9%]+/gi, "session cookie"],
-		[/https?:\/\/[^/\s]*\/cursor-pi-tool-bridge\/[A-Za-z0-9_.:-]+\/mcp/gi, "bridge endpoint URL"],
-		[/"(?:apiKey|accessToken|refreshToken|session|cookie)"\s*:\s*"[^"\s]{12,}"/gi, "auth/token JSON field"],
-	]) {
-		if (pattern[0].test(text)) violations.push(`potential ${pattern[1]}`);
+	for (const [pattern, label] of SECRET_PATTERNS) {
+		pattern.lastIndex = 0;
+		if (pattern.test(String(text ?? ""))) violations.push(`potential ${label}`);
 	}
 	return violations;
 }

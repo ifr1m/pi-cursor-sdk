@@ -17,13 +17,19 @@ function warn(label) { console.log(`  \u26a0 ${label}`); }
 function fail(label) { console.error(`  \u2717 ${label}`); failures++; }
 function env(name) { return process.env[name] ?? ""; }
 
-function silent(cmd, args, opts) {
-	try { return execFileSync(cmd, args, { timeout: 15_000, stdio: "pipe", ...opts }).toString().trim(); }
+function safeChildEnv(extra = {}) {
+	const childEnv = { ...process.env, ...extra };
+	delete childEnv.CURSOR_API_KEY;
+	return childEnv;
+}
+
+function silent(cmd, args, opts = {}) {
+	try { return execFileSync(cmd, args, { timeout: 15_000, stdio: "pipe", ...opts, env: safeChildEnv(opts.env) }).toString().trim(); }
 	catch { return null; }
 }
 
-function shell(cmd, opts) {
-	try { return execSync(cmd, { timeout: 15_000, stdio: "pipe", ...opts }).toString().trim(); }
+function shell(cmd, opts = {}) {
+	try { return execSync(cmd, { timeout: 15_000, stdio: "pipe", ...opts, env: safeChildEnv(opts.env) }).toString().trim(); }
 	catch { return null; }
 }
 
@@ -56,7 +62,7 @@ function crabbox(cbox, args, timeout = 300_000) {
 			stdout: execFileSync(cbox, args, {
 				timeout,
 				stdio: "pipe",
-				env: { ...process.env, CRABBOX_SYNC_GIT_SEED: "false" },
+				env: safeChildEnv({ CRABBOX_SYNC_GIT_SEED: "false" }),
 			}).toString(),
 			stderr: "",
 		};
@@ -134,9 +140,16 @@ function runChecks(config) {
 		try { accessSync(cbox, constants.X_OK); ok(`binary: ${cbox}`); }
 		catch { fail(`${cbox} not executable`); }
 		const ver = silent(cbox, ["--version"]);
-		if (ver) ok(`version: ${ver.split("\n")[0]}`);
+		const actualVersion = ver?.split("\n")[0]?.trim();
+		if (actualVersion) ok(`version: ${actualVersion}`);
+		const requiredVersion = config.requiredCrabbox?.version;
+		if (requiredVersion) {
+			if (!actualVersion) fail(`could not verify Crabbox version for ${cbox}`);
+			else if (actualVersion !== requiredVersion) fail(`Crabbox version mismatch: expected ${requiredVersion}, got ${actualVersion}`);
+			else ok(`required version: ${actualVersion}`);
+		}
 		const requiredCommit = config.requiredCrabbox?.commit;
-		if (requiredCommit) {
+		if (!requiredVersion && requiredCommit) {
 			const gitRoot = findGitRoot(dirname(cbox));
 			const actualCommit = gitRoot ? silent("git", ["-C", gitRoot, "rev-parse", "HEAD"]) : null;
 			if (!actualCommit) fail(`could not verify Crabbox source commit for ${cbox}`);
@@ -148,7 +161,7 @@ function runChecks(config) {
 	// ── Phase 3: Crabbox providers ──
 	console.log("\n── Crabbox providers ──");
 	if (cbox) {
-		const ubuntuImage = env("PLATFORM_SMOKE_UBUNTU_IMAGE") || "cimg/node:24.16";
+		const ubuntuImage = env("PLATFORM_SMOKE_UBUNTU_IMAGE") || config?.ubuntuContainerImage || "cimg/node:24.16";
 		const lcDoc = silent(cbox, ["doctor", "--provider", "local-container", "--local-container-image", ubuntuImage, "--json"]);
 		if (lcDoc) {
 			try {

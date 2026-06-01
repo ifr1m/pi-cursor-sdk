@@ -11,11 +11,12 @@ const CRABBOX_BIN = process.env.PLATFORM_SMOKE_CRABBOX || "crabbox";
 
 function env(name) { return process.env[name] ?? ""; }
 
-const REDACTED_ENV = (() => {
-	const e = { ...process.env };
-	if (e.CURSOR_API_KEY) e.CURSOR_API_KEY = "REDACTED";
-	return e;
-})();
+function buildCrabboxEnv(opts = {}) {
+	const env = { ...process.env, CRABBOX_SYNC_GIT_SEED: "false", ...opts.env };
+	const allowed = new Set(opts.allowEnv ?? []);
+	if (!allowed.has("CURSOR_API_KEY")) delete env.CURSOR_API_KEY;
+	return env;
+}
 
 /** Run a crabbox command, returning stdout+stderr+exit+signal. */
 export function execCrabbox(args, opts = {}) {
@@ -23,7 +24,7 @@ export function execCrabbox(args, opts = {}) {
 		const timeoutMs = opts.timeout ?? 0;
 		const child = spawn(CRABBOX_BIN, args, {
 			stdio: ["pipe", "pipe", "pipe"],
-			env: { ...process.env, CRABBOX_SYNC_GIT_SEED: "false", ...opts.env },
+			env: buildCrabboxEnv(opts),
 			...opts.spawnOpts,
 		});
 
@@ -73,7 +74,7 @@ export function execCrabbox(args, opts = {}) {
  * These include provider, connection details, and work root.
  * Callers should append command-specific flags/args.
  */
-export function buildTargetBaseArgs(targetName) {
+export function buildTargetBaseArgs(targetName, config = {}) {
 	switch (targetName) {
 		case "macos": {
 			const host = env("PLATFORM_SMOKE_MAC_HOST") || "localhost";
@@ -89,7 +90,7 @@ export function buildTargetBaseArgs(targetName) {
 			];
 		}
 		case "ubuntu": {
-			const image = env("PLATFORM_SMOKE_UBUNTU_IMAGE") || "cimg/node:24.16";
+			const image = env("PLATFORM_SMOKE_UBUNTU_IMAGE") || config.ubuntuContainerImage || "cimg/node:24.16";
 			return [
 				"--provider", "local-container",
 				"--target", "linux",
@@ -141,8 +142,9 @@ function parseLeaseId(output) {
  * Returns { ok, stdout, stderr, leaseId }.
  * The lease will be kept until explicitly stopped.
  */
-export async function warmupLease(targetName, slug) {
-	const fullArgs = ["warmup", ...buildTargetBaseArgs(targetName), "--slug", slug, "--keep"];
+export async function warmupLease(targetName, slug, config = {}) {
+	const fullArgs = ["warmup", ...buildTargetBaseArgs(targetName, config), "--slug", slug, "--keep"];
+	if (targetName === "macos") fullArgs.push("--reclaim");
 	console.log(`  [crabbox] ${fullArgs.join(" ")}`);
 	const result = await execCrabbox(fullArgs, { timeout: 300_000 });
 	return {
@@ -160,7 +162,7 @@ export async function warmupLease(targetName, slug) {
 export async function runOnLease(targetName, leaseId, command, opts = {}) {
 	const args = [
 		"run",
-		...buildTargetBaseArgs(targetName),
+		...buildTargetBaseArgs(targetName, opts.config),
 		"--id", leaseId,
 	];
 	for (const name of opts.allowEnv ?? []) {
@@ -180,14 +182,15 @@ export async function runOnLease(targetName, leaseId, command, opts = {}) {
 	return execCrabbox(args, {
 		timeout: opts.timeout ?? 600_000,
 		env: opts.env,
+		allowEnv: opts.allowEnv,
 	});
 }
 
 /**
  * Stop/release a warmed-up lease.
  */
-export async function stopLease(targetName, leaseId) {
-	const args = ["stop", ...buildTargetBaseArgs(targetName), "--id", leaseId];
+export async function stopLease(targetName, leaseId, config = {}) {
+	const args = ["stop", ...buildTargetBaseArgs(targetName, config), "--id", leaseId];
 	console.log(`  [crabbox] ${args.join(" ")}`);
 	return execCrabbox(args, { timeout: 60_000 });
 }
@@ -197,7 +200,7 @@ export async function stopLease(targetName, leaseId) {
  * Crabbox syncs the checkout, executes, and releases the lease.
  */
 export async function runOneShot(targetName, command, opts = {}) {
-	const args = ["run", ...buildTargetBaseArgs(targetName)];
+	const args = ["run", ...buildTargetBaseArgs(targetName, opts.config)];
 	if (opts.shell) {
 		args.push("--shell", command);
 	} else {
@@ -207,5 +210,6 @@ export async function runOneShot(targetName, command, opts = {}) {
 	return execCrabbox(args, {
 		timeout: opts.timeout ?? 600_000,
 		env: opts.env,
+		allowEnv: opts.allowEnv,
 	});
 }

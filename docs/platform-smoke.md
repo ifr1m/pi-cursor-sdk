@@ -1,14 +1,14 @@
-# Platform Smoke Plan
+# Platform Smoke Gate
 
-Status: implementation complete for the required local platforms. The Crabbox runner, packed-install platform-build suite, and real live PTY/ConPTY suite runner are present on this branch. macOS, Ubuntu, and Windows native platform-build/native visual/bridge visual/abort cleanup suites pass locally with one-lease-per-target orchestration.
+Status: current release gate for Cursor provider/runtime changes. The Crabbox runner, packed-install platform-build suite, and real live PTY/ConPTY suite runner are implemented for macOS, Ubuntu, and Windows native targets with one-lease-per-target orchestration.
 
-Branch: `feat/crabbox-platform-smoke`
+Branch introduced by: `feat/crabbox-platform-smoke`
 
-Oracle review incorporated: this version resolves the packed-install workspace conflict, Cursor budget contradiction, Windows shell drift, artifact-on-failure gap, render-location ambiguity, provider-debug ambiguity, and registry-classification gap called out during review.
+Oracle review incorporated: this gate resolves the packed-install workspace conflict, Cursor budget contradiction, Windows shell drift, artifact-on-failure gap, render-location ambiguity, provider-debug ambiguity, and registry-classification gap called out during review.
 
 ## Decision
 
-Adopt Crabbox as the required platform smoke runner for `pi-cursor-sdk` only after this plan is implemented and the full gate passes.
+Crabbox is the required platform smoke runner for `pi-cursor-sdk` releases that touch Cursor provider/runtime behavior.
 
 Inner-loop checks remain useful, but they are not release gates:
 
@@ -49,19 +49,20 @@ No partial adoption exists. The release evidence must include macOS, Ubuntu, and
 
 The runner uses one supported Crabbox build.
 
-Initial baseline:
+Current baseline:
 
 ```text
-source: https://github.com/openclaw/crabbox
-commit: 190257b0f6097552205092ab2b579f6aa0232491
+install: brew install crabbox
+version: 0.24.0
+binary: /opt/homebrew/bin/crabbox on Apple Silicon Homebrew installs
 ```
 
-Before merge, keep this exact commit or replace it with an exact released Crabbox version. `smoke:platform:doctor` verifies the configured Crabbox binary and fails on mismatch.
+Keep this exact version or replace it with another exact released Crabbox version when updating the gate. `smoke:platform:doctor` verifies the configured Crabbox binary and fails on mismatch.
 
 Required Crabbox providers:
 
 - `local-container` for Ubuntu.
-- `ssh` static localhost for macOS.
+- `ssh` static localhost for macOS. Static localhost leases use Crabbox's shared `static_localhost` lease id, so the runner passes `--reclaim` during macOS warmup to claim that lease for this repository before running suites.
 - `parallels` for Windows native.
 
 ## Architecture
@@ -185,8 +186,8 @@ export default {
     "cursor-abort-cleanup",
   ],
   requiredCrabbox: {
-    source: "https://github.com/openclaw/crabbox",
-    commit: "190257b0f6097552205092ab2b579f6aa0232491",
+    install: "brew install crabbox",
+    version: "0.24.0",
   },
   ubuntuContainerImage: "cimg/node:24.16",
   nodeValidationMajor: 24,
@@ -200,7 +201,7 @@ export default {
 The doctor fails if any required value is missing.
 
 ```bash
-PLATFORM_SMOKE_CRABBOX=/path/to/crabbox
+PLATFORM_SMOKE_CRABBOX=/opt/homebrew/bin/crabbox
 
 PLATFORM_SMOKE_MAC_HOST=localhost
 PLATFORM_SMOKE_MAC_USER="$USER"
@@ -903,9 +904,9 @@ They must state:
 - legacy smoke scripts are inner-loop/debug helpers;
 - `tmux` visual smoke is not the canonical cross-platform gate.
 
-## Merge bar
+## Release bar
 
-The branch merges only after this exact command sequence passes on the maintainer machine:
+A provider/runtime release is ready only after this exact command sequence passes on the maintainer machine:
 
 ```bash
 npm run smoke:platform:doctor
@@ -914,9 +915,9 @@ npm run smoke:platform:all
 
 The run must include all required targets and suites in one full gate execution.
 
-## Rejection criteria
+## Gate replacement criteria
 
-Reject Crabbox as the required platform runner if any of these remain true after implementation work:
+Replace or redesign this platform runner if any of these become true:
 
 - Parallels Windows linked clones are unreliable.
 - Windows native cannot run the required ConPTY visual matrix.
@@ -928,7 +929,7 @@ Reject Crabbox as the required platform runner if any of these remain true after
 - The full gate exceeds the fixed Cursor invocation budget.
 - Node 24 + `node-pty` cannot be made reliable on Windows native.
 
-If rejected, this branch remains an experiment and existing local smoke scripts remain the release process until a different cross-platform plan replaces them.
+If the gate is replaced, document the new cross-platform release process before removing this one. Existing local smoke scripts remain inner-loop/debug helpers, not release gates.
 
 ## Portability to other pi extensions
 

@@ -215,6 +215,14 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 		}
 	});
 
+	it("wraps Windows bridge bash abort markers without breaking compound shell commands", () => {
+		const command = __testUtils.buildWindowsBridgeBashAbortCommandForTests("if true; then echo ok; fi", "bridge_call_1");
+
+		expect(command).toBe("export PI_CURSOR_BRIDGE_TOOL_CALL_ID=bridge_call_1; if true; then echo ok; fi");
+		expect(command).toContain("PI_CURSOR_BRIDGE_TOOL_CALL_ID=bridge_call_1");
+		expect(command).not.toMatch(/^PI_CURSOR_BRIDGE_TOOL_CALL_ID=bridge_call_1 if /);
+	});
+
 	it("uses stable collision-safe MCP names", () => {
 		const pi = createBridgePiHarness({
 			active: ["tool one", "tool_one"],

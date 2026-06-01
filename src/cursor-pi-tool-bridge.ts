@@ -47,13 +47,17 @@ let registeredCursorPiToolBridge: CursorPiToolBridgeRegistry | undefined;
 
 const WINDOWS_BRIDGE_ABORT_ENV = "PI_CURSOR_BRIDGE_TOOL_CALL_ID";
 
+function buildWindowsBridgeBashAbortCommand(command: string, marker: string): string {
+	return `export ${WINDOWS_BRIDGE_ABORT_ENV}=${marker}; ${command}`;
+}
+
 function installWindowsBridgeBashAbortMarker(event: { toolCallId: string; toolName: string; input: unknown }): string | undefined {
 	if (process.platform !== "win32" || event.toolName !== "bash") return undefined;
 	if (typeof event.input !== "object" || event.input === null || !("command" in event.input)) return undefined;
 	const input = event.input as { command?: unknown };
 	if (typeof input.command !== "string" || input.command.length === 0) return undefined;
 	const marker = event.toolCallId.replace(/[^A-Za-z0-9_.:-]/g, "_");
-	input.command = `${WINDOWS_BRIDGE_ABORT_ENV}=${marker} ${input.command}`;
+	input.command = buildWindowsBridgeBashAbortCommand(input.command, marker);
 	return marker;
 }
 
@@ -139,6 +143,7 @@ export const __testUtils = {
 	getActiveBridgeToolExecutionAbortCount() {
 		return bridgeToolExecutionAbortTracker.getActiveCount();
 	},
+	buildWindowsBridgeBashAbortCommandForTests: buildWindowsBridgeBashAbortCommand,
 	installWindowsBridgeBashAbortMarkerForTests: installWindowsBridgeBashAbortMarker,
 	emitBridgeToolExecutionProcessAbortSignalForTests(signal: NodeJS.Signals) {
 		bridgeToolExecutionAbortTracker.emitProcessAbortSignalForTests(signal);

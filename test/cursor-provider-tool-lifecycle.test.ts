@@ -173,8 +173,8 @@ describe("streamCursor Cursor tool lifecycle", () => {
 	it("surfaces safe distinct shell lifecycle labels while keeping completed shell results", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
 		const shellCalls = [
-			{ callId: "shell-1", toolCall: { name: "shell", args: { command: "npm test" } } },
-			{ callId: "shell-2", toolCall: { name: "shell", args: { command: "git status" } } },
+			{ callId: "shell-1", toolCall: { name: "shell", input: { command: "npm test" } } },
+			{ callId: "shell-2", toolCall: { name: "shell", input: { command: "git status" } } },
 		];
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			for (const { callId, toolCall } of shellCalls) {

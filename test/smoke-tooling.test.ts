@@ -115,6 +115,38 @@ if (result.promptCardCount !== 0 || !result.renderedOk || !result.traversalRejec
 		expect(result.stdout).toContain('"traversalRejected":true');
 	});
 
+	it("redacts platform smoke artifacts before writing and scopes Cursor auth to allowed Crabbox runs", () => {
+		const code = String.raw`
+process.env.CURSOR_API_KEY = "cursor-secret-token-12345";
+process.env.PLATFORM_SMOKE_CRABBOX = process.execPath;
+const { redactSecrets, scanForSecrets } = await import("./scripts/platform-smoke/artifacts.mjs");
+const { execCrabbox, buildTargetBaseArgs } = await import("./scripts/platform-smoke/crabbox-runner.mjs");
+const raw = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz cursor-secret-token-12345";
+const redacted = redactSecrets(raw);
+const stripped = await execCrabbox(["-e", "process.stdout.write(process.env.CURSOR_API_KEY || 'missing')"]);
+const allowed = await execCrabbox(["-e", "process.stdout.write(process.env.CURSOR_API_KEY || 'missing')"], { allowEnv: ["CURSOR_API_KEY"] });
+delete process.env.PLATFORM_SMOKE_UBUNTU_IMAGE;
+const ubuntuArgs = buildTargetBaseArgs("ubuntu", { ubuntuContainerImage: "example/node:24" });
+const result = {
+  rawViolations: scanForSecrets(raw),
+  redactedViolations: scanForSecrets(redacted),
+  redacted,
+  stripped: stripped.stdout,
+  allowed: allowed.stdout,
+  ubuntuImage: ubuntuArgs[ubuntuArgs.indexOf("--local-container-image") + 1],
+};
+console.log(JSON.stringify(result));
+if (!result.rawViolations.includes("CURSOR_API_KEY literal found")) process.exit(1);
+if (result.redacted.includes("cursor-secret-token-12345") || result.redactedViolations.length !== 0) process.exit(1);
+if (result.stripped !== "missing" || result.allowed !== "cursor-secret-token-12345") process.exit(1);
+if (result.ubuntuImage !== "example/node:24") process.exit(1);
+`;
+		const result = run(process.execPath, ["--input-type=module", "-e", code]);
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain('"stripped":"missing"');
+		expect(result.stdout).toContain('"ubuntuImage":"example/node:24"');
+	});
+
 	it("fails suite artifacts when required manifests or lease cleanup are missing", () => {
 		const code = String.raw`
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -283,6 +315,8 @@ if (!positiveItemsOk || promptOnly[0]?.ok !== false) process.exit(1);
 		expect(paths.has("scripts/lib/cursor-cli-args.mjs")).toBe(true);
 		expect(paths.has("CHANGELOG.md")).toBe(true);
 		expect(paths.has("README.md")).toBe(true);
+		expect(paths.has("docs/platform-smoke.md")).toBe(true);
+		expect(paths.has("docs/crabbox-platform-testing-lessons.md")).toBe(true);
 		expect([...paths].some((path) => path.startsWith("dist/") || path.startsWith("coverage/") || path.startsWith(".pi/") || path.includes("smoke-dir"))).toBe(false);
 	}, 90_000);
 });

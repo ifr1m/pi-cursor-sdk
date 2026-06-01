@@ -8,7 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-import { createSuiteDir, writeManifest, writeSummary, writeCommand, writeExitCode, scanArtifacts, scanForSecrets } from "./artifacts.mjs";
+import { createSuiteDir, writeManifest, writeSummary, writeCommand, writeExitCode, scanArtifacts, scanForSecrets, redactSecrets } from "./artifacts.mjs";
 import { runAssertions } from "./assertions.mjs";
 import { getScenario } from "./scenarios.mjs";
 import { warmupLease, runOnLease, stopLease } from "./crabbox-runner.mjs";
@@ -45,9 +45,13 @@ export function finalizeSuiteArtifacts(suiteDir, checks, summaryData, expectedFi
 	return { assertions: finalAssertions, manifest: finalManifest };
 }
 
+function writeRedactedFile(path, content) {
+	writeFileSync(path, redactSecrets(content ?? ""));
+}
+
 function writeStopLeaseArtifacts(suiteDir, stopResult) {
-	writeFileSync(resolve(suiteDir, "crabbox.stop.stdout.txt"), stopResult.stdout ?? "");
-	writeFileSync(resolve(suiteDir, "crabbox.stop.stderr.txt"), stopResult.stderr ?? "");
+	writeRedactedFile(resolve(suiteDir, "crabbox.stop.stdout.txt"), stopResult.stdout ?? "");
+	writeRedactedFile(resolve(suiteDir, "crabbox.stop.stderr.txt"), stopResult.stderr ?? "");
 	writeFileSync(resolve(suiteDir, "crabbox.stop.exit-code.txt"), `code=${stopResult.code}\nsignal=${stopResult.signal ?? "none"}\n`);
 }
 
@@ -144,7 +148,7 @@ export async function runTargetSuite(config, targetName, suiteName, leaseSession
 export async function runTargetSuites(config, targetName, suiteNames) {
 	const slug = `${config.packageName ?? "pi-cursor-sdk"}-${targetName}`;
 	console.log(`  warmup ${targetName}...`);
-	const warmup = await warmupLease(targetName, slug);
+	const warmup = await warmupLease(targetName, slug, config);
 	if (!warmup.ok) {
 		const suiteName = suiteNames[0] ?? "platform-build";
 		const runId = makeRunId();
@@ -158,8 +162,8 @@ export async function runTargetSuites(config, targetName, suiteNames) {
 			writtenAt: new Date().toISOString(),
 		}, null, 2));
 		writeExitCode(suiteDir, warmup.code, warmup.signal);
-		writeFileSync(resolve(suiteDir, "crabbox.warmup.stdout.txt"), warmup.stdout);
-		writeFileSync(resolve(suiteDir, "crabbox.warmup.stderr.txt"), warmup.stderr);
+		writeRedactedFile(resolve(suiteDir, "crabbox.warmup.stdout.txt"), warmup.stdout);
+		writeRedactedFile(resolve(suiteDir, "crabbox.warmup.stderr.txt"), warmup.stderr);
 		const failed = failSuite(suiteDir, targetName, suiteName, `Crabbox warmup failed (exit ${warmup.code}): ${warmup.stderr.slice(-500)}`);
 		return { ok: false, results: [failed] };
 	}
@@ -178,7 +182,7 @@ export async function runTargetSuites(config, targetName, suiteNames) {
 		}
 	} finally {
 		console.log(`  stopping lease ${warmup.leaseId}...`);
-		stopResult = await stopLease(targetName, warmup.leaseId);
+		stopResult = await stopLease(targetName, warmup.leaseId, config);
 	}
 	if (stopResult?.code !== 0) {
 		results.push(createLeaseCleanupFailureResult(config, targetName, warmup.leaseId, stopResult));
@@ -206,11 +210,11 @@ async function executePlatformBuild(config, targetName, suiteDir, slug, platform
 
 	if (!warmup) {
 		console.log(`  warmup ${targetName}...`);
-		warmup = await warmupLease(targetName, slug);
+		warmup = await warmupLease(targetName, slug, config);
 		if (!warmup.ok) {
 			writeExitCode(suiteDir, warmup.code, warmup.signal);
-			writeFileSync(resolve(suiteDir, "crabbox.warmup.stdout.txt"), warmup.stdout);
-			writeFileSync(resolve(suiteDir, "crabbox.warmup.stderr.txt"), warmup.stderr);
+			writeRedactedFile(resolve(suiteDir, "crabbox.warmup.stdout.txt"), warmup.stdout);
+			writeRedactedFile(resolve(suiteDir, "crabbox.warmup.stderr.txt"), warmup.stderr);
 			return failSuite(suiteDir, targetName, "platform-build",
 				`Crabbox warmup failed (exit ${warmup.code}): ${warmup.stderr.slice(-500)}`);
 		}
@@ -221,13 +225,14 @@ async function executePlatformBuild(config, targetName, suiteDir, slug, platform
 		shell: true,
 		timeout: 600_000,
 		sync: leaseSession?.sync,
+		config,
 	});
 
 	const elapsed = Date.now() - startedAt;
 
 	// Write artifact files
-	writeFileSync(resolve(suiteDir, "crabbox.stdout.txt"), result.stdout);
-	writeFileSync(resolve(suiteDir, "crabbox.stderr.txt"), result.stderr);
+	writeRedactedFile(resolve(suiteDir, "crabbox.stdout.txt"), result.stdout);
+	writeRedactedFile(resolve(suiteDir, "crabbox.stderr.txt"), result.stderr);
 	writeFileSync(resolve(suiteDir, "crabbox.timing.json"), JSON.stringify({
 		startedAt: new Date(startedAt).toISOString(),
 		elapsedMs: elapsed,
@@ -240,7 +245,7 @@ async function executePlatformBuild(config, targetName, suiteDir, slug, platform
 	let stopResult;
 	if (ownsLease) {
 		console.log(`  stopping lease ${warmup.leaseId}...`);
-		stopResult = await stopLease(targetName, warmup.leaseId);
+		stopResult = await stopLease(targetName, warmup.leaseId, config);
 		writeStopLeaseArtifacts(suiteDir, stopResult);
 	}
 
@@ -336,13 +341,13 @@ function markerValue(text, name) {
 }
 
 function writePlatformBuildExtracts(suiteDir, stdout) {
-	writeFileSync(resolve(suiteDir, "packed-tarball.txt"), `${markerValue(stdout, "PLATFORM_PACKED_TARBALL")}\n`);
-	writeFileSync(resolve(suiteDir, "packed-node-install.stdout.txt"), section(stdout, "PACKED_NODE_INSTALL_STDOUT"));
-	writeFileSync(resolve(suiteDir, "packed-node-install.stderr.txt"), section(stdout, "PACKED_NODE_INSTALL_STDERR"));
-	writeFileSync(resolve(suiteDir, "pi-install.stdout.txt"), section(stdout, "PI_INSTALL_STDOUT"));
-	writeFileSync(resolve(suiteDir, "pi-install.stderr.txt"), section(stdout, "PI_INSTALL_STDERR"));
-	writeFileSync(resolve(suiteDir, "pi-list.stdout.txt"), section(stdout, "PI_LIST_STDOUT"));
-	writeFileSync(resolve(suiteDir, "pi-list.stderr.txt"), section(stdout, "PI_LIST_STDERR"));
+	writeRedactedFile(resolve(suiteDir, "packed-tarball.txt"), `${markerValue(stdout, "PLATFORM_PACKED_TARBALL")}\n`);
+	writeRedactedFile(resolve(suiteDir, "packed-node-install.stdout.txt"), section(stdout, "PACKED_NODE_INSTALL_STDOUT"));
+	writeRedactedFile(resolve(suiteDir, "packed-node-install.stderr.txt"), section(stdout, "PACKED_NODE_INSTALL_STDERR"));
+	writeRedactedFile(resolve(suiteDir, "pi-install.stdout.txt"), section(stdout, "PI_INSTALL_STDOUT"));
+	writeRedactedFile(resolve(suiteDir, "pi-install.stderr.txt"), section(stdout, "PI_INSTALL_STDERR"));
+	writeRedactedFile(resolve(suiteDir, "pi-list.stdout.txt"), section(stdout, "PI_LIST_STDOUT"));
+	writeRedactedFile(resolve(suiteDir, "pi-list.stderr.txt"), section(stdout, "PI_LIST_STDERR"));
 }
 
 function posixSection(name, command) {
@@ -453,11 +458,11 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 
 	if (!warmup) {
 		console.log(`  warmup ${targetName}...`);
-		warmup = await warmupLease(targetName, slug);
+		warmup = await warmupLease(targetName, slug, config);
 		if (!warmup.ok) {
 			writeExitCode(suiteDir, warmup.code, warmup.signal);
-			writeFileSync(resolve(suiteDir, "crabbox.warmup.stdout.txt"), warmup.stdout);
-			writeFileSync(resolve(suiteDir, "crabbox.warmup.stderr.txt"), warmup.stderr);
+			writeRedactedFile(resolve(suiteDir, "crabbox.warmup.stdout.txt"), warmup.stdout);
+			writeRedactedFile(resolve(suiteDir, "crabbox.warmup.stderr.txt"), warmup.stderr);
 			return failSuite(suiteDir, targetName, suiteName, `Crabbox warmup failed (exit ${warmup.code}): ${warmup.stderr.slice(-500)}`);
 		}
 	}
@@ -468,10 +473,11 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 		timeout: 900_000,
 		allowEnv: ["CURSOR_API_KEY"],
 		sync: leaseSession?.sync,
+		config,
 	});
 	const elapsed = Date.now() - startedAt;
-	writeFileSync(resolve(suiteDir, "crabbox.stdout.txt"), result.stdout);
-	writeFileSync(resolve(suiteDir, "crabbox.stderr.txt"), result.stderr);
+	writeRedactedFile(resolve(suiteDir, "crabbox.stdout.txt"), result.stdout);
+	writeRedactedFile(resolve(suiteDir, "crabbox.stderr.txt"), result.stderr);
 	writeFileSync(resolve(suiteDir, "crabbox.timing.json"), JSON.stringify({
 		startedAt: new Date(startedAt).toISOString(),
 		elapsedMs: elapsed,
@@ -483,11 +489,11 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 	let stopResult;
 	if (ownsLease) {
 		console.log(`  stopping lease ${warmup.leaseId}...`);
-		stopResult = await stopLease(targetName, warmup.leaseId);
+		stopResult = await stopLease(targetName, warmup.leaseId, config);
 		writeStopLeaseArtifacts(suiteDir, stopResult);
 	}
 
-	const bundleOk = extractLiveBundle(suiteDir, result.stdout);
+	const bundle = extractLiveBundle(suiteDir, result.stdout);
 	const liveArtifactDir = resolve(suiteDir, "artifacts");
 	mkdirSync(liveArtifactDir, { recursive: true });
 	const terminalAnsi = resolve(liveArtifactDir, "terminal.ansi");
@@ -563,6 +569,7 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 		}));
 	const violations = [
 		...scanForSecrets(result.stdout + result.stderr + terminalText + jsonlRaw).map((violation) => ({ file: "process-output", violation })),
+		...bundle.violations,
 		...scanArtifacts(suiteDir),
 	];
 	if (violations.length > 0) writeFileSync(resolve(suiteDir, "redaction-violations.json"), JSON.stringify(violations, null, 2));
@@ -570,7 +577,7 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 
 	const checks = [
 		{ id: "live-exit-zero", fn: () => result.code === 0 },
-		{ id: "bundle-extracted", fn: () => bundleOk },
+		{ id: "bundle-extracted", fn: () => bundle.ok },
 		{ id: "live-status-ok", fn: () => status?.ok === true },
 		{ id: "cursor-no-fast", fn: () => readJson(resolve(liveArtifactDir, "pi-command.json"))?.args?.includes("--cursor-no-fast") === true },
 		{ id: "cursor-model", fn: () => readJson(resolve(liveArtifactDir, "pi-command.json"))?.args?.includes(config.cursorModel) === true },
@@ -621,8 +628,8 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 async function runOnLeaseWithTransientRetry(suiteDir, targetName, leaseId, command, options) {
 	const first = await runOnLease(targetName, leaseId, command, options);
 	if (!isTransientCrabboxSshFailure(first)) return first;
-	writeFileSync(resolve(suiteDir, "crabbox.retry1.stdout.txt"), first.stdout);
-	writeFileSync(resolve(suiteDir, "crabbox.retry1.stderr.txt"), first.stderr);
+	writeRedactedFile(resolve(suiteDir, "crabbox.retry1.stdout.txt"), first.stdout);
+	writeRedactedFile(resolve(suiteDir, "crabbox.retry1.stderr.txt"), first.stderr);
 	await new Promise((resolveRetry) => setTimeout(resolveRetry, 10_000));
 	return await runOnLease(targetName, leaseId, command, { ...options, sync: false });
 }
@@ -645,19 +652,47 @@ function buildLiveSuiteCommand(config, targetName, suiteName, prepDir) {
 function extractLiveBundle(suiteDir, stdout) {
 	const start = stdout.indexOf("PLATFORM_LIVE_BUNDLE_JSON_START");
 	const end = stdout.indexOf("PLATFORM_LIVE_BUNDLE_JSON_END", start);
-	if (start === -1 || end === -1) return false;
+	if (start === -1 || end === -1) return { ok: false, violations: [] };
 	const jsonText = stdout.slice(start + "PLATFORM_LIVE_BUNDLE_JSON_START".length, end).trim();
 	let bundle;
-	try { bundle = JSON.parse(jsonText); } catch { return false; }
-	if (!Array.isArray(bundle.files)) return false;
+	try { bundle = JSON.parse(jsonText); } catch { return { ok: false, violations: [] }; }
+	if (!Array.isArray(bundle.files)) return { ok: false, violations: [] };
+	const violations = [];
 	for (const file of bundle.files) {
 		if (!file?.path || typeof file.contentBase64 !== "string") continue;
-		if (!isSafeBundlePath(suiteDir, file.path)) return false;
+		if (!isSafeBundlePath(suiteDir, file.path)) return { ok: false, violations };
 		const outPath = resolve(suiteDir, file.path);
 		mkdirSync(dirname(outPath), { recursive: true });
-		writeFileSync(outPath, Buffer.from(file.contentBase64, "base64"));
+		const content = Buffer.from(file.contentBase64, "base64");
+		if (isTextArtifactPath(file.path)) {
+			const text = content.toString("utf8");
+			violations.push(...scanForSecrets(text).map((violation) => ({ file: file.path, violation })));
+			if (file.path.endsWith("redaction-violations.json")) {
+				violations.push(...readRedactionViolationList(text, file.path));
+			}
+			writeFileSync(outPath, redactSecrets(text));
+		} else {
+			writeFileSync(outPath, content);
+		}
 	}
-	return true;
+	return { ok: true, violations };
+}
+
+function readRedactionViolationList(text, fallbackFile) {
+	try {
+		const parsed = JSON.parse(text);
+		if (!Array.isArray(parsed)) return [];
+		return parsed
+			.filter((item) => typeof item?.violation === "string")
+			.map((item) => ({ file: typeof item.file === "string" ? item.file : fallbackFile, violation: item.violation }));
+	} catch {
+		return [];
+	}
+}
+
+function isTextArtifactPath(path) {
+	const ext = path.split(".").pop()?.toLowerCase() ?? "";
+	return ["txt", "json", "jsonl", "md", "log", "ansi", "html", "yml", "yaml", "js", "mjs", "ts"].includes(ext);
 }
 
 export function isSafeBundlePath(suiteDir, bundlePath) {
@@ -799,16 +834,17 @@ function shellQuote(value) {
  * warmup/execution and for unknown suites.
  */
 function failSuite(suiteDir, targetName, suiteName, message) {
-	console.log(`  FAIL ${suiteName} on ${targetName}: ${message}`);
+	const safeMessage = redactSecrets(message);
+	console.log(`  FAIL ${suiteName} on ${targetName}: ${safeMessage}`);
 
-	writeCommand(suiteDir, `# ${suiteName} — ${message}`);
+	writeCommand(suiteDir, `# ${suiteName} — ${safeMessage}`);
 	writeExitCode(suiteDir, 1, null);
 
-	const checks = [{ id: "execution", fn: () => false, error: message }];
+	const checks = [{ id: "execution", fn: () => false, error: safeMessage }];
 	const { assertions } = finalizeSuiteArtifacts(
 		suiteDir,
 		checks,
-		{ target: targetName, suite: suiteName, exitCode: 1, error: message },
+		{ target: targetName, suite: suiteName, exitCode: 1, error: safeMessage },
 		[
 			"summary.json", "target.json", "suite.json",
 			"command.txt", "exit-code.txt",

@@ -13,8 +13,8 @@ export default {
 		"cursor-abort-cleanup",
 	],
 	requiredCrabbox: {
-		source: "https://github.com/openclaw/crabbox",
-		commit: "190257b0f6097552205092ab2b579f6aa0232491",
+		install: "brew install crabbox",
+		version: "0.24.0",
 	},
 	ubuntuContainerImage: "cimg/node:24.16",
 	nodeValidationMajor: 24,

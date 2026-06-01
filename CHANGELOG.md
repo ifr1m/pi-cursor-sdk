@@ -2,12 +2,15 @@
 
 ## Unreleased
 
+## 0.1.29 - 2026-06-01
+
 ### Added
 
 - Add the maintainer-local `smoke:platform:*` release gate for macOS, Ubuntu, and Windows native through Crabbox, including packed-install proof, PTY/ConPTY ANSI capture, host-side xterm/PNG visual evidence, JSONL tool/final-marker checks, bridge diagnostics, usage/cache assertions, abort cleanup, artifact manifests, and redaction scans.
 
 ### Changed
 
+- Upgrade the pinned Cursor SDK runtime dependency to `@cursor/sdk@1.0.17` for package version `0.1.29`.
 - Clarify Composer multi-part final text semantics: final-answer consumers use the last non-empty assistant `text` part, and platform smoke markers must appear in that final text part (#111).
 - Prefer the selected Cursor SDK model alias, such as `composer-2-5`, for Cursor fast-state keys while retaining legacy fallback reads for older `composer-2.5` / base-model keys.
 - Speed up the platform smoke release gate without dropping coverage by running targets concurrently, reusing one live packed-install prep per target session, and replacing fixed sleeps with readiness polling where safe.
