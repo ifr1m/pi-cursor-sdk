@@ -88,6 +88,7 @@ export interface CursorModelMetadata {
 	contextWindow: number;
 	supportsFast: boolean;
 	defaultFast: boolean;
+	fastOverride?: boolean;
 	supportsReasoning: boolean;
 	thinkingLevelMap?: ThinkingLevelMap;
 	parameterIds: {
@@ -205,19 +206,35 @@ function getParamValue(params: ModelParameterValue[], id: string): string | unde
 	return params.find((param) => param.id === id)?.value;
 }
 
-function encodePiModelId(modelId: string, context?: string): string {
-	return context ? `${modelId}@${context}` : modelId;
+function encodePiModelId(modelId: string, context?: string, fastOverride?: boolean): string {
+	const contextQualified = context ? `${modelId}@${context}` : modelId;
+	if (fastOverride === true) return `${contextQualified}:fast`;
+	if (fastOverride === false) return `${contextQualified}:slow`;
+	return contextQualified;
 }
 
-function getModelName(item: ModelListItem, context?: string, alias?: string): string {
+function getModelName(item: ModelListItem, context?: string, alias?: string, fastOverride?: boolean): string {
 	const displayName = item.displayName || item.id;
-	const baseName = alias ? `${displayName} (${alias})` : displayName;
+	const qualifiers: string[] = [];
+	if (alias) qualifiers.push(alias);
+	if (fastOverride === true) qualifiers.push("fast");
+	if (fastOverride === false) qualifiers.push("slow");
+	const baseName = qualifiers.length > 0 ? `${displayName} (${qualifiers.join(", ")})` : displayName;
 	return context ? `${baseName} @ ${context}` : baseName;
 }
 
+function getFastOverrideBasePiModelId(piModelId: string): string {
+	return piModelId.replace(/:(?:fast|slow)$/, "");
+}
+
 function getContextWindow(contextWindowCache: Map<string, number>, piModelId: string, context?: string, baseModelId?: string): number {
-	return (
+	const fastOverrideBasePiModelId = getFastOverrideBasePiModelId(piModelId);
+	const contextWindowOverride =
 		contextWindowCache.get(piModelId) ??
+		(fastOverrideBasePiModelId !== piModelId ? contextWindowCache.get(fastOverrideBasePiModelId) : undefined);
+
+	return (
+		contextWindowOverride ??
 		(context ? parseContextWindow(context) : undefined) ??
 		(baseModelId ? contextWindowCache.get(baseModelId) : undefined) ??
 		contextWindowCache.get("default") ??
@@ -232,6 +249,7 @@ function toMetadata(
 	defaultParams: ModelParameterValue[],
 	context: string | undefined,
 	contextWindowCache: Map<string, number>,
+	fastOverride?: boolean,
 ): CursorModelMetadata {
 	const thinkingLevelMap = getThinkingLevelMap(item);
 	const fastValue = getParamValue(defaultParams, "fast")?.toLowerCase();
@@ -245,6 +263,7 @@ function toMetadata(
 		contextWindow: getContextWindow(contextWindowCache, piModelId, context, item.id),
 		supportsFast: getParameter(item, "fast") !== undefined,
 		defaultFast: fastValue === "true",
+		...(fastOverride !== undefined ? { fastOverride } : {}),
 		supportsReasoning: thinkingLevelMap !== undefined,
 		...(thinkingLevelMap ? { thinkingLevelMap } : {}),
 		parameterIds: {
@@ -310,16 +329,21 @@ function toModelConfigs(
 	const contexts = contextValues.length > 0 ? contextValues : [undefined];
 	const configs: ProviderModelConfig[] = [];
 
+	const fastOverrides = getParameter(item, "fast") === undefined ? [undefined] : [undefined, true, false];
+
 	for (const selectionModelId of getModelIds(item, reservedBaseModelIds, ambiguousAliases)) {
 		const alias = selectionModelId === item.id ? undefined : selectionModelId;
 		for (const context of contexts) {
-			const params = context ? replaceParam(defaultParams, "context", context) : defaultParams;
-			const piModelId = encodePiModelId(selectionModelId, context);
-			if (usedPiModelIds.has(piModelId)) continue;
-			usedPiModelIds.add(piModelId);
-			const metadata = toMetadata(item, piModelId, selectionModelId, params, context, contextWindowCache);
-			metadataByPiModelId.set(piModelId, metadata);
-			configs.push(toModelConfig(metadata, getModelName(item, context, alias)));
+			const contextParams = context ? replaceParam(defaultParams, "context", context) : defaultParams;
+			for (const fastOverride of fastOverrides) {
+				const params = fastOverride === undefined ? contextParams : replaceParam(contextParams, "fast", fastOverride ? "true" : "false");
+				const piModelId = encodePiModelId(selectionModelId, context, fastOverride);
+				if (usedPiModelIds.has(piModelId)) continue;
+				usedPiModelIds.add(piModelId);
+				const metadata = toMetadata(item, piModelId, selectionModelId, params, context, contextWindowCache, fastOverride);
+				metadataByPiModelId.set(piModelId, metadata);
+				configs.push(toModelConfig(metadata, getModelName(item, context, alias, fastOverride)));
+			}
 		}
 	}
 

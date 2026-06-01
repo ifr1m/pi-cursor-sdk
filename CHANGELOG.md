@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.31 - 2026-06-01
+
+### Added
+
+- Add Cursor `:fast` and `:slow` virtual model aliases for models with a Cursor SDK `fast` parameter so subagents and workflow-spawned agents can choose fast/slow independently of saved `/cursor-fast` defaults (#112).
+
 ## 0.1.30 - 2026-06-01
 
 ### Added

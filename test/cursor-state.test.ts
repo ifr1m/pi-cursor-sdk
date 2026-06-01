@@ -430,6 +430,40 @@ describe("Cursor runtime state", () => {
 		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(true);
 	});
 
+	it("lets virtual fast models override stored slow preferences", async () => {
+		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2": false } }));
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2:fast" });
+
+		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor fast");
+		expect(getEffectiveFastForModelId("composer-2:fast")).toBe(true);
+	});
+
+	it("lets virtual slow models override stored fast preferences", async () => {
+		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2": true } }));
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2:slow" });
+
+		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
+		expect(getEffectiveFastForModelId("composer-2:slow")).toBe(false);
+	});
+
+	it("does not persist /cursor-fast while a virtual fast model is selected", async () => {
+		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({ modelId: "composer-2:slow" });
+		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+
+		await commands.get("cursor-fast")!.handler("", commandCtx);
+
+		expect(ctx.ui.notify).toHaveBeenCalledWith(
+			"Cursor fast is fixed disabled by selected model composer-2:slow; choose composer-2 to use /cursor-fast preferences",
+			"info",
+		);
+		expect(pi.appendEntry).not.toHaveBeenCalled();
+		expect(getEffectiveFastForModelId("composer-2:slow")).toBe(false);
+	});
+
 	it("forces fast with the CLI flag without writing session state", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m", cursorFastFlag: true });
 

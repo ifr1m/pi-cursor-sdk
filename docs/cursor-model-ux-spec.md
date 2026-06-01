@@ -10,7 +10,7 @@ Current implementation notes:
 
 - Cursor context variants use `base@context` pi model IDs.
 - Cursor `reasoning`, `effort`, and boolean `thinking` parameters are driven by pi native thinking when the Cursor SDK exposes those controls.
-- Cursor `fast` is extension state, not model identity.
+- Cursor `fast` is extension state by default; models that expose `fast` also get selection-only `:fast` / `:slow` virtual aliases for per-agent overrides.
 - Cursor SDK `mode` (`agent` or `plan`) is extension session state, not model identity, pi thinking, Cursor `fast`, or pi's separate plan-mode extension.
 - Cursor status uses one coordinated `ctx.ui.setStatus("cursor", ...)` value for fast and non-default plan mode; the default pi footer remains intact.
 - Installed `@cursor/sdk` user messages accept images, and Cursor models are treated as image-capable; registered input metadata is `text` plus `image`.
@@ -136,7 +136,7 @@ Use native pi abstractions wherever possible:
 | Cursor `reasoning` | pi native thinking via `thinkingLevelMap` |
 | Cursor `effort` | pi native thinking via `thinkingLevelMap` |
 | Cursor `thinking=false` | pi native `off` |
-| Cursor `fast` | extension state, not model identity |
+| Cursor `fast` | extension state plus `:fast` / `:slow` virtual aliases for per-agent overrides |
 | Cursor SDK `mode` | extension session state; `agent` by default, `plan` via SDK-native mode |
 | Footer | default pi footer plus optional extension status |
 
@@ -156,7 +156,7 @@ Rules:
 - Register one pi model for each Cursor base model and each unambiguous SDK alias when there is no Cursor `context` parameter.
 - Register one pi model per Cursor `context` value for each Cursor base model and each unambiguous SDK alias when the model exposes a `context` parameter.
 - Skip SDK aliases that collide with another base model ID or are shared by multiple base models; those aliases can resolve differently from the pi row metadata.
-- Do not encode `reasoning`, `effort`, `thinking`, `fast`, or Cursor SDK `mode` into pi model IDs.
+- Do not encode `reasoning`, `effort`, `thinking`, or Cursor SDK `mode` into pi model IDs. For models with a Cursor `fast` parameter, also register selection-only `:fast` and `:slow` virtual model aliases that do not change pi-native metadata.
 - Prefer stable, readable `@<context>` suffixes that do not conflict with pi's final `:<thinking>` suffix parser.
 - Sort Cursor models by base ID, then context value in Cursor SDK order before calling `pi.registerProvider()`. Registration order matters for `/model` display and model cycling; `--list-models` sorts output separately.
 
@@ -168,6 +168,9 @@ cursor/gpt-5.5@272k
 cursor/claude-opus-4-8@1m
 cursor/claude-opus-4-8@300k
 cursor/composer-2-5
+cursor/composer-2-5:fast
+cursor/composer-2-5:slow
+cursor/gpt-5.5@1m:fast
 ```
 
 Avoid colon-based context IDs in the first implementation unless this spec is intentionally changed:
@@ -190,7 +193,7 @@ Reason:
 
 - `@1m` keeps context visually separate from pi's native `:medium` thinking suffix.
 - Context variants make `contextWindow` accurate in `--list-models`, the native footer, context overflow checks, and compaction logic.
-- `fast` is intentionally not a model variant because it does not affect pi model metadata and would double list noise.
+- `:fast` / `:slow` are virtual aliases, not separate Cursor SDK base models: they keep the same context/thinking metadata and only force the outgoing Cursor `fast` param. They exist so subagents and workflow-spawned agents can choose fast/slow without mutating shared `/cursor-fast` defaults.
 
 ### Metadata Per Registered Model
 
@@ -362,17 +365,18 @@ fast=false <-> fast=true
 
 Rules:
 
-- `fast` is extension state, not pi model identity.
-- Toggle with `/cursor-fast`.
-- Store per-session and global per-base-model preferences.
-- When calling `Agent.create()`, include the selected `fast` value in Cursor model params.
+- Unsuffixed models use extension state from `/cursor-fast`, per-session entries, and global defaults.
+- `:fast` / `:slow` virtual model aliases force fast on/off for that selected agent and override saved defaults without writing state.
+- Toggle unsuffixed models with `/cursor-fast`; do not persist a new default while a virtual fast alias is selected.
+- Store per-session and global per-base-model preferences for unsuffixed models.
+- When calling `Agent.create()` or `agent.send()`, include the selected `fast` value in Cursor model params.
 - Show `fast` through `ctx.ui.setStatus()` when enabled.
-- Support a first-pass CLI flag, `--cursor-fast`, to force fast mode for one run when the selected model supports it.
+- Keep `--cursor-fast` and `--cursor-no-fast` as explicit process-level force flags.
 
 Reason:
 
 - `fast` does not affect pi `contextWindow`, thinking levels, or input support.
-- Registering fast/non-fast variants would make `--list-models` noisy without improving native pi behavior.
+- The virtual aliases trade small `--list-models` noise for per-agent selection that works with subagents and dynamic workflows, where mutating a shared global fast default is the wrong abstraction.
 
 Status example:
 
@@ -521,7 +525,7 @@ Reason:
 - pi supports one final `:<thinking>` suffix.
 - Cursor-only parameters are not generic pi CLI parameters.
 - Context is already represented by the registered pi model ID.
-- `fast` is controlled by saved extension defaults or the first-pass `--cursor-fast` extension flag.
+- `fast` is controlled by saved extension defaults, `:fast` / `:slow` virtual model aliases, or the `--cursor-fast` / `--cursor-no-fast` extension flags.
 - Cursor SDK `mode` is controlled by `/cursor-mode` session state or the first-pass `--cursor-mode` extension flag; it is never encoded in `--model`.
 
 For print mode:
@@ -529,7 +533,7 @@ For print mode:
 - no keybindings,
 - use selected context model variant,
 - use `--thinking` or `:medium` for reasoning/effort,
-- use saved global `fast` defaults unless `--cursor-fast` is present,
+- use saved global `fast` defaults unless a virtual `:fast` / `:slow` model alias or force flag is present,
 - use Cursor SDK `agent` mode unless `/cursor-mode` session state or `--cursor-mode` overrides it.
 
 Fast flag example:

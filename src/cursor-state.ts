@@ -138,6 +138,10 @@ function getFastPreferenceModelId(metadata: NonNullable<ReturnType<typeof getCur
 	return metadata.selectionModelId || metadata.baseModelId;
 }
 
+function getVirtualFastBaseModelId(modelId: string): string {
+	return modelId.replace(/:(?:fast|slow)$/, "");
+}
+
 function getStoredFastPreference(metadata: NonNullable<ReturnType<typeof getCursorModelMetadata>>): boolean | undefined {
 	const preferenceModelId = getFastPreferenceModelId(metadata);
 	return (
@@ -153,6 +157,7 @@ function getEffectiveFast(modelId: string): boolean | undefined {
 	if (!metadata?.supportsFast) return undefined;
 	if (cliForceNoFast) return false;
 	if (cliForceFast) return true;
+	if (metadata.fastOverride !== undefined) return metadata.fastOverride;
 	return getStoredFastPreference(metadata) ?? metadata.defaultFast;
 }
 
@@ -342,6 +347,14 @@ export function registerCursorRuntimeControls(pi: CursorRuntimeControlsExtension
 			}
 			if (cliForceFast) {
 				ctx.ui.notify("Cursor fast is forced by --cursor-fast", "info");
+				return;
+			}
+			if (metadata.fastOverride !== undefined) {
+				const state = metadata.fastOverride ? "enabled" : "disabled";
+				ctx.ui.notify(
+					`Cursor fast is fixed ${state} by selected model ${metadata.piModelId}; choose ${getVirtualFastBaseModelId(metadata.piModelId)} to use /cursor-fast preferences`,
+					"info",
+				);
 				return;
 			}
 

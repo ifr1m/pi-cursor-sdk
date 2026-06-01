@@ -383,10 +383,20 @@ describe("discoverModels", () => {
 			},
 		]);
 		const models = await discoverModels();
-		expect(models.map((model) => model.id)).toEqual(["gpt-5.4@272k", "gpt-5.4@1m"]);
+		expect(models.map((model) => model.id)).toEqual([
+			"gpt-5.4@272k",
+			"gpt-5.4@272k:fast",
+			"gpt-5.4@272k:slow",
+			"gpt-5.4@1m",
+			"gpt-5.4@1m:fast",
+			"gpt-5.4@1m:slow",
+		]);
 		expect(models[0].contextWindow).toBe(272000);
-		expect(models[1].contextWindow).toBe(1000000);
+		expect(models[1].contextWindow).toBe(272000);
+		expect(models[3].contextWindow).toBe(1000000);
 		expect(models[0].name).toBe("GPT-5.4 @ 272k");
+		expect(models[1].name).toBe("GPT-5.4 (fast) @ 272k");
+		expect(models[2].name).toBe("GPT-5.4 (slow) @ 272k");
 
 		const metadata = getCursorModelMetadata("gpt-5.4@272k");
 		expect(metadata).toMatchObject({
@@ -400,9 +410,39 @@ describe("discoverModels", () => {
 			{ id: "reasoning", value: "medium" },
 			{ id: "fast", value: "false" },
 		]);
+		expect(getCursorModelMetadata("gpt-5.4@272k:fast")).toMatchObject({
+			baseModelId: "gpt-5.4",
+			selectionModelId: "gpt-5.4",
+			context: "272k",
+			fastOverride: true,
+			defaultFast: true,
+		});
+		expect(getCursorModelMetadata("gpt-5.4@272k:slow")).toMatchObject({
+			baseModelId: "gpt-5.4",
+			selectionModelId: "gpt-5.4",
+			context: "272k",
+			fastOverride: false,
+			defaultFast: false,
+		});
+		expect(buildCursorModelSelection("gpt-5.4@272k:fast", "medium")).toEqual({
+			id: "gpt-5.4",
+			params: [
+				{ id: "context", value: "272k" },
+				{ id: "reasoning", value: "medium" },
+				{ id: "fast", value: "true" },
+			],
+		});
+		expect(buildCursorModelSelection("gpt-5.4@272k:slow", "medium")).toEqual({
+			id: "gpt-5.4",
+			params: [
+				{ id: "context", value: "272k" },
+				{ id: "reasoning", value: "medium" },
+				{ id: "fast", value: "false" },
+			],
+		});
 	});
 
-	it("does not encode reasoning, effort, thinking, or fast into pi model IDs", async () => {
+	it("does not encode reasoning, effort, or thinking into pi model IDs", async () => {
 		process.env.CURSOR_API_KEY = "test-key-123";
 		mockedList.mockResolvedValueOnce([
 			{
@@ -425,7 +465,7 @@ describe("discoverModels", () => {
 			},
 		]);
 		const models = await discoverModels();
-		expect(models[0].id).toBe("gpt-5.3-codex");
+		expect(models.map((model) => model.id)).toEqual(["gpt-5.3-codex", "gpt-5.3-codex:fast", "gpt-5.3-codex:slow"]);
 		expect(getCursorModelMetadata("gpt-5.3-codex")?.defaultParams).toEqual([
 			{ id: "reasoning", value: "high" },
 			{ id: "fast", value: "true" },
@@ -455,6 +495,8 @@ describe("discoverModels", () => {
 
 			expect(models.map((model) => [model.id, model.contextWindow])).toEqual([
 				["composer-2", 200000],
+				["composer-2:fast", 200000],
+				["composer-2:slow", 200000],
 				["new-sdk-model", 200000],
 			]);
 		} finally {
@@ -527,8 +569,11 @@ describe("discoverModels", () => {
 
 			const models = await discoverModels();
 
-			expect(models[0].id).toBe("composer-2");
-			expect(models[0].contextWindow).toBe(201000);
+			expect(models.map((model) => [model.id, model.contextWindow])).toEqual([
+				["composer-2", 201000],
+				["composer-2:fast", 201000],
+				["composer-2:slow", 201000],
+			]);
 		} finally {
 			rmSync(tmpAgentDir, { recursive: true, force: true });
 		}
