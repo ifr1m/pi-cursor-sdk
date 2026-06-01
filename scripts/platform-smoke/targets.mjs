@@ -63,8 +63,7 @@ function stopLeaseCheck(stopResult) {
 	};
 }
 
-export function createLeaseCleanupFailureResult(config, targetName, leaseId, stopResult) {
-	const runId = makeRunId();
+export function createLeaseCleanupResult(config, targetName, leaseId, stopResult, runId = makeRunId()) {
 	const suiteName = "lease-cleanup";
 	const suiteDir = createSuiteDir(config.artifactRoot, runId, targetName, suiteName);
 	writeFileSync(resolve(suiteDir, "target.json"), JSON.stringify({
@@ -91,7 +90,11 @@ export function createLeaseCleanupFailureResult(config, targetName, leaseId, sto
 			"crabbox.stop.stdout.txt", "crabbox.stop.stderr.txt", "crabbox.stop.exit-code.txt", "assertions.json",
 		],
 	);
-	return { ok: false, suiteDir, assertions };
+	return { ok: assertions.ok, suiteDir, assertions };
+}
+
+export function createLeaseCleanupFailureResult(config, targetName, leaseId, stopResult) {
+	return { ...createLeaseCleanupResult(config, targetName, leaseId, stopResult), ok: false };
 }
 
 /**
@@ -101,7 +104,7 @@ export function createLeaseCleanupFailureResult(config, targetName, leaseId, sto
  */
 export async function runTargetSuite(config, targetName, suiteName, leaseSession) {
 	const scenario = getScenario(suiteName);
-	const runId = makeRunId();
+	const runId = leaseSession?.runId ?? makeRunId();
 	const suiteDir = createSuiteDir(config.artifactRoot, runId, targetName, suiteName);
 	const platform = platformFor(targetName);
 	const slug = `${config.packageName ?? "pi-cursor-sdk"}-${targetName}`;
@@ -147,11 +150,12 @@ export async function runTargetSuite(config, targetName, suiteName, leaseSession
  */
 export async function runTargetSuites(config, targetName, suiteNames) {
 	const slug = `${config.packageName ?? "pi-cursor-sdk"}-${targetName}`;
+	const runId = makeRunId();
+	console.log(`  targetRunId: ${runId}`);
 	console.log(`  warmup ${targetName}...`);
 	const warmup = await warmupLease(targetName, slug, config);
 	if (!warmup.ok) {
 		const suiteName = suiteNames[0] ?? "platform-build";
-		const runId = makeRunId();
 		const suiteDir = createSuiteDir(config.artifactRoot, runId, targetName, suiteName);
 		writeFileSync(resolve(suiteDir, "target.json"), JSON.stringify({
 			targetName, platform: platformFor(targetName), slug, runId,
@@ -175,7 +179,7 @@ export async function runTargetSuites(config, targetName, suiteNames) {
 	try {
 		for (const suiteName of suiteNames) {
 			console.log(`  Suite: ${suiteName}`);
-			const result = await runTargetSuite(config, targetName, suiteName, { ...warmup, sync, livePrepDir });
+			const result = await runTargetSuite(config, targetName, suiteName, { ...warmup, sync, livePrepDir, runId });
 			results.push(result);
 			sync = false;
 			if (!result.ok) break;
@@ -184,8 +188,8 @@ export async function runTargetSuites(config, targetName, suiteNames) {
 		console.log(`  stopping lease ${warmup.leaseId}...`);
 		stopResult = await stopLease(targetName, warmup.leaseId, config);
 	}
-	if (stopResult?.code !== 0) {
-		results.push(createLeaseCleanupFailureResult(config, targetName, warmup.leaseId, stopResult));
+	if (stopResult) {
+		results.push(createLeaseCleanupResult(config, targetName, warmup.leaseId, stopResult, runId));
 	}
 	return { ok: results.every((result) => result.ok), results };
 }
@@ -264,6 +268,7 @@ async function executePlatformBuild(config, targetName, suiteDir, slug, platform
 	const nodeMajor = Number(stdout.match(/PLATFORM_NODE_VERSION=v?(\d+)\./)?.[1] ?? 0);
 	const nodeVersionOk = nodeMajor >= (config.nodeValidationMajor ?? 24);
 	const npmCiOk = /PLATFORM_NPM_CI_EXIT=0/.test(stdout);
+	const checkPlatformSmokeOk = /PLATFORM_CHECK_PLATFORM_SMOKE_EXIT=0/.test(stdout);
 	const npmTestOk = /PLATFORM_NPM_TEST_EXIT=0/.test(stdout);
 	const typecheckOk = /PLATFORM_TYPECHECK_EXIT=0/.test(stdout);
 	const npmPackOk = /PLATFORM_NPM_PACK_EXIT=0/.test(stdout) && /PLATFORM_PACKED_TARBALL=\S+/.test(stdout);
@@ -281,6 +286,7 @@ async function executePlatformBuild(config, targetName, suiteDir, slug, platform
 		{ id: "build-marker", fn: () => markerOk },
 		{ id: "node-version", fn: () => nodeVersionOk },
 		{ id: "npm-ci", fn: () => npmCiOk },
+		{ id: "check-platform-smoke", fn: () => checkPlatformSmokeOk },
 		{ id: "npm-test", fn: () => npmTestOk },
 		{ id: "typecheck", fn: () => typecheckOk },
 		{ id: "npm-pack", fn: () => npmPackOk },
@@ -301,6 +307,12 @@ async function executePlatformBuild(config, targetName, suiteDir, slug, platform
 		"summary.json", "target.json", "suite.json",
 		"command.txt", "exit-code.txt",
 		"crabbox.stdout.txt", "crabbox.stderr.txt", "crabbox.timing.json",
+		"node-version.txt", "npm-version.txt",
+		"npm-ci.stdout.txt", "npm-ci.stderr.txt",
+		"check-platform-smoke.stdout.txt", "check-platform-smoke.stderr.txt",
+		"npm-test.stdout.txt", "npm-test.stderr.txt",
+		"typecheck.stdout.txt", "typecheck.stderr.txt",
+		"npm-pack.stdout.txt", "npm-pack.stderr.txt",
 		"packed-tarball.txt", "packed-node-install.stdout.txt", "packed-node-install.stderr.txt",
 		"pi-install.stdout.txt", "pi-install.stderr.txt",
 		"pi-list.stdout.txt", "pi-list.stderr.txt",
@@ -341,6 +353,18 @@ function markerValue(text, name) {
 }
 
 function writePlatformBuildExtracts(suiteDir, stdout) {
+	writeRedactedFile(resolve(suiteDir, "node-version.txt"), `${markerValue(stdout, "PLATFORM_NODE_VERSION")}\n`);
+	writeRedactedFile(resolve(suiteDir, "npm-version.txt"), `${markerValue(stdout, "PLATFORM_NPM_VERSION")}\n`);
+	writeRedactedFile(resolve(suiteDir, "npm-ci.stdout.txt"), section(stdout, "NPM_CI_STDOUT"));
+	writeRedactedFile(resolve(suiteDir, "npm-ci.stderr.txt"), section(stdout, "NPM_CI_STDERR"));
+	writeRedactedFile(resolve(suiteDir, "check-platform-smoke.stdout.txt"), section(stdout, "CHECK_PLATFORM_SMOKE_STDOUT"));
+	writeRedactedFile(resolve(suiteDir, "check-platform-smoke.stderr.txt"), section(stdout, "CHECK_PLATFORM_SMOKE_STDERR"));
+	writeRedactedFile(resolve(suiteDir, "npm-test.stdout.txt"), section(stdout, "NPM_TEST_STDOUT"));
+	writeRedactedFile(resolve(suiteDir, "npm-test.stderr.txt"), section(stdout, "NPM_TEST_STDERR"));
+	writeRedactedFile(resolve(suiteDir, "typecheck.stdout.txt"), section(stdout, "TYPECHECK_STDOUT"));
+	writeRedactedFile(resolve(suiteDir, "typecheck.stderr.txt"), section(stdout, "TYPECHECK_STDERR"));
+	writeRedactedFile(resolve(suiteDir, "npm-pack.stdout.txt"), section(stdout, "NPM_PACK_STDOUT"));
+	writeRedactedFile(resolve(suiteDir, "npm-pack.stderr.txt"), section(stdout, "NPM_PACK_STDERR"));
 	writeRedactedFile(resolve(suiteDir, "packed-tarball.txt"), `${markerValue(stdout, "PLATFORM_PACKED_TARBALL")}\n`);
 	writeRedactedFile(resolve(suiteDir, "packed-node-install.stdout.txt"), section(stdout, "PACKED_NODE_INSTALL_STDOUT"));
 	writeRedactedFile(resolve(suiteDir, "packed-node-install.stderr.txt"), section(stdout, "PACKED_NODE_INSTALL_STDERR"));
@@ -378,32 +402,52 @@ export function buildPlatformBuildCommand(targetName, packageName = "pi-cursor-s
 		lines.push('echo "PLATFORM_PI_PROJECT=$PI_PROJECT"');
 		lines.push("");
 		lines.push('NODE_VERSION=$(node --version)');
+		lines.push('NPM_VERSION=$(npm --version)');
 		lines.push('NODE_MAJOR=${NODE_VERSION#v}');
 		lines.push('NODE_MAJOR=${NODE_MAJOR%%.*}');
+		lines.push('printf "%s\\n" "$NODE_VERSION" > "$PACK_DIR/node-version.txt"');
+		lines.push('printf "%s\\n" "$NPM_VERSION" > "$PACK_DIR/npm-version.txt"');
 		lines.push('echo "PLATFORM_NODE_VERSION=$NODE_VERSION"');
+		lines.push('echo "PLATFORM_NPM_VERSION=$NPM_VERSION"');
 		lines.push(`if [ "$NODE_MAJOR" -ge ${nodeValidationMajor} ]; then NODE_VERSION_EXIT=0; else NODE_VERSION_EXIT=1; fi`);
 		lines.push('echo "PLATFORM_NODE_VERSION_EXIT=$NODE_VERSION_EXIT"');
+		lines.push(...posixSection("NODE_VERSION_STDOUT", 'cat "$PACK_DIR/node-version.txt"'));
+		lines.push(...posixSection("NPM_VERSION_STDOUT", 'cat "$PACK_DIR/npm-version.txt"'));
 		lines.push('');
 		lines.push('echo "=== npm ci ==="');
-		lines.push("npm ci 2>&1");
+		lines.push('npm ci >"$PACK_DIR/npm-ci.stdout.txt" 2>"$PACK_DIR/npm-ci.stderr.txt"');
 		lines.push("CI_EXIT=$?");
 		lines.push('echo "PLATFORM_NPM_CI_EXIT=$CI_EXIT"');
+		lines.push(...posixSection("NPM_CI_STDOUT", 'cat "$PACK_DIR/npm-ci.stdout.txt" 2>/dev/null || true'));
+		lines.push(...posixSection("NPM_CI_STDERR", 'cat "$PACK_DIR/npm-ci.stderr.txt" 2>/dev/null || true'));
+		lines.push("");
+		lines.push('echo "=== check:platform-smoke ==="');
+		lines.push('PI_CURSOR_SKIP_RELEASE_VERSION_GUARD=1 npm run check:platform-smoke >"$PACK_DIR/check-platform-smoke.stdout.txt" 2>"$PACK_DIR/check-platform-smoke.stderr.txt"');
+		lines.push("CHECK_PLATFORM_SMOKE_EXIT=$?");
+		lines.push('echo "PLATFORM_CHECK_PLATFORM_SMOKE_EXIT=$CHECK_PLATFORM_SMOKE_EXIT"');
+		lines.push(...posixSection("CHECK_PLATFORM_SMOKE_STDOUT", 'cat "$PACK_DIR/check-platform-smoke.stdout.txt" 2>/dev/null || true'));
+		lines.push(...posixSection("CHECK_PLATFORM_SMOKE_STDERR", 'cat "$PACK_DIR/check-platform-smoke.stderr.txt" 2>/dev/null || true'));
 		lines.push("");
 		lines.push('echo "=== npm test ==="');
-		lines.push("PI_CURSOR_SKIP_RELEASE_VERSION_GUARD=1 npm test 2>&1");
+		lines.push('PI_CURSOR_SKIP_RELEASE_VERSION_GUARD=1 npm test >"$PACK_DIR/npm-test.stdout.txt" 2>"$PACK_DIR/npm-test.stderr.txt"');
 		lines.push("TEST_EXIT=$?");
 		lines.push('echo "PLATFORM_NPM_TEST_EXIT=$TEST_EXIT"');
+		lines.push(...posixSection("NPM_TEST_STDOUT", 'cat "$PACK_DIR/npm-test.stdout.txt" 2>/dev/null || true'));
+		lines.push(...posixSection("NPM_TEST_STDERR", 'cat "$PACK_DIR/npm-test.stderr.txt" 2>/dev/null || true'));
 		lines.push("");
 		lines.push('echo "=== typecheck ==="');
-		lines.push("npm run typecheck 2>&1");
+		lines.push('npm run typecheck >"$PACK_DIR/typecheck.stdout.txt" 2>"$PACK_DIR/typecheck.stderr.txt"');
 		lines.push("TC_EXIT=$?");
 		lines.push('echo "PLATFORM_TYPECHECK_EXIT=$TC_EXIT"');
+		lines.push(...posixSection("TYPECHECK_STDOUT", 'cat "$PACK_DIR/typecheck.stdout.txt" 2>/dev/null || true'));
+		lines.push(...posixSection("TYPECHECK_STDERR", 'cat "$PACK_DIR/typecheck.stderr.txt" 2>/dev/null || true'));
 		lines.push("");
 		lines.push('echo "=== npm pack ==="');
-		lines.push('PACK_TARBALL=$(npm pack --silent 2>"$PACK_DIR/npm-pack.stderr.txt")');
+		lines.push('PACK_TARBALL=$(npm pack --silent >"$PACK_DIR/npm-pack.stdout.txt" 2>"$PACK_DIR/npm-pack.stderr.txt" && cat "$PACK_DIR/npm-pack.stdout.txt")');
 		lines.push("PACK_EXIT=$?");
-		lines.push('cat "$PACK_DIR/npm-pack.stderr.txt"');
 		lines.push('echo "PLATFORM_NPM_PACK_EXIT=$PACK_EXIT"');
+		lines.push(...posixSection("NPM_PACK_STDOUT", 'cat "$PACK_DIR/npm-pack.stdout.txt" 2>/dev/null || true'));
+		lines.push(...posixSection("NPM_PACK_STDERR", 'cat "$PACK_DIR/npm-pack.stderr.txt" 2>/dev/null || true'));
 		lines.push('if [ -n "$PACK_TARBALL" ] && [ -f "$PACK_TARBALL" ]; then mv "$PACK_TARBALL" "$PACK_DIR/$PACK_TARBALL"; fi');
 		lines.push('echo "PLATFORM_PACKED_TARBALL=$PACK_TARBALL"');
 		lines.push('printf "%s\\n" "$PACK_TARBALL" > "$PACK_DIR/packed-tarball.txt"');
@@ -436,9 +480,9 @@ export function buildPlatformBuildCommand(targetName, packageName = "pi-cursor-s
 		lines.push(...posixSection("PI_LIST_STDOUT", 'cat "$PACK_DIR/pi-list.stdout.txt" 2>/dev/null || true'));
 		lines.push(...posixSection("PI_LIST_STDERR", 'cat "$PACK_DIR/pi-list.stderr.txt" 2>/dev/null || true'));
 		lines.push("");
-		lines.push('echo "node=$NODE_VERSION_EXIT ci=$CI_EXIT test=$TEST_EXIT typecheck=$TC_EXIT pack=$PACK_EXIT fixture=$FIXTURE_EXIT packedNodeInstall=$PACKED_NODE_INSTALL_EXIT install=$PI_INSTALL_EXIT list=$PI_LIST_EXIT"');
-		lines.push('if [ "$NODE_VERSION_EXIT" -ne 0 ] || [ "$CI_EXIT" -ne 0 ] || [ "$TEST_EXIT" -ne 0 ] || [ "$TC_EXIT" -ne 0 ] || [ "$PACK_EXIT" -ne 0 ] || [ "$FIXTURE_EXIT" -ne 0 ] || [ "$PACKED_NODE_INSTALL_EXIT" -ne 0 ] || [ "$PI_INSTALL_EXIT" -ne 0 ] || [ "$PI_LIST_EXIT" -ne 0 ]; then');
-		lines.push('  echo "PLATFORM_BUILD_FAILED: node=$NODE_VERSION_EXIT ci=$CI_EXIT test=$TEST_EXIT typecheck=$TC_EXIT pack=$PACK_EXIT fixture=$FIXTURE_EXIT packedNodeInstall=$PACKED_NODE_INSTALL_EXIT install=$PI_INSTALL_EXIT list=$PI_LIST_EXIT"');
+		lines.push('echo "node=$NODE_VERSION_EXIT ci=$CI_EXIT checkPlatformSmoke=$CHECK_PLATFORM_SMOKE_EXIT test=$TEST_EXIT typecheck=$TC_EXIT pack=$PACK_EXIT fixture=$FIXTURE_EXIT packedNodeInstall=$PACKED_NODE_INSTALL_EXIT install=$PI_INSTALL_EXIT list=$PI_LIST_EXIT"');
+		lines.push('if [ "$NODE_VERSION_EXIT" -ne 0 ] || [ "$CI_EXIT" -ne 0 ] || [ "$CHECK_PLATFORM_SMOKE_EXIT" -ne 0 ] || [ "$TEST_EXIT" -ne 0 ] || [ "$TC_EXIT" -ne 0 ] || [ "$PACK_EXIT" -ne 0 ] || [ "$FIXTURE_EXIT" -ne 0 ] || [ "$PACKED_NODE_INSTALL_EXIT" -ne 0 ] || [ "$PI_INSTALL_EXIT" -ne 0 ] || [ "$PI_LIST_EXIT" -ne 0 ]; then');
+		lines.push('  echo "PLATFORM_BUILD_FAILED: node=$NODE_VERSION_EXIT ci=$CI_EXIT checkPlatformSmoke=$CHECK_PLATFORM_SMOKE_EXIT test=$TEST_EXIT typecheck=$TC_EXIT pack=$PACK_EXIT fixture=$FIXTURE_EXIT packedNodeInstall=$PACKED_NODE_INSTALL_EXIT install=$PI_INSTALL_EXIT list=$PI_LIST_EXIT"');
 		lines.push("  exit 1");
 		lines.push("fi");
 		lines.push('echo "PLATFORM_BUILD_OK"');

@@ -13,17 +13,17 @@ Crabbox is the required platform smoke runner for `pi-cursor-sdk` releases that 
 Inner-loop checks remain useful, but they are not release gates:
 
 ```bash
-npm test
-npm run typecheck
+npm run verify
 npm pack --dry-run
 ```
 
 The required release gate is exactly:
 
 ```bash
-npm run smoke:platform:doctor
 npm run smoke:platform:all
 ```
+
+`smoke:platform:all` runs `smoke:platform:doctor` first and only starts the target matrix after doctor passes. Maintainers may still run `npm run smoke:platform:doctor` by itself for setup diagnosis.
 
 
 Per-target commands exist for diagnosis and iteration. They are not additional release-gate commands because requiring each per-target command plus `all` doubles Cursor token use.
@@ -94,7 +94,7 @@ Rendering is host-side. Targets capture the real ANSI stream; the macOS host ren
 
 ## Target session model
 
-Each target opens one Crabbox target session, syncs once, runs all suites for that target, collects artifacts, and stops/releases the target. The release-gate entrypoint runs required targets concurrently; each target still runs its own suites in order and fails fast within that target. Platform smoke disables Crabbox git-seed sync (`CRABBOX_SYNC_GIT_SEED=false`) so every run tests the current local checkout and uncommitted smoke-runner changes rather than a remote Git seed.
+Each target opens one Crabbox target session, syncs once, runs all suites for that target under one coherent target run id, collects artifacts, and stops/releases the target. The release-gate entrypoint runs required targets concurrently; each target still runs its own suites in order and fails fast within that target. Platform smoke disables Crabbox git-seed sync (`CRABBOX_SYNC_GIT_SEED=false`) so every run tests the current local checkout and uncommitted smoke-runner changes rather than a remote Git seed.
 
 ```text
 start target session
@@ -108,6 +108,7 @@ start target session
   run cursor-abort-cleanup
   download artifacts after every suite
   stop target
+  write lease-cleanup stop evidence
 end target session
 ```
 
@@ -156,16 +157,17 @@ Package scripts:
 
 ```json
 {
+  "check:platform-smoke": "node --check <platform smoke scripts> && vitest run test/smoke-tooling.test.ts",
   "smoke:platform": "node scripts/platform-smoke.mjs",
   "smoke:platform:doctor": "node scripts/platform-smoke.mjs doctor",
   "smoke:platform:macos": "node scripts/platform-smoke.mjs run --target macos",
   "smoke:platform:ubuntu": "node scripts/platform-smoke.mjs run --target ubuntu",
   "smoke:platform:windows-native": "node scripts/platform-smoke.mjs run --target windows-native",
-  "smoke:platform:all": "node scripts/platform-smoke.mjs run --target macos,ubuntu,windows-native"
+  "smoke:platform:all": "npm run smoke:platform:doctor && node scripts/platform-smoke.mjs run --target macos,ubuntu,windows-native"
 }
 ```
 
-Add `.artifacts/` to `.gitignore`.
+Add `.artifacts/`, `.crabbox/`, and `.platform-smoke-runs/` to `.gitignore`.
 
 ## Configuration source
 
@@ -306,7 +308,7 @@ tar --version
 
 ## Doctor command
 
-`npm run smoke:platform:doctor` runs before any token-spending suite.
+`npm run smoke:platform:doctor` runs before any token-spending suite. The canonical `npm run smoke:platform:all` script enforces doctor first before it starts macOS, Ubuntu, or Windows suites.
 
 Doctor checks:
 
@@ -316,17 +318,17 @@ Doctor checks:
 4. Crabbox provider registry includes `local-container`, `ssh`, and `parallels`.
 5. `crabbox doctor --provider local-container --json` passes.
 6. Docker runtime is active.
-7. macOS SSH localhost probe passes.
+7. macOS SSH localhost probe passes and sees Node, npm, Git, rsync, and tar.
 8. `prlctl` exists.
 9. Windows source VM exists.
 10. Windows source snapshot exists.
-11. Windows source VM is powered off/forkable.
-12. Windows native probe passes.
+11. Windows source VM is stopped and the configured snapshot is power-off/forkable for linked clones.
+12. Disposable Windows native clone probe passes and sees Node, npm, Git, tar, and the configured SSH user.
 13. Node 24+ is available on every target.
 14. npm is available on every target.
 15. `git` is available on every target.
 16. `rsync` is available on macOS and Ubuntu.
-17. `tar` is available on native Windows.
+17. `tar` is available on macOS and native Windows.
 18. `node-pty` self-test passes on every target.
 19. Target pi tool probe proves the shell tool accepts platform-rendered commands on every target.
 20. Host-side xterm/Playwright render self-test passes.
@@ -355,13 +357,14 @@ Per target, `platform-build` must:
 
 1. Record `node --version` and assert the target Node major is at least `nodeValidationMajor`.
 2. Run `npm ci` in `extensionSourceRoot`.
-3. Run `npm test` on the target with only the target-local release-tag guard bypassed, because Crabbox worktrees may not have release tags.
-4. Run `npm run typecheck`.
-5. Run `npm pack`.
-6. Create `testWorkspaceRoot` with deterministic fixture files copied from the repo.
-7. Create `piProjectRoot`.
-8. Install the packed tarball into `piProjectRoot` with `pi install -l <tarball>`.
-9. Run `pi list` and assert the installed package points at the packed tarball/install, not `-e .`.
+3. Run `npm run check:platform-smoke` on the target so smoke harness syntax and invariant tests fail before live Cursor calls, with only the target-local release-tag guard bypassed because Crabbox worktrees may not have release tags.
+4. Run `npm test` on the target with the same target-local release-tag guard bypass.
+5. Run `npm run typecheck`.
+6. Run `npm pack`.
+7. Create `testWorkspaceRoot` with deterministic fixture files copied from the repo.
+8. Create `piProjectRoot`.
+9. Install the packed tarball into `piProjectRoot` with `pi install -l <tarball>`.
+10. Run `pi list` and assert the installed package points at the packed tarball/install, not `-e .`.
 
 ## Required suites
 
@@ -375,7 +378,7 @@ Purpose:
 - fail before spending Cursor tokens;
 - produce the packed extension used by later suites.
 
-The host `smoke:platform:all` entrypoint enforces the release-version reuse guard before running targets, using local git tags and `package.json`. Required artifacts include the recorded target Node version, stdout/stderr for `npm ci`, `npm test`, `npm run typecheck`, `npm pack`, `pi install`, and `pi list`, plus `packed-tarball.txt`, `summary.json`, `artifact-manifest.json`, `assertions.json`, and `failures.md`.
+The host `smoke:platform:all` entrypoint enforces doctor first and then the release-version reuse guard before running targets, using local git tags and `package.json`. Required artifacts include `node-version.txt`, `npm-version.txt`, stdout/stderr for `npm ci`, `npm run check:platform-smoke`, `npm test`, `npm run typecheck`, `npm pack`, packed npm install, `pi install`, and `pi list`, plus `packed-tarball.txt`, `summary.json`, `artifact-manifest.json`, `assertions.json`, and `failures.md` on failed assertions.
 
 ### `cursor-native-visual-matrix`
 
@@ -594,7 +597,7 @@ Maximum per target: `3` Cursor invocations.
 
 Maximum full gate: `12` Cursor invocations.
 
-The merge gate is `doctor + all` to preserve this budget. No suite adds a new Cursor invocation without updating this plan and `platform-smoke.config.mjs`.
+The merge gate is `npm run smoke:platform:all`; that script runs doctor first and then the matrix to preserve this budget. No suite adds a new Cursor invocation without updating this plan and `platform-smoke.config.mjs`.
 
 ## Artifact contract
 
@@ -623,8 +626,44 @@ crabbox.stdout.txt
 crabbox.stderr.txt
 crabbox.timing.json
 assertions.json
-failures.md
+failures.md                  # only when assertions fail
 ```
+
+Required `platform-build` artifacts:
+
+```text
+node-version.txt
+npm-version.txt
+npm-ci.stdout.txt
+npm-ci.stderr.txt
+check-platform-smoke.stdout.txt
+check-platform-smoke.stderr.txt
+npm-test.stdout.txt
+npm-test.stderr.txt
+typecheck.stdout.txt
+typecheck.stderr.txt
+npm-pack.stdout.txt
+npm-pack.stderr.txt
+packed-tarball.txt
+packed-node-install.stdout.txt
+packed-node-install.stderr.txt
+pi-install.stdout.txt
+pi-install.stderr.txt
+pi-list.stdout.txt
+pi-list.stderr.txt
+```
+
+Every target-session release run also writes a `lease-cleanup/` suite directory under the same target run id:
+
+```text
+lease-cleanup/summary.json
+lease-cleanup/assertions.json
+lease-cleanup/crabbox.stop.stdout.txt
+lease-cleanup/crabbox.stop.stderr.txt
+lease-cleanup/crabbox.stop.exit-code.txt
+```
+
+A stop failure is a failed target result, even when all functional suites passed.
 
 Required PTY artifacts for live suites:
 
@@ -900,20 +939,19 @@ Update:
 
 They must state:
 
-- required release gate is `npm run smoke:platform:doctor && npm run smoke:platform:all`;
+- required release gate is `npm run smoke:platform:all`;
 - legacy smoke scripts are inner-loop/debug helpers;
 - `tmux` visual smoke is not the canonical cross-platform gate.
 
 ## Release bar
 
-A provider/runtime release is ready only after this exact command sequence passes on the maintainer machine:
+A provider/runtime release is ready only after this exact command passes on the maintainer machine:
 
 ```bash
-npm run smoke:platform:doctor
 npm run smoke:platform:all
 ```
 
-The run must include all required targets and suites in one full gate execution.
+The command runs doctor first and then all required targets and suites in one full gate execution.
 
 ## Gate replacement criteria
 

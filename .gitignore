@@ -25,6 +25,7 @@ prompt-exports/
 
 # Platform smoke artifacts (do not commit)
 .artifacts/
+.platform-smoke-runs/
 
 # Crabbox local lease metadata (do not commit)
 .crabbox/

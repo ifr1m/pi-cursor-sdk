@@ -17,6 +17,18 @@ function warn(label) { console.log(`  \u26a0 ${label}`); }
 function fail(label) { console.error(`  \u2717 ${label}`); failures++; }
 function env(name) { return process.env[name] ?? ""; }
 
+function versionAtLeast(actual, minimum) {
+	const actualParts = String(actual ?? "").split(".").map((part) => Number.parseInt(part, 10));
+	const minimumParts = String(minimum ?? "").split(".").map((part) => Number.parseInt(part, 10));
+	for (let index = 0; index < Math.max(actualParts.length, minimumParts.length); index++) {
+		const actualPart = Number.isFinite(actualParts[index]) ? actualParts[index] : 0;
+		const minimumPart = Number.isFinite(minimumParts[index]) ? minimumParts[index] : 0;
+		if (actualPart > minimumPart) return true;
+		if (actualPart < minimumPart) return false;
+	}
+	return true;
+}
+
 function safeChildEnv(extra = {}) {
 	const childEnv = { ...process.env, ...extra };
 	delete childEnv.CURSOR_API_KEY;
@@ -78,14 +90,20 @@ function crabbox(cbox, args, timeout = 300_000) {
 function disposableWindowsSshProbe(cbox) {
 	const slug = "pi-cursor-sdk-doctor-windows";
 	const baseArgs = windowsCrabboxBaseArgs();
-	const warm = crabbox(cbox, ["warmup", ...baseArgs, "--slug", slug, "--keep"], 300_000);
+	const warm = crabbox(cbox, ["warmup", ...baseArgs, "--slug", slug, "--keep", "--reclaim"], 300_000);
 	const leaseId = parseLeaseId(warm.stdout) ?? parseLeaseId(warm.stderr) ?? slug;
 	try {
 		if (!warm.ok) return { ok: false, message: `disposable Windows warmup failed: ${(warm.stderr || warm.stdout).slice(-500)}` };
-		const probeCommand = "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command \"node --version; npm --version; git --version; whoami\"";
+		const probeCommand = "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command 'Get-Command node,npm,git,tar -ErrorAction Stop | Out-Null; node --version; npm --version; git --version; tar --version | Select-Object -First 1; whoami'";
 		const run = crabbox(cbox, ["run", ...baseArgs, "--id", leaseId, "--no-sync", "--shell", probeCommand], 120_000);
 		if (!run.ok) return { ok: false, message: `disposable Windows probe failed: ${(run.stderr || run.stdout).slice(-500)}` };
-		return { ok: true, message: run.stdout.trim().split(/\r?\n/).slice(-4).join(" | ") };
+		const lines = run.stdout.trim().split(/\r?\n/).slice(-5);
+		if (!/^v\d+\./.test(lines[0] ?? "")) return { ok: false, message: `disposable Windows node probe missing or invalid: ${lines.join(" | ")}` };
+		if (!/^\d+\.\d+\./.test(lines[1] ?? "")) return { ok: false, message: `disposable Windows npm probe missing or invalid: ${lines.join(" | ")}` };
+		if (!/^git version/i.test(lines[2] ?? "")) return { ok: false, message: `disposable Windows git probe missing or invalid: ${lines.join(" | ")}` };
+		if (!/tar/i.test(lines[3] ?? "")) return { ok: false, message: `disposable Windows tar probe missing or invalid: ${lines.join(" | ")}` };
+		if (!(lines[4] ?? "").trim()) return { ok: false, message: `disposable Windows whoami probe missing: ${lines.join(" | ")}` };
+		return { ok: true, message: lines.join(" | ") };
 	} finally {
 		crabbox(cbox, ["stop", ...baseArgs, "--id", leaseId], 60_000);
 	}
@@ -143,13 +161,19 @@ function runChecks(config) {
 		const actualVersion = ver?.split("\n")[0]?.trim();
 		if (actualVersion) ok(`version: ${actualVersion}`);
 		const requiredVersion = config.requiredCrabbox?.version;
+		const minimumVersion = config.requiredCrabbox?.minVersion;
 		if (requiredVersion) {
 			if (!actualVersion) fail(`could not verify Crabbox version for ${cbox}`);
 			else if (actualVersion !== requiredVersion) fail(`Crabbox version mismatch: expected ${requiredVersion}, got ${actualVersion}`);
 			else ok(`required version: ${actualVersion}`);
 		}
+		if (!requiredVersion && minimumVersion) {
+			if (!actualVersion) fail(`could not verify Crabbox version for ${cbox}`);
+			else if (!versionAtLeast(actualVersion, minimumVersion)) fail(`Crabbox version ${actualVersion} is below required minimum ${minimumVersion}`);
+			else ok(`minimum version: ${actualVersion} >= ${minimumVersion}`);
+		}
 		const requiredCommit = config.requiredCrabbox?.commit;
-		if (!requiredVersion && requiredCommit) {
+		if (!requiredVersion && !minimumVersion && requiredCommit) {
 			const gitRoot = findGitRoot(dirname(cbox));
 			const actualCommit = gitRoot ? silent("git", ["-C", gitRoot, "rev-parse", "HEAD"]) : null;
 			if (!actualCommit) fail(`could not verify Crabbox source commit for ${cbox}`);
@@ -161,6 +185,16 @@ function runChecks(config) {
 	// ── Phase 3: Crabbox providers ──
 	console.log("\n── Crabbox providers ──");
 	if (cbox) {
+		const providerList = silent(cbox, ["providers"]);
+		if (providerList) {
+			for (const provider of ["ssh", "local-container", "parallels"]) {
+				new RegExp(`^${provider}$`, "m").test(providerList)
+					? ok(`provider listed: ${provider}`)
+					: fail(`crabbox providers missing required provider: ${provider}`);
+			}
+		} else {
+			fail("crabbox providers failed");
+		}
 		const ubuntuImage = env("PLATFORM_SMOKE_UBUNTU_IMAGE") || config?.ubuntuContainerImage || "cimg/node:24.16";
 		const lcDoc = silent(cbox, ["doctor", "--provider", "local-container", "--local-container-image", ubuntuImage, "--json"]);
 		if (lcDoc) {
@@ -168,12 +202,11 @@ function runChecks(config) {
 				const d = JSON.parse(lcDoc);
 				d.ok ? ok("local-container provider OK") : fail(`local-container: ${d.error ?? "not ok"}`);
 			} catch {
-				warn("could not parse crabbox doctor --json for local-container");
+				fail("could not parse crabbox doctor --json for local-container");
 			}
 		} else {
 			fail("crabbox doctor --provider local-container --json failed");
 		}
-		// ssh doctor needs host config; skip if host not reachable
 		const sshHost = env("PLATFORM_SMOKE_MAC_HOST") || "localhost";
 		const sshUser = env("PLATFORM_SMOKE_MAC_USER") || env("USER");
 		const sshRoot = env("PLATFORM_SMOKE_MAC_WORK_ROOT") || `/Users/${env("USER")}/crabbox/pi-cursor-sdk`;
@@ -186,12 +219,12 @@ function runChecks(config) {
 		if (sshDoc) {
 			try {
 				const d = JSON.parse(sshDoc);
-				d.ok ? ok("ssh (static) provider OK") : warn(`ssh doctor: ${d.checks?.find(c => c.status !== "ok")?.check ?? "some checks not ok"}`);
+				d.ok ? ok("ssh (static) provider OK") : fail(`ssh doctor: ${d.checks?.find(c => c.status !== "ok")?.check ?? "some checks not ok"}`);
 			} catch {
-				warn("could not parse crabbox ssh doctor JSON");
+				fail("could not parse crabbox ssh doctor JSON");
 			}
 		} else {
-			warn("crabbox ssh doctor skipped (no remote probe possible without host config)");
+			fail("crabbox doctor --provider ssh --target macos --json failed");
 		}
 	}
 
@@ -204,13 +237,15 @@ function runChecks(config) {
 	console.log("\n── macOS SSH ──");
 	const host = env("PLATFORM_SMOKE_MAC_HOST") || "localhost";
 	const user = env("PLATFORM_SMOKE_MAC_USER") || env("USER");
-	const sshOut = shell(`ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no ${user}@${host} 'whoami && node --version && npm --version && git --version'`);
+	const sshOut = shell(`ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no ${user}@${host} 'whoami && node --version && npm --version && git --version && rsync --version | head -1 && tar --version | head -1'`);
 	if (sshOut) {
 		const lines = sshOut.trim().split("\n");
 		ok(`SSH to ${host}: ${lines[0]}`);
-		if (lines[1]) ok(`remote Node ${lines[1]}`);
-		if (lines[2]) ok(`remote npm ${lines[2]}`);
-		if (lines[3]) ok(`remote ${lines[3]}`);
+		if (lines[1]) ok(`remote Node ${lines[1]}`); else fail("remote node probe missing output");
+		if (lines[2]) ok(`remote npm ${lines[2]}`); else fail("remote npm probe missing output");
+		if (lines[3]) ok(`remote ${lines[3]}`); else fail("remote git probe missing output");
+		if (lines[4]) ok(`remote ${lines[4]}`); else fail("remote rsync probe missing output");
+		if (lines[5]) ok(`remote ${lines[5]}`); else fail("remote tar probe missing output");
 	} else {
 		fail(`SSH to ${host} failed`);
 	}
@@ -232,18 +267,23 @@ function runChecks(config) {
 				if (status === "stopped") {
 					ok(`VM "${vmName}" is stopped — ready for linked clones`);
 				} else {
-					warn(`VM "${vmName}" state: ${status} — must be stopped for linked clones`);
+					fail(`VM "${vmName}" state: ${status} — source VM must be stopped for linked clones`);
 				}
 
 				const snapName = env("PLATFORM_SMOKE_WINDOWS_SNAPSHOT") || "crabbox-ready";
 				const snapsJson = shell(`prlctl snapshot-list "${vmName}" -j 2>/dev/null`);
 				let snapshotFound = false;
+				let snapshotPowerOff = false;
 				if (snapsJson) {
 					try {
 						const snapshots = JSON.parse(snapsJson);
-						snapshotFound = Object.values(snapshots).some((snapshot) => snapshot?.name === snapName);
+						const matches = Object.values(snapshots).filter((item) => item?.name === snapName);
+						if (matches.length > 1) fail(`snapshot "${snapName}" is ambiguous (${matches.length} snapshots); keep exactly one named release snapshot`);
+						const snapshot = matches[0];
+						snapshotFound = Boolean(snapshot);
+						snapshotPowerOff = snapshot?.state === "poweroff";
 					} catch {
-						warn(`could not parse snapshot JSON for "${vmName}"`);
+						fail(`could not parse snapshot JSON for "${vmName}"`);
 					}
 				}
 				if (!snapshotFound) {
@@ -252,6 +292,8 @@ function runChecks(config) {
 				}
 				if (snapshotFound) {
 					ok(`snapshot "${snapName}" exists`);
+					if (snapshotPowerOff) ok(`snapshot "${snapName}" state is poweroff — forkable for linked clones`);
+					else fail(`snapshot "${snapName}" is not poweroff — linked clone baseline must be powered off`);
 				} else {
 					fail(`snapshot "${snapName}" not found — run: prlctl snapshot "${vmName}" --name "${snapName}"`);
 				}
@@ -270,8 +312,8 @@ function runChecks(config) {
 							fail(`SSH not open on ${ip}:22 — enable OpenSSH Server in Windows template VM`);
 						}
 					} else {
-						warn(`template "${vmName}" has no IP; verifying Windows SSH through a disposable Crabbox clone`);
-						if (cbox && snapshotFound) {
+						ok(`template "${vmName}" has no IP; verifying Windows SSH/tools through a disposable Crabbox clone`);
+						if (cbox && snapshotFound && snapshotPowerOff) {
 							const probe = disposableWindowsSshProbe(cbox);
 							probe.ok ? ok(`disposable Windows clone SSH/tool probe OK: ${probe.message}`) : fail(probe.message);
 						} else {

@@ -32,34 +32,67 @@ Write-Output "PLATFORM_TEST_WORKSPACE=$TestWorkspace"
 Write-Output "PLATFORM_PI_PROJECT=$PiProject"
 
 $NodeVersion = (& node.exe --version).Trim()
+$NpmVersion = (& npm.cmd --version).Trim()
 $NodeMajor = [int](($NodeVersion -replace '^v', '').Split('.')[0])
+Set-Content -LiteralPath (Join-Path $PackDir "node-version.txt") -Value $NodeVersion
+Set-Content -LiteralPath (Join-Path $PackDir "npm-version.txt") -Value $NpmVersion
 if ($NodeMajor -ge $NodeValidationMajor) { $NODE_VERSION_EXIT = 0 } else { $NODE_VERSION_EXIT = 1 }
 Write-Output "PLATFORM_NODE_VERSION=$NodeVersion"
+Write-Output "PLATFORM_NPM_VERSION=$NpmVersion"
 Write-Output "PLATFORM_NODE_VERSION_EXIT=$NODE_VERSION_EXIT"
+Write-SectionFile "NODE_VERSION_STDOUT" (Join-Path $PackDir "node-version.txt")
+Write-SectionFile "NPM_VERSION_STDOUT" (Join-Path $PackDir "npm-version.txt")
+
+$NpmCiOut = Join-Path $PackDir "npm-ci.stdout.txt"
+$NpmCiErr = Join-Path $PackDir "npm-ci.stderr.txt"
+$CheckPlatformSmokeOut = Join-Path $PackDir "check-platform-smoke.stdout.txt"
+$CheckPlatformSmokeErr = Join-Path $PackDir "check-platform-smoke.stderr.txt"
+$NpmTestOut = Join-Path $PackDir "npm-test.stdout.txt"
+$NpmTestErr = Join-Path $PackDir "npm-test.stderr.txt"
+$TypecheckOut = Join-Path $PackDir "typecheck.stdout.txt"
+$TypecheckErr = Join-Path $PackDir "typecheck.stderr.txt"
+$NpmPackOut = Join-Path $PackDir "npm-pack.stdout.txt"
+$NpmPackErr = Join-Path $PackDir "npm-pack.stderr.txt"
 
 Write-Output "=== npm ci ==="
-& npm.cmd ci *>&1
+& npm.cmd ci 1> $NpmCiOut 2> $NpmCiErr
 $CI_EXIT = Exit-CodeFromLastCommand
 Write-Output "PLATFORM_NPM_CI_EXIT=$CI_EXIT"
+Write-SectionFile "NPM_CI_STDOUT" $NpmCiOut
+Write-SectionFile "NPM_CI_STDERR" $NpmCiErr
+
+Write-Output "=== check:platform-smoke ==="
+$env:PI_CURSOR_SKIP_RELEASE_VERSION_GUARD = "1"
+& npm.cmd run check:platform-smoke 1> $CheckPlatformSmokeOut 2> $CheckPlatformSmokeErr
+$CHECK_PLATFORM_SMOKE_EXIT = Exit-CodeFromLastCommand
+Remove-Item Env:\PI_CURSOR_SKIP_RELEASE_VERSION_GUARD -ErrorAction SilentlyContinue
+Write-Output "PLATFORM_CHECK_PLATFORM_SMOKE_EXIT=$CHECK_PLATFORM_SMOKE_EXIT"
+Write-SectionFile "CHECK_PLATFORM_SMOKE_STDOUT" $CheckPlatformSmokeOut
+Write-SectionFile "CHECK_PLATFORM_SMOKE_STDERR" $CheckPlatformSmokeErr
 
 Write-Output "=== npm test ==="
 $env:PI_CURSOR_SKIP_RELEASE_VERSION_GUARD = "1"
-& npm.cmd test *>&1
+& npm.cmd test 1> $NpmTestOut 2> $NpmTestErr
 $TEST_EXIT = Exit-CodeFromLastCommand
 Remove-Item Env:\PI_CURSOR_SKIP_RELEASE_VERSION_GUARD -ErrorAction SilentlyContinue
 Write-Output "PLATFORM_NPM_TEST_EXIT=$TEST_EXIT"
+Write-SectionFile "NPM_TEST_STDOUT" $NpmTestOut
+Write-SectionFile "NPM_TEST_STDERR" $NpmTestErr
 
 Write-Output "=== typecheck ==="
-& npm.cmd run typecheck *>&1
+& npm.cmd run typecheck 1> $TypecheckOut 2> $TypecheckErr
 $TC_EXIT = Exit-CodeFromLastCommand
 Write-Output "PLATFORM_TYPECHECK_EXIT=$TC_EXIT"
+Write-SectionFile "TYPECHECK_STDOUT" $TypecheckOut
+Write-SectionFile "TYPECHECK_STDERR" $TypecheckErr
 
 Write-Output "=== npm pack ==="
-$NpmPackErr = Join-Path $PackDir "npm-pack.stderr.txt"
-$PackOutput = @(& npm.cmd pack --silent 2> $NpmPackErr)
+& npm.cmd pack --silent 1> $NpmPackOut 2> $NpmPackErr
 $PACK_EXIT = Exit-CodeFromLastCommand
-Get-Content -LiteralPath $NpmPackErr -ErrorAction SilentlyContinue
-$PackTarball = ($PackOutput | Select-Object -First 1)
+Write-Output "PLATFORM_NPM_PACK_EXIT=$PACK_EXIT"
+Write-SectionFile "NPM_PACK_STDOUT" $NpmPackOut
+Write-SectionFile "NPM_PACK_STDERR" $NpmPackErr
+$PackTarball = (Get-Content -LiteralPath $NpmPackOut -ErrorAction SilentlyContinue | Select-Object -First 1)
 if ($PackTarball) { $PackTarball = $PackTarball.Trim() }
 Write-Output "PLATFORM_NPM_PACK_EXIT=$PACK_EXIT"
 if ($PackTarball -and (Test-Path -LiteralPath $PackTarball)) {
@@ -146,9 +179,9 @@ Write-Output "PLATFORM_PI_LIST_EXIT=$PI_LIST_EXIT"
 Write-SectionFile "PI_LIST_STDOUT" $PiListOut
 Write-SectionFile "PI_LIST_STDERR" $PiListErr
 
-Write-Output "node=$NODE_VERSION_EXIT ci=$CI_EXIT test=$TEST_EXIT typecheck=$TC_EXIT pack=$PACK_EXIT fixture=$FIXTURE_EXIT packedNodeInstall=$PACKED_NODE_INSTALL_EXIT install=$PI_INSTALL_EXIT list=$PI_LIST_EXIT"
-if ($NODE_VERSION_EXIT -ne 0 -or $CI_EXIT -ne 0 -or $TEST_EXIT -ne 0 -or $TC_EXIT -ne 0 -or $PACK_EXIT -ne 0 -or $FIXTURE_EXIT -ne 0 -or $PACKED_NODE_INSTALL_EXIT -ne 0 -or $PI_INSTALL_EXIT -ne 0 -or $PI_LIST_EXIT -ne 0) {
-	Write-Output "PLATFORM_BUILD_FAILED: node=$NODE_VERSION_EXIT ci=$CI_EXIT test=$TEST_EXIT typecheck=$TC_EXIT pack=$PACK_EXIT fixture=$FIXTURE_EXIT packedNodeInstall=$PACKED_NODE_INSTALL_EXIT install=$PI_INSTALL_EXIT list=$PI_LIST_EXIT"
+Write-Output "node=$NODE_VERSION_EXIT ci=$CI_EXIT checkPlatformSmoke=$CHECK_PLATFORM_SMOKE_EXIT test=$TEST_EXIT typecheck=$TC_EXIT pack=$PACK_EXIT fixture=$FIXTURE_EXIT packedNodeInstall=$PACKED_NODE_INSTALL_EXIT install=$PI_INSTALL_EXIT list=$PI_LIST_EXIT"
+if ($NODE_VERSION_EXIT -ne 0 -or $CI_EXIT -ne 0 -or $CHECK_PLATFORM_SMOKE_EXIT -ne 0 -or $TEST_EXIT -ne 0 -or $TC_EXIT -ne 0 -or $PACK_EXIT -ne 0 -or $FIXTURE_EXIT -ne 0 -or $PACKED_NODE_INSTALL_EXIT -ne 0 -or $PI_INSTALL_EXIT -ne 0 -or $PI_LIST_EXIT -ne 0) {
+	Write-Output "PLATFORM_BUILD_FAILED: node=$NODE_VERSION_EXIT ci=$CI_EXIT checkPlatformSmoke=$CHECK_PLATFORM_SMOKE_EXIT test=$TEST_EXIT typecheck=$TC_EXIT pack=$PACK_EXIT fixture=$FIXTURE_EXIT packedNodeInstall=$PACKED_NODE_INSTALL_EXIT install=$PI_INSTALL_EXIT list=$PI_LIST_EXIT"
 	exit 1
 }
 Write-Output "PLATFORM_BUILD_OK"
