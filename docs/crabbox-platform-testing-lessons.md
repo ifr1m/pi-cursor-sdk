@@ -1,266 +1,65 @@
-# Crabbox Platform Testing Lessons
+# Crabbox Local Platform Testing Guide for pi Extensions
 
 ## Purpose
 
-This document is a portable field guide for agents adding local cross-platform smoke tests to pi extension repositories. It is generic on purpose: do not add project-specific model IDs, package names, VM names, credentials, paths, prompts, or release decisions here.
+This is the reusable field guide for adding **local Crabbox platform testing** to pi extension repositories.
 
-Use it as a pattern library. Each project must keep its own source of truth for package names, artifact roots, target setup, environment variables, suites, evidence, and release criteria.
+Current scope:
 
-## Core rule: copy the architecture, not the state
+- pi extension packages only;
+- local maintainer machine is macOS;
+- required target matrix is macOS, Ubuntu Linux, and native Windows;
+- Windows runs through the local Parallels template `pi-extension-windows-template` and snapshot `crabbox-ready` unless a project documents a different source of truth.
 
-Do **not** copy another project's paths, package names, VM names, credentials, artifact folders, prompts, or slugs. Start by defining the target project's own:
+This guide is generic on purpose. Do not copy another project's model IDs, package names, API keys, VM clones, artifact folders, prompts, or release decisions. Copy the architecture and conventions, then make the target project own its config, docs, assertions, and release gate.
 
-- package name;
-- supported operating systems;
-- release-blocking user paths;
-- deterministic target fixtures;
-- required visual, session, log, and artifact evidence;
-- artifact root;
-- environment variable prefix;
-- Crabbox work roots and slugs.
+Official references:
 
-Good portable shape:
+- [Crabbox docs](https://crabbox.sh/)
+- [openclaw/crabbox](https://github.com/openclaw/crabbox)
+- Crabbox source docs worth reading before changing a harness: `docs/commands/run.md`, `docs/commands/warmup.md`, `docs/commands/stop.md`, `docs/features/doctor.md`, `docs/features/sync.md`, `docs/features/env-forwarding.md`, `docs/providers/ssh.md`, `docs/providers/local-container.md`, and `docs/providers/parallels.md`.
 
-```text
-platform-smoke.config.mjs       # project-specific targets/suites
-scripts/platform-smoke.mjs      # doctor/run entrypoint
-scripts/platform-smoke/*.mjs    # target runner, artifacts, assertions, scenario helpers
-.artifacts/<project>-smoke/     # gitignored project-local artifacts
-```
+Local reference implementations reviewed for this guide:
 
-Bad portable shape:
+- `~/Projects/AI/pi-cursor-sdk` — full provider/runtime gate with live model, visual TUI, JSONL, bridge, usage/cache, and abort-cleanup assertions.
+- `~/Projects/AI/pi-oracle` — package/build platform gate plus project-specific real smoke, with a project-specific env prefix.
+- `~/Projects/AI/pi-codex-goal` — compact reusable harness with platform build plus real pi runtime smoke on all targets.
 
-```text
-# Hard-coded state from another repo
-.artifacts/platform-smoke/ shared across repositories
-<OTHER_PROJECT>_SMOKE_WINDOWS_WORK_ROOT=C:\crabbox\other-project
-other-project-windows-native
-provider/model IDs from a different extension
-```
+## Standard local matrix
 
-## Keep the release gate local and explicit
+| Harness target | Crabbox provider | Local purpose | Shell contract | Default work root |
+| --- | --- | --- | --- | --- |
+| `macos` | `ssh` static localhost | Current host macOS | POSIX shell over SSH | `/Users/$USER/crabbox/<project>` |
+| `ubuntu` | `local-container` | Linux smoke without cloud | POSIX shell in a Docker-compatible container | provider default `/work/crabbox` |
+| `windows-native` | `parallels` | Real native Windows behavior | PowerShell/OpenSSH, `--windows-mode normal` | `C:\crabbox\<project>` |
 
-The useful split is:
+Use this matrix by default for pi extensions. If a project does not need all three targets, that project's docs must say which target is non-required and why. A missing required target is a blocked local setup, not a skipped pass.
 
-```bash
-npm run smoke:platform:doctor   # no expensive provider/API work; validates local prerequisites
-npm run smoke:platform:all      # release gate; all required targets and suites
-```
+## What Crabbox owns vs. what the project owns
 
-`doctor` should fail before expensive work when prerequisites are missing:
+Crabbox owns the lease/sync/run loop:
 
-- Crabbox binary exists and is the expected version/commit;
-- Docker/local-container backend works if used;
-- SSH/static macOS backend works if used;
-- Parallels/Windows template and snapshot are usable if used;
-- Node/npm/git/rsync/tar are present on host and targets;
-- required auth is present but redacted;
-- artifact root is writable;
-- working tree status is visible;
-- forbidden files such as `.env` or package tarballs are absent.
+1. lease or claim a target;
+2. sync tracked plus nonignored local files;
+3. run a command remotely;
+4. stream output;
+5. expose timing, logs, failure bundles, and cleanup commands;
+6. stop or expire the lease.
 
-Do not hide missing platform setup as a skip. A missing required target is a doctor failure, not a green release.
+The project owns the test contract:
 
-## Namespace everything per project
+- which targets and suites are required;
+- target setup and runtime versions;
+- package install semantics;
+- pi commands and prompts;
+- assertions over stdout, JSONL, visual evidence, artifacts, cleanup, and redaction;
+- docs and release criteria.
 
-To avoid collisions between multiple pi extensions using Crabbox on the same machine:
+Do not treat Crabbox as a runtime installer. If a target needs Node, npm, Git, `tar`, `rsync`, `zstd`, `ffmpeg`, a browser renderer, or another reusable tool, put that setup in the target image/template or in a documented project setup step.
 
-| Surface | Recommendation |
-| --- | --- |
-| Artifact root | `.artifacts/<project>-platform-smoke` or `.artifacts/platform-smoke` inside that repo only |
-| Env prefix | `<PROJECT>_SMOKE_*` or a documented repo-specific prefix |
-| Crabbox slug | `<project>-<target>` |
-| macOS work root | `~/crabbox/<project>` |
-| Windows work root | `C:\crabbox\<project>` |
-| Remote run roots | `.platform-smoke-runs/<suite>-<timestamp>-<pid>` under that target checkout |
-| Session IDs | include project, suite, and timestamp |
-| Debug dirs | suite-scoped under the artifact/run root |
+## Recommended repository shape
 
-Never reuse another repo's `.artifacts`, `.debug`, session dirs, Windows work root, or Crabbox slug unless the repositories intentionally share state and the owner has documented why.
-
-## Use target sessions, not one fresh lease per suite
-
-A release run should normally use one Crabbox lease per target:
-
-```text
-warm target once
-sync checkout once
-run platform-build
-run live/visual suite 1
-run live/visual suite 2
-run cleanup/abort suite if applicable
-stop lease
-```
-
-Benefits:
-
-- much lower Windows runtime;
-- one target checkout per target;
-- less repeated install/setup work;
-- easier artifact grouping.
-
-Still keep per-suite commands for diagnosis, but do not make one-lease-per-suite the normal release path unless the target cannot safely share state.
-
-## Run targets concurrently when the host can handle it
-
-If the maintainer machine can run Docker, local SSH, and Parallels together, run required targets concurrently. Keep suites serial **within** each target so target-local state is predictable and failure output stays readable.
-
-Do not parallelize inside one VM/container unless the project has proven its tests, ports, sessions, and filesystem fixtures are isolated.
-
-## Packed install is the release contract
-
-For release gates, prefer:
-
-```text
-npm pack
-npm install --no-save <tarball> in a test workspace
-pi install -l ./node_modules/<package>
-pi list assertion
-run smoke checks against the installed package
-```
-
-Do **not** treat `pi -e .` as release proof. It is useful for inner-loop debugging because it loads the working tree directly, but it can miss packaging and install bugs.
-
-If repeated live suites are slow, share one target-local packed-install prep per target session:
-
-```text
-first live suite:
-  npm pack
-  npm install --no-save <tarball> into shared packed-workspace
-
-all live suites:
-  create fresh suite workspace
-  pi install -l <shared packed package path>
-  pi list
-  run with fresh session/artifact dirs
-```
-
-This keeps packed-install coverage while avoiding repeated tarball installs.
-
-## Assert artifacts as part of pass/fail
-
-Writing an artifact manifest is not enough. The suite must fail if required artifacts are missing.
-
-Recommended invariant:
-
-```text
-summary.ok === assertions.ok
-artifact-manifest.missing.length === 0 for any passing suite
-missing required artifact => assertion failure + summary.ok=false
-```
-
-Required artifacts should include enough evidence to debug failures without rerunning:
-
-- command and exit code;
-- Crabbox stdout/stderr and timing;
-- suite/target metadata;
-- assertions and failures markdown;
-- terminal ANSI/text/HTML/PNG for visual suites;
-- pi session JSONL and discovered JSONL path list when session state matters;
-- tool/result summaries when tool behavior matters;
-- diagnostic files when diagnostics are part of the contract;
-- redaction scan output when violations exist;
-- cleanup/abort evidence for cleanup suites.
-
-## Treat cleanup as a test result
-
-`stopLease()` failures must not be ignored. A run that leaves a container, VM clone, or SSH lease running is not a clean pass.
-
-Recommended behavior:
-
-- capture `crabbox.stop.stdout.txt`, `crabbox.stop.stderr.txt`, and `crabbox.stop.exit-code.txt`;
-- fail the owning suite when a one-off suite owns the lease;
-- for a multi-suite target session, append a failing `lease-cleanup` result if final stop fails;
-- still preserve all earlier suite artifacts.
-
-Avoid throwing away the original test result when cleanup fails. Report both: test result and cleanup result.
-
-## Render visuals host-side from target ANSI
-
-For terminal/TUI projects, the portable visual contract is:
-
-```text
-target captures PTY/ConPTY ANSI
-host renders ANSI through one xterm/Playwright path
-host writes HTML + full PNG + viewport/cropped evidence
-assert visual evidence from rendered output, not prompt text
-```
-
-This avoids browser dependency drift inside containers/VMs and gives one renderer across macOS, Linux, and Windows.
-
-Do not use tmux as the canonical cross-platform visual contract when Windows native is required. Use PTY on POSIX targets and ConPTY on Windows targets.
-
-## Prefer polling over fixed sleeps
-
-Fixed sleeps create slow flakes. Poll for concrete readiness instead:
-
-- TUI prompt/status visible;
-- PTY output contains readiness text;
-- session JSONL exists and contains expected final text/tool result;
-- required markers appear in the final user-visible result, not only in progress text;
-- abort marker file exists before sending interrupt;
-- process list no longer contains the marker after abort.
-
-Keep bounded timeouts and write timeout artifacts. Do not spin forever.
-
-## Check persisted state, not just stdout
-
-Stdout can look correct while persisted JSONL or artifact state is wrong. For pi extensions, include structural checks over session JSONL where possible:
-
-- expected tool calls/results exist;
-- expected extension messages or statuses exist;
-- error tool results are absent unless expected;
-- final answer markers are in the final text part when final text matters;
-- usage/cache counters meet the project's contract when usage matters;
-- replay/tool IDs are stable enough for later turns when ID stability matters;
-- abort runs do not contain false success claims.
-
-Avoid naive substring scans over all JSONL. Restrict checks to the message type and field that proves the claim.
-
-## Keep secrets out of every layer
-
-Assume artifacts may contain prompts, paths, tool args, local output, and auth-adjacent diagnostics. The runner should:
-
-- pass auth only to subprocesses that need it;
-- redact known API keys before writing logs;
-- scan stdout/stderr, JSONL, HTML, ANSI, and debug files for secrets;
-- fail if a required redaction invariant is violated;
-- keep auth files under user-owned locations, not repo state;
-- document that debug artifacts may include sensitive local data.
-
-Never paste API keys, auth JSON, endpoint tokens, cookies, private URLs, or raw local paths into docs or PR comments.
-
-## Make false green states impossible
-
-The most important guardrails from this setup:
-
-- no target passes from stdout alone when visual/JSONL proof is required;
-- no passing suite with missing required artifacts;
-- no ignored lease cleanup failures;
-- no `pi -e .` release proof when package install matters;
-- no skipped required OS because local setup is missing;
-- no prompt-text-only visual assertions;
-- no one-prompt-per-card matrix that burns live provider calls unnecessarily;
-- no hidden target-specific assumptions without docs.
-
-## Project adoption checklist
-
-For another pi extension, ask these before implementation:
-
-1. What package/install path must release prove?
-2. Which OSes are truly release-blocking?
-3. Is Windows native required, or is Linux/macOS enough for this extension?
-4. What real user flows need visual proof?
-5. What persisted session/artifact state proves those flows?
-6. What target fixtures are deterministic and safe?
-7. What secrets/auth are needed, and how are they redacted?
-8. What exact Crabbox version/commit is supported?
-9. What local resources are required: Docker, Parallels, SSH, browser renderer?
-10. What docs become the source of truth for that project?
-
-## Minimal portable file map
-
-Use names that fit the target project, but this shape has worked well:
+Use names that fit the project, but keep this shape unless the project already has a better source of truth.
 
 ```text
 platform-smoke.config.mjs
@@ -268,39 +67,439 @@ scripts/platform-smoke.mjs
 scripts/platform-smoke/doctor.mjs
 scripts/platform-smoke/crabbox-runner.mjs
 scripts/platform-smoke/targets.mjs
-scripts/platform-smoke/scenarios.mjs
-scripts/platform-smoke/assertions.mjs
 scripts/platform-smoke/artifacts.mjs
-scripts/platform-smoke/pty-capture.mjs
-scripts/platform-smoke/render-ansi.mjs
-scripts/platform-smoke/visual-evidence.mjs
+scripts/platform-smoke/platform-build-windows.ps1
+scripts/platform-smoke/<runtime-suite>.mjs        # optional real pi/model smoke
+scripts/platform-smoke/pty-capture.mjs           # optional TUI/PTY suites
+scripts/platform-smoke/render-ansi.mjs           # optional host-side visual renderer
+docs/platform-smoke.md                           # project source of truth
 ```
 
-Add tests for cheap invariants:
+Gitignored local state:
 
-- helper syntax checks with `node --check`;
-- package `files` includes required smoke scripts/docs;
-- manifest-missing fails a suite;
-- cleanup failure fails a target result;
-- path traversal is rejected when unpacking bundles;
-- prompt-only visual matches are rejected;
-- final marker semantics match the project contract;
-- auth env is stripped from subprocesses unless explicitly allowed;
-- text artifacts are redacted before writing and raw findings still fail the suite.
+```text
+.artifacts/
+.crabbox/
+.debug/
+.platform-smoke-runs/
+```
 
-## Documentation placement in other projects
+Package scripts:
 
-To avoid conflicts with existing project instructions:
+```json
+{
+  "scripts": {
+    "check:platform-smoke": "node --check scripts/platform-smoke.mjs && node --check scripts/platform-smoke/doctor.mjs && node --check scripts/platform-smoke/crabbox-runner.mjs && node --check scripts/platform-smoke/targets.mjs",
+    "smoke:platform": "node scripts/platform-smoke.mjs",
+    "smoke:platform:doctor": "node scripts/platform-smoke.mjs doctor",
+    "smoke:platform:macos": "node scripts/platform-smoke.mjs run --target macos",
+    "smoke:platform:ubuntu": "node scripts/platform-smoke.mjs run --target ubuntu",
+    "smoke:platform:windows-native": "node scripts/platform-smoke.mjs run --target windows-native",
+    "smoke:platform:all": "node scripts/platform-smoke.mjs run --target macos,ubuntu,windows-native"
+  }
+}
+```
 
-- put project-specific gate docs in that repo's `docs/` tree;
-- add only a short pointer in that repo's `AGENTS.md`;
-- do not overwrite existing smoke/checklist docs—link and reconcile them;
-- label older smoke scripts as inner-loop/debug if they are no longer release gates;
-- keep historical notes separate from current commands;
-- if a project already has a local CI entrypoint, either make platform smoke call it or clearly document how the two relate.
+Add tests for cheap harness invariants: syntax, help text, target/suite validation, package-file inclusion or exclusion, packed-install command rendering, artifact-manifest failure behavior, cleanup-failure behavior, path traversal rejection, and secret redaction.
 
-## When not to adopt the full setup
+## Host Crabbox install
 
-Do not cargo-cult the whole matrix if the project does not need it. A smaller project may only need packed install plus one local OS. A UI/TUI extension may need visual proof. A provider/runtime extension usually needs all supported OSes and persisted session evidence.
+Install the Crabbox CLI on the macOS host and keep the harness explicit about the binary it uses:
 
-The standard is not "use every file from another project." The standard is: define the failure modes that matter for that extension, then make the local smoke gate produce durable evidence for them without conflicting with other repositories.
+```sh
+brew install openclaw/tap/crabbox
+crabbox --version
+crabbox providers
+```
+
+If Homebrew already has the OpenClaw tap configured, `brew install crabbox` may resolve to the same formula. Use `PLATFORM_SMOKE_CRABBOX=/path/to/crabbox` only when testing a non-default binary or a locally built Crabbox.
+
+## Configuration conventions
+
+Keep project-specific defaults in `platform-smoke.config.mjs`:
+
+```js
+export default {
+  packageName: "pi-example-extension",
+  artifactRoot: ".artifacts/platform-smoke",
+  requiredTargets: ["macos", "ubuntu", "windows-native"],
+  requiredSuites: ["platform-build"],
+  requiredCrabbox: { minVersion: "0.24.0" },
+  ubuntuContainerImage: "cimg/node:24.16",
+  nodeValidationMajor: 24,
+};
+```
+
+Use the config as the harness source of truth. Crabbox itself resolves config as `flags > env > repo .crabbox.yaml/crabbox.yaml > user config > defaults`; local smoke harnesses should still pass critical provider/work-root flags explicitly so the gate does not depend on hidden user config.
+
+Environment conventions:
+
+- Prefer defaults derived from `config.packageName` for project-specific work roots and slugs.
+- Do not export project-specific work-root overrides globally.
+- Use `PLATFORM_SMOKE_*` for reusable harness knobs when scripts are shared across projects.
+- Use a project-specific prefix such as `PI_ORACLE_SMOKE_*` only when a repo needs to coexist with another harness or already has established project-specific environment names.
+- Keep auth variable names in config, not auth values.
+
+Useful standard variables:
+
+```text
+PLATFORM_SMOKE_CRABBOX=/opt/homebrew/bin/crabbox
+PLATFORM_SMOKE_MAC_HOST=localhost
+PLATFORM_SMOKE_MAC_USER=$USER
+PLATFORM_SMOKE_MAC_WORK_ROOT=/Users/$USER/crabbox/<project>
+PLATFORM_SMOKE_UBUNTU_IMAGE=cimg/node:24.16
+PLATFORM_SMOKE_WINDOWS_VM=pi-extension-windows-template
+PLATFORM_SMOKE_WINDOWS_SNAPSHOT=crabbox-ready
+PLATFORM_SMOKE_WINDOWS_USER=<windows-ssh-user>
+PLATFORM_SMOKE_WINDOWS_WORK_ROOT=C:\crabbox\<project>
+```
+
+Pin Crabbox deliberately. Exact pins are best for release-critical harnesses whose parsing depends on CLI output. Minimum version checks are fine for simpler gates. Current local baseline is Crabbox `0.24.0`.
+
+## Target setup best practices
+
+### macOS: static SSH to the current host
+
+Use the `ssh` provider for current macOS. It is a static provider: Crabbox does not create or clean up the host.
+
+Required setup:
+
+- macOS Remote Login enabled.
+- Noninteractive SSH works: `ssh -o BatchMode=yes $USER@localhost 'whoami'`.
+- Target user has a writable work root such as `/Users/$USER/crabbox/<project>`.
+- `node`, `npm`, `git`, `rsync`, `tar`, and project-specific native tools are on the remote SSH path.
+
+Base args:
+
+```text
+--provider ssh
+--target macos
+--static-host localhost
+--static-user $USER
+--static-port 22
+--static-work-root /Users/$USER/crabbox/<project>
+```
+
+Notes:
+
+- Static `stop` removes Crabbox's local claim only; it does not clean the Mac.
+- Use `--reclaim` intentionally when multiple repos reuse localhost and a previous claim blocks the run.
+- Because this is the real host, avoid tests that mutate global user state unless the project explicitly owns cleanup.
+
+### Ubuntu: local-container provider
+
+Use `local-container` for the Linux target. It runs through Docker Desktop, OrbStack, Colima, or another Docker-compatible runtime on the local machine. There is no broker or cloud dependency.
+
+Required setup:
+
+- `docker info` passes.
+- The chosen image supports the project's Node/npm baseline or can bootstrap quickly.
+- Default image for current pi extension smokes: `cimg/node:24.16`.
+
+Base args:
+
+```text
+--provider local-container
+--target linux
+--local-container-image cimg/node:24.16
+```
+
+Notes:
+
+- Use a prebuilt image when first-start package bootstrapping becomes a bottleneck.
+- Do not mount the host Docker socket unless the suite actually needs nested Docker; that grants the container access to the host daemon.
+- Treat container cache volumes as local mutable state. Name them per project and clean obsolete keys manually.
+
+### Windows: Parallels native Windows template
+
+Use the `parallels` provider for native Windows. The default reusable template is:
+
+```text
+source VM: pi-extension-windows-template
+snapshot:  crabbox-ready
+mode:      windows normal
+```
+
+Base args:
+
+```text
+--provider parallels
+--target windows
+--windows-mode normal
+--parallels-source pi-extension-windows-template
+--parallels-source-snapshot crabbox-ready
+--parallels-user <windows-ssh-user>
+--parallels-work-root C:\crabbox\<project>
+```
+
+Template requirements:
+
+- Parallels Tools installed.
+- A stable SSH user.
+- OpenSSH Server enabled and reachable on port `22`.
+- PowerShell available.
+- Git for Windows installed.
+- `tar` available for archive sync.
+- Node/npm at the project validation baseline.
+- Writable `C:\crabbox` work root.
+- The source VM is not used as a normal work machine.
+- `crabbox-ready` is a known-good power-off snapshot. Linked clones depend on that snapshot, so do not delete or replace it casually.
+
+PowerShell rules:
+
+- Use a checked-in `.ps1` script for long Windows suites.
+- Run with `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\scripts\platform-smoke\platform-build-windows.ps1`.
+- Avoid one giant quoted `--shell` string for Windows unless it is a small probe.
+- If installing Git or tools changes PATH, restart `sshd` or validate in a fresh SSH session.
+
+### Windows template image policy
+
+Agents should reuse `pi-extension-windows-template` instead of creating one-off Windows VMs for each project.
+
+Add a tool to the template when all are true:
+
+- more than one pi extension is likely to need it;
+- installing it every run is slow, flaky, or network-dependent;
+- it is safe to have globally on Windows test machines;
+- it has no project secrets, local user auth, or repo-specific config.
+
+Keep project-specific tools in repo scripts when they are truly one-off.
+
+Template update runbook:
+
+1. Confirm no active work depends on mutating the template immediately.
+2. Boot the source VM, not a Crabbox clone.
+3. Install or update the globally useful tool.
+4. Verify from a fresh SSH session: `node --version`, `npm --version`, `git --version`, `tar --version`, and the new tool's `--version` or equivalent.
+5. Remove caches, downloads, auth files, local checkouts, `.pi` state, `.artifacts`, `.debug`, and secrets.
+6. Shut down the VM cleanly.
+7. Create a new known-good power-off snapshot. Prefer a dated snapshot for trial adoption; promote it to `crabbox-ready` only after at least one project passes the Windows smoke.
+8. Update project docs/config if the snapshot name changes.
+
+Never bake API keys, browser sessions, user project checkouts, generated artifacts, or repo-specific `.env` files into the template.
+
+## Doctor is mandatory
+
+`npm run smoke:platform:doctor` should fail before any expensive, token-spending, or long-running suite starts.
+
+Doctor should check:
+
+- Crabbox binary path and version/minimum version.
+- `crabbox providers` includes `ssh`, `local-container`, and `parallels`.
+- `crabbox doctor --provider local-container --json` passes for the configured image.
+- `crabbox doctor --provider ssh --target macos --json` passes or reports a concrete host setup failure.
+- Docker is running for Ubuntu.
+- macOS SSH probe reaches the host and sees Node/npm/Git.
+- `prlctl` exists.
+- The Windows source VM and snapshot exist.
+- The Windows snapshot is forkable/power-off; if the template has no live IP because it is stopped, a disposable Crabbox clone probe is acceptable.
+- Host `node`, `npm`, `git`, `tar`, and any host-side renderer tools exist.
+- Required auth variables for live suites are present, reported as redacted presence only.
+- Artifact root is writable.
+- Repo status is visible.
+- Forbidden files such as `.env`, `.env.*`, local package tarballs, `.artifacts`, `.crabbox`, and `.debug` are not in the package or source archive.
+
+Do not downgrade a missing required target to a warning. A release gate with missing Windows, Docker, SSH, auth, or Crabbox setup is blocked.
+
+## Lease and run strategy
+
+Use target sessions, not one fresh lease per suite.
+
+Recommended shape:
+
+```text
+for each target in parallel:
+  warmup once with slug <project>-<target>
+  run suites serially on that lease
+  stop lease in finally
+```
+
+Targets can run concurrently when the host can handle Docker, localhost SSH, and Parallels together. Suites should stay serial within a target unless the project has proven its ports, sessions, workspaces, and artifacts are isolated.
+
+Use stable slugs:
+
+```text
+<project>-macos
+<project>-ubuntu
+<project>-windows-native
+```
+
+Sync rules:
+
+- Start with `crabbox sync-plan` when first onboarding a repo or when sync is unexpectedly large.
+- Use `.gitignore`, `.crabboxignore`, or Crabbox `sync.exclude` for generated state.
+- Use `--fresh-sync` when a target workspace may be stale or a previous suite mutated the checkout.
+- Use `--no-sync` only after a deliberate shared prep step on the same lease.
+- If a private/local repo cannot use remote Git seeding reliably, set `CRABBOX_SYNC_GIT_SEED=false` in the harness and document why.
+- Do not use `--force-sync-large` unless the large transfer is understood and intentional.
+
+Always record:
+
+```text
+crabbox.stdout.txt
+crabbox.stderr.txt
+crabbox.timing.json
+crabbox.stop.stdout.txt
+crabbox.stop.stderr.txt
+crabbox.stop.exit-code.txt
+```
+
+A `stop` failure is a test result. Preserve the original suite result and add a failing `lease-cleanup` result or mark the owning suite failed.
+
+## pi extension release contract
+
+For pi extensions, the baseline `platform-build` suite should prove package installation, not only source-tree execution.
+
+On every required target:
+
+1. Check Node major version against `nodeValidationMajor`.
+2. Run `npm ci`.
+3. Run the repo's local verification command, usually `npm run verify` or the repo-specific equivalent.
+4. Run `npm pack`.
+5. Create a fresh target-local pi project/workspace.
+6. Run `npm install --no-save <packed tarball>`.
+7. Run `pi install -l ./node_modules/<package>`.
+8. Run `pi list`.
+9. Assert the installed package came from the packed install path.
+10. Assert the release proof did not use `pi -e .` or `pi --extension .`.
+
+`pi -e .` is inner-loop debug only. It is not release proof because it bypasses package contents, `files`, install layout, and publish-time mistakes.
+
+Add a real pi runtime suite when the extension's user contract depends on runtime behavior that unit tests cannot prove. Keep it deterministic:
+
+- install the packed package into a clean project;
+- use a fixed model/provider unless the project config overrides it;
+- forward only named auth env vars;
+- write session JSONL and target-local result files;
+- assert final assistant text, tool calls/results, extension state, and persisted files structurally, not by broad substring scans.
+
+Add visual/TUI suites only when the extension has user-facing terminal UI. The portable visual contract is:
+
+```text
+target captures PTY/ConPTY ANSI
+host renders ANSI through one xterm/Playwright renderer
+host writes HTML + PNG evidence
+assert rendered output, not prompt text
+```
+
+Do not make tmux the cross-platform visual source of truth when native Windows is required. Use PTY on POSIX targets and ConPTY on Windows.
+
+## Artifact contract
+
+Every suite should write a self-contained directory:
+
+```text
+.artifacts/platform-smoke/<run-id>/<target>/<suite>/
+  summary.json
+  artifact-manifest.json
+  target.json
+  suite.json
+  command.txt
+  exit-code.txt
+  crabbox.stdout.txt
+  crabbox.stderr.txt
+  crabbox.timing.json
+  assertions.json
+  failures.md                  # only when assertions fail
+```
+
+Add suite-specific evidence, for example:
+
+```text
+node-version.txt
+npm-ci.stdout.txt
+npm-ci.stderr.txt
+npm-test.stdout.txt
+npm-test.stderr.txt
+packed-tarball.txt
+packed-node-install.stdout.txt
+packed-node-install.stderr.txt
+pi-install.stdout.txt
+pi-install.stderr.txt
+pi-list.stdout.txt
+pi-list.stderr.txt
+session.jsonl
+terminal.ansi
+terminal.html
+terminal.png
+redaction-scan.json
+```
+
+Pass/fail invariant:
+
+```text
+summary.ok === assertions.ok
+artifact-manifest.missing.length === 0 for any passing suite
+missing required artifact => assertion failure + summary.ok=false
+```
+
+Do not rely on Crabbox `--artifact-glob` for this matrix. Crabbox's SSH artifact collector is useful on Linux, but native Windows and macOS targets reject that collector. A portable harness should write host-side artifact files from captured stdout/stderr, explicit target output markers, session paths, or a safe target-produced bundle whose paths are validated before unpacking.
+
+## Secrets and environment forwarding
+
+Crabbox intentionally does not forward your whole environment. By default it forwards only narrow built-ins such as `CI` and `NODE_OPTIONS`. Live pi suites must opt in to exactly the variables they need.
+
+Best practices:
+
+- Keep auth values out of docs, configs, shell commands, and artifact names.
+- Store auth variable names in config, e.g. `defaultAuthEnv: ["ZAI_API_KEY"]`.
+- Forward with `--allow-env NAME` or `--env-from-profile <file> --allow-env NAME`.
+- Do not pass API keys as command-line arguments.
+- In Node harnesses, strip sensitive env vars from child processes unless the suite explicitly allows them.
+- Redact stdout, stderr, JSONL, HTML, ANSI, debug files, and failure bundles before writing or sharing.
+- Fail if a redaction scan finds API keys, bearer tokens, cookies, auth headers, or raw `.env` contents.
+
+Docs may say `CURSOR_API_KEY=(present, redacted)` or `ZAI_API_KEY=(present, redacted)`. They must never include values.
+
+## Make false green states impossible
+
+The main guardrails:
+
+- `doctor` is required before `all`.
+- Required targets do not skip green.
+- Release proof uses packed install, not `pi -e .`.
+- A suite cannot pass with missing required artifacts.
+- Cleanup failures fail the target result.
+- Visual assertions inspect rendered output, not only prompt text.
+- JSONL assertions inspect specific message fields, not all-file substrings.
+- Auth is forwarded by allowlist only.
+- Artifacts are redacted before sharing.
+- Target-specific assumptions live in `docs/platform-smoke.md`, not in chat.
+
+## Adoption procedure for a new pi extension
+
+1. Identify the package name and pi install path.
+2. Define required targets: default to `macos`, `ubuntu`, and `windows-native`.
+3. Define required suites: always start with `platform-build`; add runtime or visual suites only for real user contracts.
+4. Add `platform-smoke.config.mjs` with package name, targets, suites, Crabbox version, Ubuntu image, and Node baseline.
+5. Add `scripts/platform-smoke.mjs` with `doctor`, per-target, and `all` commands.
+6. Add a thin `crabbox-runner.mjs` that owns target base args, warmup, run, timeout, env allowlist, and stop.
+7. Add target command builders in `targets.mjs`; keep POSIX and PowerShell paths explicit.
+8. Add `platform-build-windows.ps1` for the Windows suite body.
+9. Add `artifacts.mjs` and make missing artifacts fail.
+10. Add `doctor.mjs`; all required local prerequisites fail hard.
+11. Add cheap tests for harness syntax, help, target selection, packed-install command rendering, manifest failure, cleanup failure, and package inclusion/exclusion.
+12. Add `docs/platform-smoke.md` as the project-specific source of truth.
+13. Add a short pointer in `AGENTS.md` and README if the platform gate is release-blocking.
+14. Run `npm run check:platform-smoke`, then `npm run smoke:platform:doctor`, then a single target, then `npm run smoke:platform:all`.
+
+## Project adoption checklist
+
+Before declaring a project integrated, answer these in that project's docs:
+
+1. What package/install path must release prove?
+2. Which OS targets are release-blocking?
+3. What exact Crabbox version or minimum version is supported?
+4. Which Ubuntu image is used?
+5. Which Parallels template and snapshot are used?
+6. What target tools are expected globally, especially on Windows?
+7. What suite proves packed pi install?
+8. What suite, if any, proves real pi runtime behavior?
+9. What visual evidence, if any, is required?
+10. What auth env names are allowed to cross into targets?
+11. What artifacts must exist for a pass?
+12. What redaction scans run before sharing evidence?
+13. How are lease cleanup failures surfaced?
+14. Which docs, package scripts, and tests are the source of truth?
+
+The standard is not "copy every file from pi-cursor-sdk." The standard is: define the platform failure modes that matter for the extension, then make the local Crabbox gate produce durable evidence for them on macOS, Ubuntu, and native Windows without sharing state between repositories.
