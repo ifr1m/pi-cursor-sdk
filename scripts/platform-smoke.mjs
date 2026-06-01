@@ -25,7 +25,7 @@ function printHelp() {
 
 Commands:
   doctor                     Run all preflight checks (no Cursor tokens)
-  run --target <names>       Run one or more comma-separated targets
+  run --target <names>       Run one or more comma-separated targets concurrently
   run --suite <name>         Run one suite on all or specified targets
   run --target <n> --suite <n>
 
@@ -167,17 +167,15 @@ async function main() {
 			? [args.suite]
 			: config.requiredSuites;
 
-		let anyFailed = false;
-		for (const targetName of targets) {
+		const targetRuns = targets.map(async (targetName) => {
 			console.log(`\n=== Target: ${targetName} ===`);
-			if (args.suite) {
-				const result = await runSuite(targetName, suites[0]);
-				if (!result.ok) anyFailed = true;
-			} else {
-				const result = await runTarget(targetName, suites);
-				if (!result.ok) anyFailed = true;
-			}
-		}
+			const result = args.suite
+				? await runSuite(targetName, suites[0])
+				: await runTarget(targetName, suites);
+			return { targetName, result };
+		});
+		const results = await Promise.all(targetRuns);
+		const anyFailed = results.some(({ result }) => !result.ok);
 		if (anyFailed) {
 			console.log("\nOne or more suites failed. Check .artifacts/platform-smoke/ for details.");
 			process.exit(1);

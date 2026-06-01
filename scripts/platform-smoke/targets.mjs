@@ -101,10 +101,11 @@ export async function runTargetSuites(config, targetName, suiteNames) {
 
 	const results = [];
 	let sync = true;
+	const livePrepDir = `.platform-smoke-runs/live-prep-${Date.now()}-${targetName}`;
 	try {
 		for (const suiteName of suiteNames) {
 			console.log(`  Suite: ${suiteName}`);
-			const result = await runTargetSuite(config, targetName, suiteName, { ...warmup, sync });
+			const result = await runTargetSuite(config, targetName, suiteName, { ...warmup, sync, livePrepDir });
 			results.push(result);
 			sync = false;
 			if (!result.ok) break;
@@ -380,7 +381,7 @@ export function buildPlatformBuildCommand(targetName, packageName = "pi-cursor-s
 async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, leaseSession) {
 	const scenario = getScenario(suiteName);
 	const startedAt = Date.now();
-	const command = buildLiveSuiteCommand(config, targetName, suiteName);
+	const command = buildLiveSuiteCommand(config, targetName, suiteName, leaseSession?.livePrepDir);
 	writeCommand(suiteDir, command);
 	let warmup = leaseSession;
 	const ownsLease = !warmup;
@@ -566,13 +567,14 @@ function isTransientCrabboxSshFailure(result) {
 	return result.code === 255 && /ssh: connect to host .*\b(Operation timed out|Connection timed out)\b/i.test(text);
 }
 
-function buildLiveSuiteCommand(config, targetName, suiteName) {
+function buildLiveSuiteCommand(config, targetName, suiteName, prepDir) {
 	const model = config.cursorModel ?? "cursor/composer-2-5";
 	const packageName = config.packageName ?? "pi-cursor-sdk";
+	const prepArgs = prepDir ? ` --prep-dir ${platformFor(targetName) === "powershell" ? prepDir : shellQuote(prepDir)}` : "";
 	if (platformFor(targetName) === "powershell") {
-		return `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "node scripts/platform-smoke/live-suite-runner.mjs --suite ${suiteName} --target ${targetName} --model ${model} --package-name ${packageName}"`;
+		return `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "node scripts/platform-smoke/live-suite-runner.mjs --suite ${suiteName} --target ${targetName} --model ${model} --package-name ${packageName}${prepArgs}"`;
 	}
-	return `node scripts/platform-smoke/live-suite-runner.mjs --suite ${shellQuote(suiteName)} --target ${shellQuote(targetName)} --model ${shellQuote(model)} --package-name ${shellQuote(packageName)}`;
+	return `node scripts/platform-smoke/live-suite-runner.mjs --suite ${shellQuote(suiteName)} --target ${shellQuote(targetName)} --model ${shellQuote(model)} --package-name ${shellQuote(packageName)}${prepArgs}`;
 }
 
 function extractLiveBundle(suiteDir, stdout) {

@@ -20,7 +20,6 @@ const BUNDLE_START = "PLATFORM_LIVE_BUNDLE_JSON_START";
 const BUNDLE_END = "PLATFORM_LIVE_BUNDLE_JSON_END";
 const DEFAULT_MODEL = "cursor/composer-2-5";
 const DEFAULT_WAIT_MS = 240_000;
-const STARTUP_MS = 4_000;
 const READY_WAIT_MS = 45_000;
 const SESSION_JSONL_WAIT_MS = 60_000;
 const COLS = 150;
@@ -39,6 +38,7 @@ Options:
   --model <id>        Cursor model id. Default: ${DEFAULT_MODEL}.
   --package-name <n>  Packed package name. Default: pi-cursor-sdk.
   --out-dir <dir>     Remote artifact dir. Default: .platform-smoke-runs/live-<suite>-<timestamp>.
+  --prep-dir <dir>    Optional shared packed-install prep dir reused by live suites on one target.
   --wait-ms <ms>      Max wait for final marker. Default: ${DEFAULT_WAIT_MS}.
   -h, --help          Show help.
 `);
@@ -68,6 +68,7 @@ function parseArgs(argv) {
 			case "--model": out.model = next(); break;
 			case "--package-name": out.packageName = next(); break;
 			case "--out-dir": out.outDir = resolve(next()); break;
+			case "--prep-dir": out.prepDir = resolve(next()); break;
 			case "--wait-ms": out.waitMs = Number(next()); break;
 			default: fail(`unknown argument: ${arg}`);
 		}
@@ -163,6 +164,75 @@ function copyDir(src, dest) {
 	}
 }
 
+function readJsonFile(path) {
+	try {
+		return JSON.parse(readFileSync(path, "utf8"));
+	} catch {
+		return undefined;
+	}
+}
+
+function writeSkippedLog(logDir, label, reason, extra = {}) {
+	const safeLabel = label.replace(/[^A-Za-z0-9_.-]+/g, "-");
+	writeFileSync(join(logDir, `${safeLabel}.stdout.txt`), `skipped: ${reason}\n`);
+	writeFileSync(join(logDir, `${safeLabel}.stderr.txt`), "");
+	writeFileSync(join(logDir, `${safeLabel}.json`), JSON.stringify({ label, skipped: true, reason, ...extra }, null, 2));
+}
+
+function ensureTargetDependencies(logDir) {
+	if (hasInstalledDependencies()) {
+		writeSkippedLog(logDir, "npm-ci", "node_modules already prepared by target session");
+		return;
+	}
+	const npmCi = runLogged(logDir, "npm-ci", commandName("npm"), ["ci"], { timeout: 300_000 });
+	requireOk(npmCi, "npm ci");
+}
+
+function prepareSharedPackedInstall(prepDir, logDir, artifactDir, packageName) {
+	const readyPath = join(prepDir, "ready.json");
+	const ready = readJsonFile(readyPath);
+	if (ready?.packageName === packageName && typeof ready.packagePath === "string" && existsSync(ready.packagePath)) {
+		writeSkippedLog(logDir, "shared-prep", "reusing target shared packed install", { prepDir, packagePath: ready.packagePath });
+		writeFileSync(join(artifactDir, "packed-tarball.txt"), `${ready.tarball ?? ""}\n`);
+		return ready;
+	}
+
+	rmSync(prepDir, { recursive: true, force: true });
+	const prepPackDir = join(prepDir, "pack");
+	const prepWorkspaceDir = join(prepDir, "packed-workspace");
+	for (const dir of [prepDir, prepPackDir, prepWorkspaceDir]) mkdirSync(dir, { recursive: true });
+
+	ensureTargetDependencies(logDir);
+	ensureNodePtySpawnHelperExecutable(logDir);
+
+	const pack = runLogged(logDir, "npm-pack", commandName("npm"), ["pack", "--silent"], { timeout: 120_000 });
+	requireOk(pack, "npm pack");
+	const tarball = pack.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
+	if (!tarball || !existsSync(resolve(process.cwd(), tarball))) throw new Error("npm pack did not produce a tarball");
+	const tarballPath = resolve(prepPackDir, tarball);
+	writeFileSync(tarballPath, readFileSync(resolve(process.cwd(), tarball)));
+	rmSync(resolve(process.cwd(), tarball), { force: true });
+	writeFileSync(join(artifactDir, "packed-tarball.txt"), `${tarball}\n`);
+
+	copyFixtureWorkspace(prepWorkspaceDir);
+	const npmInit = runLogged(logDir, "shared-workspace-npm-init", commandName("npm"), ["init", "-y"], { cwd: prepWorkspaceDir, timeout: 60_000 });
+	requireOk(npmInit, "shared workspace npm init");
+	const npmInstallPacked = runLogged(logDir, "shared-workspace-npm-install-packed", commandName("npm"), ["install", "--no-save", tarballPath], { cwd: prepWorkspaceDir, timeout: 180_000 });
+	requireOk(npmInstallPacked, "shared workspace npm install packed tarball");
+	const packagePath = join(prepWorkspaceDir, "node_modules", packageName);
+	if (!existsSync(packagePath)) throw new Error(`packed package install did not create ${packagePath}`);
+
+	const prepared = {
+		packageName,
+		tarball,
+		tarballPath,
+		packagePath,
+		preparedAt: new Date().toISOString(),
+	};
+	writeFileSync(readyPath, JSON.stringify(prepared, null, 2));
+	return prepared;
+}
+
 function stripANSI(text) {
 	return text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "");
 }
@@ -247,7 +317,6 @@ async function runPtyPi({ artifactDir, piCli, piArgs, env, cwd, sessionDir, prom
 		events.push({ type: "exit", elapsedMs: Date.now() - startedAt, code: event.exitCode, signal: event.signal });
 	});
 
-	await delay(STARTUP_MS);
 	const readyStartedAt = Date.now();
 	while (!/(?:composer-2-5|escape interrupt|ctrl\+c\/ctrl\+d)/i.test(plain) && Date.now() - readyStartedAt < READY_WAIT_MS) {
 		await delay(500);
@@ -268,10 +337,11 @@ async function runPtyPi({ artifactDir, piCli, piArgs, env, cwd, sessionDir, prom
 		const responsePlain = currentPlain.slice(responseStartOffset);
 		if (finalMarker && responsePlain.includes(finalMarker)) finalMarkerSeen = true;
 		if (finalMarkerSeen && sessionJsonlMeetsRequirements(sessionDir, scenario) && sessionJsonlHasAssistantMarker(sessionDir, finalMarker)) {
-			observed = true;
-			await delay(2_000);
 			await waitForSessionJsonl(sessionDir, finalMarker, startedAt, events);
-			break;
+			if (sessionJsonlMeetsRequirements(sessionDir, scenario) && sessionJsonlHasAssistantMarker(sessionDir, finalMarker)) {
+				observed = true;
+				break;
+			}
 		}
 		if (abortMode && existsSync(abortStartedPath)) {
 			abortObserved = true;
@@ -529,32 +599,30 @@ async function main() {
 	};
 	try {
 		console.log(`[platform-live] suite=${args.suite} target=${args.target} model=${args.model}`);
-		if (hasInstalledDependencies()) {
-			writeFileSync(join(logDir, "npm-ci.json"), JSON.stringify({ label: "npm-ci", skipped: true, reason: "node_modules already prepared by target session" }, null, 2));
-			writeFileSync(join(logDir, "npm-ci.stdout.txt"), "skipped: node_modules already prepared by target session\n");
-			writeFileSync(join(logDir, "npm-ci.stderr.txt"), "");
-		} else {
-			const npmCi = runLogged(logDir, "npm-ci", commandName("npm"), ["ci"], { timeout: 300_000 });
-			requireOk(npmCi, "npm ci");
-		}
-		ensureNodePtySpawnHelperExecutable(logDir);
-		const pack = runLogged(logDir, "npm-pack", commandName("npm"), ["pack", "--silent"], { timeout: 120_000 });
-		requireOk(pack, "npm pack");
-		const tarball = pack.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
-		if (!tarball || !existsSync(resolve(process.cwd(), tarball))) throw new Error("npm pack did not produce a tarball");
-		const tarballPath = resolve(packDir, tarball);
-		writeFileSync(tarballPath, readFileSync(resolve(process.cwd(), tarball)));
-		rmSync(resolve(process.cwd(), tarball), { force: true });
-		writeFileSync(join(artifactDir, "packed-tarball.txt"), `${tarball}\n`);
-
 		copyFixtureWorkspace(workspaceDir);
 		const piCli = resolvePiCli();
 		const piEnv = { ...process.env, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1" };
-		const npmInit = runLogged(logDir, "workspace-npm-init", commandName("npm"), ["init", "-y"], { cwd: workspaceDir, timeout: 60_000 });
-		requireOk(npmInit, "workspace npm init");
-		const npmInstallPacked = runLogged(logDir, "workspace-npm-install-packed", commandName("npm"), ["install", "--no-save", tarballPath], { cwd: workspaceDir, timeout: 180_000 });
-		requireOk(npmInstallPacked, "workspace npm install packed tarball");
-		const install = runLogged(logDir, "pi-install", piCli, ["install", "-l", `./node_modules/${packageName}`], { cwd: workspaceDir, env: piEnv, timeout: 120_000 });
+		let installPath = `./node_modules/${packageName}`;
+		if (args.prepDir) {
+			const prep = prepareSharedPackedInstall(args.prepDir, logDir, artifactDir, packageName);
+			installPath = prep.packagePath;
+		} else {
+			ensureTargetDependencies(logDir);
+			ensureNodePtySpawnHelperExecutable(logDir);
+			const pack = runLogged(logDir, "npm-pack", commandName("npm"), ["pack", "--silent"], { timeout: 120_000 });
+			requireOk(pack, "npm pack");
+			const tarball = pack.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
+			if (!tarball || !existsSync(resolve(process.cwd(), tarball))) throw new Error("npm pack did not produce a tarball");
+			const tarballPath = resolve(packDir, tarball);
+			writeFileSync(tarballPath, readFileSync(resolve(process.cwd(), tarball)));
+			rmSync(resolve(process.cwd(), tarball), { force: true });
+			writeFileSync(join(artifactDir, "packed-tarball.txt"), `${tarball}\n`);
+			const npmInit = runLogged(logDir, "workspace-npm-init", commandName("npm"), ["init", "-y"], { cwd: workspaceDir, timeout: 60_000 });
+			requireOk(npmInit, "workspace npm init");
+			const npmInstallPacked = runLogged(logDir, "workspace-npm-install-packed", commandName("npm"), ["install", "--no-save", tarballPath], { cwd: workspaceDir, timeout: 180_000 });
+			requireOk(npmInstallPacked, "workspace npm install packed tarball");
+		}
+		const install = runLogged(logDir, "pi-install", piCli, ["install", "-l", installPath], { cwd: workspaceDir, env: piEnv, timeout: 120_000 });
 		requireOk(install, "pi install packed package directory");
 		const list = runLogged(logDir, "pi-list", piCli, ["list"], { cwd: workspaceDir, env: piEnv, timeout: 60_000 });
 		requireOk(list, "pi list");

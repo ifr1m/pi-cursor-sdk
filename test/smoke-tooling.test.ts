@@ -30,6 +30,7 @@ describe("smoke tooling package checks", () => {
 		const jsonlHelp = run(process.execPath, ["scripts/validate-smoke-jsonl.mjs", "--help"]);
 		const sdkEventsHelp = run(process.execPath, ["scripts/debug-sdk-events.mjs", "--help"]);
 		const providerEventsHelp = run(process.execPath, ["scripts/debug-provider-events.mjs", "--help"]);
+		const platformLiveHelp = run(process.execPath, ["scripts/platform-smoke/live-suite-runner.mjs", "--help"]);
 
 		if (process.platform !== "win32") {
 			expect(liveHelp!.status).toBe(0);
@@ -52,6 +53,8 @@ describe("smoke tooling package checks", () => {
 		expect(sdkEventsHelp.stdout).toContain("Capture timestamped Cursor SDK event timelines");
 		expect(providerEventsHelp.status).toBe(0);
 		expect(providerEventsHelp.stdout).toContain("Capture raw Cursor SDK onDelta/onStep payloads through pi's provider path");
+		expect(platformLiveHelp.status).toBe(0);
+		expect(platformLiveHelp.stdout).toContain("--prep-dir");
 
 		if (process.platform !== "win32") {
 			const failedCommand = run("bash", [

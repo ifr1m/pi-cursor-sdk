@@ -93,7 +93,7 @@ Rendering is host-side. Targets capture the real ANSI stream; the macOS host ren
 
 ## Target session model
 
-Each target opens one Crabbox target session, syncs once, runs all suites for that target, collects artifacts, and stops/releases the target. Platform smoke disables Crabbox git-seed sync (`CRABBOX_SYNC_GIT_SEED=false`) so every run tests the current local checkout and uncommitted smoke-runner changes rather than a remote Git seed.
+Each target opens one Crabbox target session, syncs once, runs all suites for that target, collects artifacts, and stops/releases the target. The release-gate entrypoint runs required targets concurrently; each target still runs its own suites in order and fails fast within that target. Platform smoke disables Crabbox git-seed sync (`CRABBOX_SYNC_GIT_SEED=false`) so every run tests the current local checkout and uncommitted smoke-runner changes rather than a remote Git seed.
 
 ```text
 start target session
@@ -110,13 +110,14 @@ start target session
 end target session
 ```
 
-The target session fails fast. The release-gate path warms one Crabbox lease per target, performs one fresh sync, runs suites in order, and stops that target after the first failure. Per-suite commands remain available for diagnosis, but they are intentionally not the normal release path because repeated warmup/sync/install cycles make releases too slow.
+The target session fails fast. The release-gate path warms one Crabbox lease per target, performs one fresh sync, runs suites in order on that target, and stops that target after the first failure. Different targets run concurrently to keep wall time bounded by the slowest platform instead of the sum of all platforms. Per-suite commands remain available for diagnosis, but they are intentionally not the normal release path because repeated warmup/sync/install cycles make releases too slow.
 
 Runtime budget is part of the contract:
 
 - `smoke:platform:doctor` never calls Cursor.
 - `platform-build` runs once per target and is the only suite that performs the full local CI/build/typecheck/package gate.
 - Live suites reuse the target checkout and prepared `node_modules` when run after `platform-build`; they do not repeat `npm ci` in a target-session release run.
+- Live suites share one target-local packed-install prep directory per target-session release run. The first live suite runs `npm pack` and `npm install --no-save <tarball>` once, then each suite still performs its own `pi install -l <packed package path>`, `pi list`, fresh `--session-dir`, suite `PI_CODING_AGENT_DIR`, workspace fixture, JSONL, visual, bridge, and abort assertions.
 - Visual coverage is batched into one native prompt, one bridge prompt, and one abort/cleanup prompt per target. Do not split these into one prompt per card.
 - The gate is fail-fast by target to avoid burning Cursor calls after a platform has already failed.
 
@@ -227,20 +228,26 @@ Every target session uses a unique run root.
   pi-project/             # target-local pi settings for packed install
   artifacts/              # target-side suite artifacts
   pack/                   # packed tarball and install material
+
+<targetWorkRoot>/runs/live-prep-<target-session>/
+  packed-workspace/       # shared target-local npm install of the packed tarball
+  pack/                   # shared live-suite tarball
+  ready.json              # package path reused by later live suites
 ```
 
 Definitions:
 
 - `extensionSourceRoot`: synced repo used for `npm ci`, `npm test`, `npm run typecheck`, and `npm pack`.
 - `testWorkspaceRoot`: cwd used by live Cursor suites. It contains deterministic fixture files the prompts operate on: `package.json`, `README.md`, `src/`, and suite scratch directories.
-- `piProjectRoot`: target-local pi project where `pi install -l <packed tarball>` is run.
+- `piProjectRoot`: target-local pi project where platform-build proves packed install.
+- `livePrepRoot`: target-local shared live-suite prep where the first live suite installs the packed tarball once for reuse by later live suites in the same target session.
 
-Live suites run in `testWorkspaceRoot`. The extension loaded by pi is the packed tarball installed in `piProjectRoot`; no live suite uses `pi -e .`.
+Live suites run in a suite-local `testWorkspaceRoot`. The extension loaded by pi is the packed tarball package path from `livePrepRoot`, installed into that suite-local workspace with `pi install -l`; no live suite uses `pi -e .`.
 
 The runner must prove this by recording:
 
 - packed tarball path;
-- `pi list` output from `piProjectRoot`;
+- `pi list` output from the suite-local project after `pi install -l <packed package path>`;
 - command line showing no `-e .`;
 - live suite cwd as `testWorkspaceRoot`.
 
