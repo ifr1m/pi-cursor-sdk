@@ -4,6 +4,7 @@ import { registerCursorRuntimeControls } from "./cursor-state.js";
 import { registerCursorNativeToolDisplay } from "./cursor-native-tool-display.js";
 import { registerCursorPiToolBridge } from "./cursor-pi-tool-bridge.js";
 import { registerCursorQuestionTool } from "./cursor-question-tool.js";
+import { registerCursorSkillTool } from "./cursor-skill-tool.js";
 import { registerCursorSessionCwd } from "./cursor-session-cwd.js";
 import { registerCursorAgentsContextDedup } from "./cursor-agents-context.js";
 import { registerCursorSessionAgent } from "./cursor-session-agent.js";
@@ -18,6 +19,7 @@ type CursorExtensionApi =
 	& Parameters<typeof registerCursorRuntimeControls>[0]
 	& Parameters<typeof registerCursorNativeToolDisplay>[0]
 	& Parameters<typeof registerCursorQuestionTool>[0]
+	& Parameters<typeof registerCursorSkillTool>[0]
 	& Parameters<typeof registerCursorPiToolBridge>[0]
 	& Parameters<typeof registerCursorAgentsContextDedup>[0];
 
@@ -46,6 +48,7 @@ export default async function (pi: CursorExtensionApi) {
 	registerCursorRuntimeControls(pi);
 	registerCursorNativeToolDisplay(pi);
 	registerCursorQuestionTool(pi);
+	registerCursorSkillTool(pi);
 	registerCursorPiToolBridge(pi);
 	registerCursorAgentsContextDedup(pi);
 	let fallbackIssue: CursorModelFallbackIssue | undefined;

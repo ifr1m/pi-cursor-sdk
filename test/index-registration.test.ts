@@ -26,6 +26,7 @@ import { discoverModels } from "../src/model-discovery.js";
 import { streamCursor } from "../src/cursor-provider.js";
 import { buildCursorPiToolBridgeSnapshot } from "../src/cursor-pi-tool-bridge.js";
 import { CURSOR_ASK_QUESTION_TOOL_NAME } from "../src/cursor-question-tool.js";
+import { CURSOR_ACTIVATE_SKILL_TOOL_NAME } from "../src/cursor-skill-tool.js";
 
 const mockedDiscover = vi.mocked(discoverModels);
 const mockedStreamCursor = vi.mocked(streamCursor);
@@ -72,9 +73,10 @@ describe("extension registration and discovery", () => {
 			"cursor-refresh-models",
 			expect.objectContaining({ description: expect.stringContaining("Refresh the live Cursor model catalog") }),
 		);
-		expect(pi.registerTool).toHaveBeenCalledTimes(22);
+		expect(pi.registerTool).toHaveBeenCalledTimes(23);
 		expect(pi._tools.map((tool) => tool.name)).toEqual([
 			CURSOR_ASK_QUESTION_TOOL_NAME,
+			CURSOR_ACTIVATE_SKILL_TOOL_NAME,
 			"grep",
 			"find",
 			"ls",
@@ -158,7 +160,7 @@ describe("extension registration and discovery", () => {
 		await extensionFactory(pi);
 		await pi.runSessionStart({ model: undefined });
 
-		expect(pi._tools.map((tool) => tool.name)).toEqual([CURSOR_ASK_QUESTION_TOOL_NAME]);
+		expect(pi._tools.map((tool) => tool.name)).toEqual([CURSOR_ASK_QUESTION_TOOL_NAME, CURSOR_ACTIVATE_SKILL_TOOL_NAME]);
 		expect(pi._activeToolNames()).not.toContain("cursor");
 		expect(pi._activeToolNames()).not.toContain("grep");
 		expect(pi._activeToolNames()).not.toContain(CURSOR_ASK_QUESTION_TOOL_NAME);

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.30 - 2026-06-01
+
+### Added
+
+- Preserve pi Agent Skills for Cursor runs by rewriting pi's skill catalog into Cursor-safe activation instructions and exposing `cursor_activate_skill` through the pi MCP bridge as `pi__cursor_activate_skill` when visible pi skills are available (#113).
+
+### Changed
+
+- Document that deprecated install warnings currently come from the closed-source Cursor SDK's `sqlite3@5.1.x` transitive dependency chain, and document root-project override limits/workarounds instead of relying on unsupported transitive package overrides (#115).
+
 ## 0.1.29 - 2026-06-01
 
 ### Added

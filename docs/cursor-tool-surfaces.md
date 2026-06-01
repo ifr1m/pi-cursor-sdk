@@ -8,7 +8,7 @@ pi-cursor-sdk runs Cursor models through the local `@cursor/sdk` agent runtime. 
 | --- | --- | --- | --- |
 | **Cursor SDK host tools** | Cursor local agent | Yes | Native replay cards (`read`, `bash`, …) or neutral Cursor activity. Representative ToolType list: [SDK ToolType replay matrix](./cursor-native-tool-replay.md#sdk-tooltype-replay-matrix). |
 | **Configured Cursor MCP** | Cursor settings / `~/.cursor/mcp.json` | Yes (when loaded) | Neutral **Cursor MCP** activity cards on replay |
-| **Pi bridge (`pi__*`)** | pi-cursor-sdk loopback MCP | Yes, when exposed | Real pi tool names (`cursor_ask_question`, extension tools, …) |
+| **Pi bridge (`pi__*`)** | pi-cursor-sdk loopback MCP | Yes, when exposed | Real pi tool names (`cursor_ask_question`, `cursor_activate_skill`, extension tools, …) |
 
 **Not callable:** `cursor-replay-*` IDs in JSONL, pi history tool names used only for display, and transcript labels. Cursor must call exposed `pi__*` MCP names for bridged pi tools, not the pi card name.
 
@@ -27,7 +27,7 @@ Default behavior:
 - The pi bridge exposes **active pi tools** as `pi__*` MCP names when `PI_CURSOR_PI_TOOL_BRIDGE` is enabled (default on).
 - Overlapping pi builtins (`read`, `bash`, `write`, `edit`, `grep`, `find`, `ls`) are **hidden** from the bridge unless `PI_CURSOR_EXPOSE_BUILTIN_TOOLS=1`.
 
-`pi-cursor-sdk` always registers `cursor_ask_question` for Cursor models when the bridge is on; Cursor sees `pi__cursor_ask_question`.
+`pi-cursor-sdk` always registers `cursor_ask_question` for Cursor models when the bridge is on; Cursor sees `pi__cursor_ask_question`. When pi has visible Agent Skills loaded, the extension also rewrites pi's skill catalog for Cursor and activates `cursor_activate_skill`; Cursor sees `pi__cursor_activate_skill` and should call it with a listed skill name before applying that skill. The activation result returns the full `SKILL.md`, the skill directory for relative paths, and a bounded list of bundled `scripts/`, `references/`, and `assets/` files without eagerly reading those resources.
 
 ```bash
 # Disable pi bridge entirely

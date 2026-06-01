@@ -27,7 +27,7 @@ describe("buildCursorPrompt", () => {
 		expect(result.text).toContain("You are helpful.");
 	});
 
-	it("omits pi tool catalogs and local skill catalogs from Cursor-facing system instructions", () => {
+	it("omits pi tool catalogs while preserving local skill catalogs for Cursor-facing system instructions", () => {
 		const ctx: Context = {
 			systemPrompt: [
 				"You are an expert coding assistant.",
@@ -68,7 +68,7 @@ describe("buildCursorPrompt", () => {
 		expect(result.text).toContain("Project instruction stays.");
 		expect(result.text).toContain("Current date: 2026-05-20");
 		expect(result.text).not.toContain("custom_private_tool");
-		expect(result.text).not.toContain("private-skill");
+		expect(result.text).toContain("private-skill");
 		expect(result.text).not.toContain("Semantic code intelligence priority");
 	});
 

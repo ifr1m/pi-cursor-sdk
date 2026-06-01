@@ -114,10 +114,8 @@ function sanitizeSystemPromptForCursor(systemPrompt: string): string {
 		/Guidelines:\n[\s\S]*?\n\nPi documentation /g,
 		"Guidelines:\n- Be concise in your responses.\n- Show file paths clearly when working with files.\n\nPi documentation ",
 	);
-	sanitized = sanitized.replace(
-		/\n\nThe following skills provide specialized instructions for specific tasks\.[\s\S]*?<\/available_skills>/g,
-		"",
-	);
+	// Keep the Agent Skills catalog. Cursor-specific skill activation wording is normalized
+	// by cursor-skill-tool.ts before this prompt reaches the Cursor SDK provider.
 	sanitized = sanitized.replace(/\n+Semantic code intelligence priority:[\s\S]*$/g, "");
 	return sanitized.trim();
 }
