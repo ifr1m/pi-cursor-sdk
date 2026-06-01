@@ -15,7 +15,7 @@ import { warmupLease, runOnLease, stopLease } from "./crabbox-runner.mjs";
 import { renderAll } from "./render-ansi.mjs";
 import { assertRequiredCards, detectCards, writeCardArtifacts } from "./card-detect.mjs";
 import { collectVisualEvidence } from "./visual-evidence.mjs";
-import { extractContentText } from "./jsonl-text.mjs";
+import { extractContentText, extractFinalTextContent } from "./jsonl-text.mjs";
 
 export function platformFor(targetName) {
 	return targetName === "windows-native" ? "powershell" : "posix";
@@ -23,6 +23,71 @@ export function platformFor(targetName) {
 
 function makeRunId() {
 	return `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function finalizeSuiteArtifacts(suiteDir, checks, summaryData, expectedFiles) {
+	const assertions = runAssertions(suiteDir, checks);
+	writeSummary(suiteDir, { ...summaryData, ok: assertions.ok });
+	const expected = assertions.ok ? expectedFiles : [...expectedFiles, "failures.md"];
+	const manifest = writeManifest(suiteDir, expected);
+	if (manifest.missing.length === 0) return { assertions, manifest };
+
+	const finalAssertions = runAssertions(suiteDir, [
+		...checks,
+		{
+			id: "artifact-manifest-complete",
+			fn: () => false,
+			error: `missing required artifact(s): ${manifest.missing.join(", ")}`,
+		},
+	]);
+	writeSummary(suiteDir, { ...summaryData, ok: false });
+	const finalManifest = writeManifest(suiteDir, [...expectedFiles, "failures.md"]);
+	return { assertions: finalAssertions, manifest: finalManifest };
+}
+
+function writeStopLeaseArtifacts(suiteDir, stopResult) {
+	writeFileSync(resolve(suiteDir, "crabbox.stop.stdout.txt"), stopResult.stdout ?? "");
+	writeFileSync(resolve(suiteDir, "crabbox.stop.stderr.txt"), stopResult.stderr ?? "");
+	writeFileSync(resolve(suiteDir, "crabbox.stop.exit-code.txt"), `code=${stopResult.code}\nsignal=${stopResult.signal ?? "none"}\n`);
+}
+
+function stopLeaseCheck(stopResult) {
+	return {
+		id: "lease-stop",
+		fn: () => stopResult?.code === 0,
+		error: `Crabbox stop failed (exit ${stopResult?.code ?? "unknown"}); check crabbox.stop.stderr.txt`,
+	};
+}
+
+export function createLeaseCleanupFailureResult(config, targetName, leaseId, stopResult) {
+	const runId = makeRunId();
+	const suiteName = "lease-cleanup";
+	const suiteDir = createSuiteDir(config.artifactRoot, runId, targetName, suiteName);
+	writeFileSync(resolve(suiteDir, "target.json"), JSON.stringify({
+		targetName,
+		platform: platformFor(targetName),
+		slug: `${config.packageName ?? "pi-cursor-sdk"}-${targetName}`,
+		runId,
+		writtenAt: new Date().toISOString(),
+	}, null, 2));
+	writeFileSync(resolve(suiteDir, "suite.json"), JSON.stringify({
+		suiteName,
+		leaseId,
+		writtenAt: new Date().toISOString(),
+	}, null, 2));
+	writeCommand(suiteDir, `crabbox stop ${targetName} --id ${leaseId}`);
+	writeExitCode(suiteDir, stopResult.code, stopResult.signal);
+	writeStopLeaseArtifacts(suiteDir, stopResult);
+	const { assertions } = finalizeSuiteArtifacts(
+		suiteDir,
+		[stopLeaseCheck(stopResult)],
+		{ target: targetName, suite: suiteName, exitCode: stopResult.code, signal: stopResult.signal, elapsedMs: 0 },
+		[
+			"summary.json", "target.json", "suite.json", "command.txt", "exit-code.txt",
+			"crabbox.stop.stdout.txt", "crabbox.stop.stderr.txt", "crabbox.stop.exit-code.txt", "assertions.json",
+		],
+	);
+	return { ok: false, suiteDir, assertions };
 }
 
 /**
@@ -102,6 +167,7 @@ export async function runTargetSuites(config, targetName, suiteNames) {
 	const results = [];
 	let sync = true;
 	const livePrepDir = `.platform-smoke-runs/live-prep-${Date.now()}-${targetName}`;
+	let stopResult;
 	try {
 		for (const suiteName of suiteNames) {
 			console.log(`  Suite: ${suiteName}`);
@@ -112,7 +178,10 @@ export async function runTargetSuites(config, targetName, suiteNames) {
 		}
 	} finally {
 		console.log(`  stopping lease ${warmup.leaseId}...`);
-		await stopLease(targetName, warmup.leaseId);
+		stopResult = await stopLease(targetName, warmup.leaseId);
+	}
+	if (stopResult?.code !== 0) {
+		results.push(createLeaseCleanupFailureResult(config, targetName, warmup.leaseId, stopResult));
 	}
 	return { ok: results.every((result) => result.ok), results };
 }
@@ -168,9 +237,11 @@ async function executePlatformBuild(config, targetName, suiteDir, slug, platform
 	writeCommand(suiteDir, command);
 	writeExitCode(suiteDir, result.code, result.signal);
 
+	let stopResult;
 	if (ownsLease) {
 		console.log(`  stopping lease ${warmup.leaseId}...`);
-		await stopLease(targetName, warmup.leaseId);
+		stopResult = await stopLease(targetName, warmup.leaseId);
+		writeStopLeaseArtifacts(suiteDir, stopResult);
 	}
 
 	writePlatformBuildExtracts(suiteDir, result.stdout);
@@ -219,20 +290,8 @@ async function executePlatformBuild(config, targetName, suiteDir, slug, platform
 	if (result.code !== 0 && !markerOk) {
 		checks.push({ id: "build-stderr", fn: () => false, error: `exit ${result.code}, check crabbox.stderr.txt` });
 	}
+	if (stopResult) checks.push(stopLeaseCheck(stopResult));
 
-	const assertions = runAssertions(suiteDir, checks);
-
-	// Write summary
-	writeSummary(suiteDir, {
-		target: targetName,
-		suite: "platform-build",
-		ok: assertions.ok,
-		exitCode: result.code,
-		signal: result.signal,
-		elapsedMs: elapsed,
-	});
-
-	// Write manifest
 	const expectedFiles = [
 		"summary.json", "target.json", "suite.json",
 		"command.txt", "exit-code.txt",
@@ -242,8 +301,14 @@ async function executePlatformBuild(config, targetName, suiteDir, slug, platform
 		"pi-list.stdout.txt", "pi-list.stderr.txt",
 		"assertions.json",
 	];
-	if (!assertions.ok) expectedFiles.push("failures.md");
-	writeManifest(suiteDir, expectedFiles);
+	if (stopResult) expectedFiles.push("crabbox.stop.stdout.txt", "crabbox.stop.stderr.txt", "crabbox.stop.exit-code.txt");
+	const { assertions } = finalizeSuiteArtifacts(suiteDir, checks, {
+		target: targetName,
+		suite: "platform-build",
+		exitCode: result.code,
+		signal: result.signal,
+		elapsedMs: elapsed,
+	}, expectedFiles);
 
 	console.log(`  ${assertions.ok ? "PASS" : "FAIL"} platform-build on ${targetName} (${elapsed}ms)`);
 
@@ -415,9 +480,11 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 	}, null, 2));
 	writeExitCode(suiteDir, result.code, result.signal);
 
+	let stopResult;
 	if (ownsLease) {
 		console.log(`  stopping lease ${warmup.leaseId}...`);
-		await stopLease(targetName, warmup.leaseId);
+		stopResult = await stopLease(targetName, warmup.leaseId);
+		writeStopLeaseArtifacts(suiteDir, stopResult);
 	}
 
 	const bundleOk = extractLiveBundle(suiteDir, result.stdout);
@@ -527,15 +594,7 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 		...(visualEvidence.checks ?? []).map((check) => ({ id: check.id, fn: () => check.ok === true, error: check.error })),
 		...visualEvidenceResultChecks,
 	];
-	const assertions = runAssertions(suiteDir, checks);
-	writeSummary(suiteDir, {
-		target: targetName,
-		suite: suiteName,
-		ok: assertions.ok,
-		exitCode: result.code,
-		signal: result.signal,
-		elapsedMs: elapsed,
-	});
+	if (stopResult) checks.push(stopLeaseCheck(stopResult));
 	const expectedFiles = [
 		"summary.json", "target.json", "suite.json", "command.txt", "exit-code.txt",
 		"crabbox.stdout.txt", "crabbox.stderr.txt", "crabbox.timing.json", "assertions.json",
@@ -547,8 +606,14 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 	if (suiteName === "cursor-abort-cleanup") {
 		expectedFiles.push("artifacts/abort-started.txt", "logs/process-before.stdout.txt", "logs/process-after.stdout.txt", "logs/leftover-process-check.stdout.txt");
 	}
-	if (!assertions.ok) expectedFiles.push("failures.md");
-	writeManifest(suiteDir, expectedFiles);
+	if (stopResult) expectedFiles.push("crabbox.stop.stdout.txt", "crabbox.stop.stderr.txt", "crabbox.stop.exit-code.txt");
+	const { assertions } = finalizeSuiteArtifacts(suiteDir, checks, {
+		target: targetName,
+		suite: suiteName,
+		exitCode: result.code,
+		signal: result.signal,
+		elapsedMs: elapsed,
+	}, expectedFiles);
 	console.log(`  ${assertions.ok ? "PASS" : "FAIL"} ${suiteName} on ${targetName} (${elapsed}ms)`);
 	return { ok: assertions.ok, suiteDir, assertions };
 }
@@ -665,14 +730,14 @@ function collectUsageChecks(jsonlRaw) {
 	return { seen, nonNegative, cacheZero };
 }
 
-function hasAbortSuccessClaim(jsonlRaw) {
+export function hasAbortSuccessClaim(jsonlRaw) {
 	for (const line of jsonlRaw.split(/\r?\n/)) {
 		if (!line.trim()) continue;
 		let event;
 		try { event = JSON.parse(line); } catch { continue; }
 		const message = event?.message;
 		if (message?.role !== "assistant") continue;
-		const text = extractContentText(message.content);
+		const text = extractFinalTextContent(message.content);
 		if (/\b(?:done|complete|completed|success|succeeded|finished)\b/i.test(text)) return true;
 	}
 	return false;
@@ -739,23 +804,17 @@ function failSuite(suiteDir, targetName, suiteName, message) {
 	writeCommand(suiteDir, `# ${suiteName} — ${message}`);
 	writeExitCode(suiteDir, 1, null);
 
-	writeSummary(suiteDir, {
-		target: targetName,
-		suite: suiteName,
-		ok: false,
-		exitCode: 1,
-		error: message,
-	});
-
-	const checks = [{ id: "execution", fn: () => false, _error: message }];
-	const assertions = runAssertions(suiteDir, checks);
-
-	const expectedFiles = [
-		"summary.json", "target.json", "suite.json",
-		"command.txt", "exit-code.txt",
-		"assertions.json", "failures.md",
-	];
-	writeManifest(suiteDir, expectedFiles);
+	const checks = [{ id: "execution", fn: () => false, error: message }];
+	const { assertions } = finalizeSuiteArtifacts(
+		suiteDir,
+		checks,
+		{ target: targetName, suite: suiteName, exitCode: 1, error: message },
+		[
+			"summary.json", "target.json", "suite.json",
+			"command.txt", "exit-code.txt",
+			"assertions.json",
+		],
+	);
 
 	return { ok: false, suiteDir, assertions };
 }

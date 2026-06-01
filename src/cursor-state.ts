@@ -142,8 +142,8 @@ function getStoredFastPreference(metadata: NonNullable<ReturnType<typeof getCurs
 	const preferenceModelId = getFastPreferenceModelId(metadata);
 	return (
 		sessionFastPreferences.get(preferenceModelId) ??
-		globalFastPreferences.get(preferenceModelId) ??
 		(preferenceModelId !== metadata.baseModelId ? sessionFastPreferences.get(metadata.baseModelId) : undefined) ??
+		globalFastPreferences.get(preferenceModelId) ??
 		(preferenceModelId !== metadata.baseModelId ? globalFastPreferences.get(metadata.baseModelId) : undefined)
 	);
 }

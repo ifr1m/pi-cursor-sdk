@@ -344,6 +344,28 @@ describe("Cursor runtime state", () => {
 		expect(getEffectiveFastForModelId("composer-2-5")).toBe(false);
 	});
 
+	it("keeps legacy session fast preferences above global alias defaults", async () => {
+		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2-5": true } }));
+		const { pi, ctx } = createCursorRuntimeHarness({
+			modelId: "composer-2-5",
+			branch: [
+				{
+					type: "custom",
+					id: "fast-entry",
+					parentId: null,
+					timestamp: new Date(0).toISOString(),
+					customType: __testUtils.FAST_ENTRY_TYPE,
+					data: { baseModelId: "composer-2.5", fast: false },
+				},
+			],
+		});
+
+		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
+		expect(getEffectiveFastForModelId("composer-2-5")).toBe(false);
+	});
+
 	it("does not update fast state when the global config cannot be saved", async () => {
 		const blockedAgentDir = join(tmpAgentDir, "not-a-directory");
 		writeFileSync(blockedAgentDir, "x");

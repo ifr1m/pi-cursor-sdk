@@ -115,9 +115,55 @@ if (result.promptCardCount !== 0 || !result.renderedOk || !result.traversalRejec
 		expect(result.stdout).toContain('"traversalRejected":true');
 	});
 
+	it("fails suite artifacts when required manifests or lease cleanup are missing", () => {
+		const code = String.raw`
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { finalizeSuiteArtifacts, createLeaseCleanupFailureResult } from "./scripts/platform-smoke/targets.mjs";
+const root = mkdtempSync(join(tmpdir(), "platform-smoke-manifest-test-"));
+try {
+  const suiteDir = join(root, "suite");
+  await import("node:fs").then(({ mkdirSync }) => mkdirSync(suiteDir, { recursive: true }));
+  writeFileSync(join(suiteDir, "present.txt"), "ok");
+  const finalized = finalizeSuiteArtifacts(
+    suiteDir,
+    [{ id: "base-ok", fn: () => true }],
+    { target: "unit", suite: "manifest", exitCode: 0, elapsedMs: 1 },
+    ["summary.json", "assertions.json", "present.txt", "missing.txt"],
+  );
+  const manifest = JSON.parse(readFileSync(join(suiteDir, "artifact-manifest.json"), "utf8"));
+  const cleanup = createLeaseCleanupFailureResult({ artifactRoot: root, packageName: "pi-cursor-sdk" }, "ubuntu", "cbx_failed", {
+    stdout: "",
+    stderr: "stop failed",
+    code: 1,
+    signal: null,
+  });
+  const cleanupAssertions = JSON.parse(readFileSync(join(cleanup.suiteDir, "assertions.json"), "utf8"));
+  const result = {
+    manifestOk: finalized.assertions.ok,
+    missing: manifest.missing,
+    cleanupOk: cleanup.ok,
+    cleanupAssertionOk: cleanupAssertions.ok,
+    cleanupHasStopFailure: cleanupAssertions.checks.some((check) => check.id === "lease-stop" && check.ok === false),
+  };
+  console.log(JSON.stringify(result));
+  if (result.manifestOk || !result.missing.includes("missing.txt") || result.cleanupOk || result.cleanupAssertionOk || !result.cleanupHasStopFailure) process.exit(1);
+} finally {
+  rmSync(root, { recursive: true, force: true });
+}
+`;
+		const result = run(process.execPath, ["--input-type=module", "-e", code]);
+		expect(result.status).toBe(0);
+		expect(result.stdout).toContain('"manifestOk":false');
+		expect(result.stdout).toContain('"missing.txt"');
+		expect(result.stdout).toContain('"cleanupHasStopFailure":true');
+	});
+
 	it("requires platform final markers in the last non-empty assistant text part", () => {
 		const code = String.raw`
 import { extractContentText, extractFinalTextContent, jsonlHasAssistantFinalTextMarker } from "./scripts/platform-smoke/jsonl-text.mjs";
+import { hasAbortSuccessClaim } from "./scripts/platform-smoke/targets.mjs";
 const content = [
   { type: "text", text: "LIVE TEST PASS only appeared in progress\n" },
   { type: "thinking", thinking: "tool metadata" },
@@ -125,19 +171,25 @@ const content = [
   { type: "text", text: "actual final report" },
 ];
 const raw = JSON.stringify({ message: { role: "assistant", content } }) + "\n";
+const abortRaw = JSON.stringify({ message: { role: "assistant", content: [
+  { type: "thinking", thinking: "wait for the tool to complete" },
+  { type: "text", text: "aborting now" },
+] } }) + "\n";
 const result = {
   allTextIncludesMarker: extractContentText(content).includes("LIVE TEST PASS"),
   finalText: extractFinalTextContent(content),
   markerAccepted: jsonlHasAssistantFinalTextMarker(raw, "LIVE TEST PASS"),
+  abortSuccessClaim: hasAbortSuccessClaim(abortRaw),
 };
 console.log(JSON.stringify(result));
-if (!result.allTextIncludesMarker || result.finalText !== "actual final report" || result.markerAccepted) process.exit(1);
+if (!result.allTextIncludesMarker || result.finalText !== "actual final report" || result.markerAccepted || result.abortSuccessClaim) process.exit(1);
 `;
 		const result = run(process.execPath, ["--input-type=module", "-e", code]);
 		expect(result.status).toBe(0);
 		expect(result.stdout).toContain('"allTextIncludesMarker":true');
 		expect(result.stdout).toContain('"finalText":"actual final report"');
 		expect(result.stdout).toContain('"markerAccepted":false');
+		expect(result.stdout).toContain('"abortSuccessClaim":false');
 	});
 
 	it("asserts rendered visual evidence patterns from output lines rather than prompt text", () => {
