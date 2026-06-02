@@ -45,6 +45,10 @@ function shell(cmd, opts = {}) {
 	catch { return null; }
 }
 
+function commandPath(command) {
+	return shell(`command -v ${command}`);
+}
+
 function parseLeaseId(output) {
 	return output.match(/\bleased\s+(\S+)/)?.[1]
 		?? output.match(/\blease=(\S+)/)?.[1]
@@ -126,7 +130,6 @@ function runChecks(config) {
 	// ── Phase 1: environment variables ──
 	console.log("\n── Environment variables ──");
 	const requiredVars = [
-		"PLATFORM_SMOKE_CRABBOX",
 		"CURSOR_API_KEY",
 		"PLATFORM_SMOKE_WINDOWS_VM",
 		"PLATFORM_SMOKE_WINDOWS_SNAPSHOT",
@@ -134,6 +137,7 @@ function runChecks(config) {
 		"PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT",
 	];
 	const optionalVars = [
+		"PLATFORM_SMOKE_CRABBOX",
 		"PLATFORM_SMOKE_MAC_HOST",
 		"PLATFORM_SMOKE_MAC_USER",
 		"PLATFORM_SMOKE_MAC_WORK_ROOT",
@@ -151,12 +155,17 @@ function runChecks(config) {
 
 	// ── Phase 2: Crabbox binary ──
 	console.log("\n── Crabbox binary ──");
-	const cbox = env("PLATFORM_SMOKE_CRABBOX");
-	if (!cbox) {
-		fail("PLATFORM_SMOKE_CRABBOX not set");
+	const cbox = env("PLATFORM_SMOKE_CRABBOX") || "crabbox";
+	const cboxPath = env("PLATFORM_SMOKE_CRABBOX") || commandPath("crabbox");
+	if (!cboxPath) {
+		fail(`crabbox not found on PATH; install with ${config.requiredCrabbox?.install ?? "Homebrew"} or set PLATFORM_SMOKE_CRABBOX`);
 	} else {
-		try { accessSync(cbox, constants.X_OK); ok(`binary: ${cbox}`); }
-		catch { fail(`${cbox} not executable`); }
+		if (env("PLATFORM_SMOKE_CRABBOX")) {
+			try { accessSync(cboxPath, constants.X_OK); ok(`binary: ${cboxPath} (env override)`); }
+			catch { fail(`${cboxPath} not executable`); }
+		} else {
+			ok(`binary: ${cboxPath} (PATH)`);
+		}
 		const ver = silent(cbox, ["--version"]);
 		const actualVersion = ver?.split("\n")[0]?.trim();
 		if (actualVersion) ok(`version: ${actualVersion}`);
@@ -174,9 +183,9 @@ function runChecks(config) {
 		}
 		const requiredCommit = config.requiredCrabbox?.commit;
 		if (!requiredVersion && !minimumVersion && requiredCommit) {
-			const gitRoot = findGitRoot(dirname(cbox));
+			const gitRoot = findGitRoot(dirname(cboxPath));
 			const actualCommit = gitRoot ? silent("git", ["-C", gitRoot, "rev-parse", "HEAD"]) : null;
-			if (!actualCommit) fail(`could not verify Crabbox source commit for ${cbox}`);
+			if (!actualCommit) fail(`could not verify Crabbox source commit for ${cboxPath}`);
 			else if (actualCommit !== requiredCommit) fail(`Crabbox commit mismatch: expected ${requiredCommit}, got ${actualCommit}`);
 			else ok(`commit: ${actualCommit}`);
 		}
@@ -184,7 +193,7 @@ function runChecks(config) {
 
 	// ── Phase 3: Crabbox providers ──
 	console.log("\n── Crabbox providers ──");
-	if (cbox) {
+	if (cboxPath) {
 		const providerList = silent(cbox, ["providers"]);
 		if (providerList) {
 			for (const provider of ["ssh", "local-container", "parallels"]) {

@@ -154,7 +154,7 @@ PLATFORM_SMOKE_WINDOWS_USER=<windows-ssh-user>
 PLATFORM_SMOKE_WINDOWS_WORK_ROOT=C:\crabbox\<project>
 ```
 
-Pin Crabbox deliberately. Exact pins are best for release-critical harnesses whose parsing depends on CLI output. Minimum version checks are fine for simpler gates. Current local baseline is Crabbox `0.24.0`.
+Pin Crabbox deliberately. Exact pins are best for release-critical harnesses whose parsing depends on CLI output. Minimum version checks are fine for simpler gates. Current local baseline is Crabbox `0.24.0` or newer from the Homebrew package.
 
 ## Target setup best practices
 

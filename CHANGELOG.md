@@ -11,6 +11,7 @@
 ### Changed
 
 - Replace repeated native replay render-test `as never` casts with typed test render fixture helpers.
+- Use the maintained Homebrew Crabbox binary on `PATH` for platform smoke with a `0.24.0` minimum version, keeping `PLATFORM_SMOKE_CRABBOX` as an explicit override only.
 
 ### Fixed
 

@@ -13,8 +13,8 @@ export default {
 		"cursor-abort-cleanup",
 	],
 	requiredCrabbox: {
-		install: "brew install crabbox",
-		version: "0.24.0",
+		install: "Homebrew package or PLATFORM_SMOKE_CRABBOX override",
+		minVersion: "0.24.0",
 	},
 	ubuntuContainerImage: "cimg/node:24.16",
 	nodeValidationMajor: 24,

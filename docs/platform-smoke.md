@@ -52,12 +52,12 @@ The runner uses one supported Crabbox build.
 Current baseline:
 
 ```text
-install: brew install crabbox
-version: 0.24.0
-binary: /opt/homebrew/bin/crabbox on Apple Silicon Homebrew installs
+install: brew install openclaw/tap/crabbox
+version: 0.24.0 or newer
+binary: Homebrew `crabbox` on PATH (`/opt/homebrew/bin/crabbox` on Apple Silicon Homebrew installs)
 ```
 
-Keep this exact version or replace it with another exact released Crabbox version when updating the gate. `smoke:platform:doctor` verifies the configured Crabbox binary and fails on mismatch.
+Use the Homebrew Crabbox binary on PATH for normal release gates. `PLATFORM_SMOKE_CRABBOX=/path/to/crabbox` is only an explicit override for testing a non-default binary. `smoke:platform:doctor` verifies the configured binary and fails when it is older than the configured minimum version.
 
 Required Crabbox providers:
 
@@ -188,8 +188,8 @@ export default {
     "cursor-abort-cleanup",
   ],
   requiredCrabbox: {
-    install: "brew install crabbox",
-    version: "0.24.0",
+    install: "Homebrew package or PLATFORM_SMOKE_CRABBOX override",
+    minVersion: "0.24.0",
   },
   ubuntuContainerImage: "cimg/node:24.16",
   nodeValidationMajor: 24,
@@ -203,6 +203,7 @@ export default {
 The doctor fails if any required value is missing.
 
 ```bash
+# Optional override; by default the gate uses Homebrew `crabbox` from PATH.
 PLATFORM_SMOKE_CRABBOX=/opt/homebrew/bin/crabbox
 
 PLATFORM_SMOKE_MAC_HOST=localhost
@@ -313,7 +314,7 @@ tar --version
 Doctor checks:
 
 1. Required env vars exist.
-2. `PLATFORM_SMOKE_CRABBOX` exists and is executable.
+2. Homebrew `crabbox` is available on PATH, or `PLATFORM_SMOKE_CRABBOX` points at an executable override.
 3. Crabbox build matches the configured baseline.
 4. Crabbox provider registry includes `local-container`, `ssh`, and `parallels`.
 5. `crabbox doctor --provider local-container --json` passes.
