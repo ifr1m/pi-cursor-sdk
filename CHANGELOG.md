@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.1.32 - 2026-06-02
+
+### Added
+
+- Add a production typing-safety regression test that blocks broad TypeScript escape hatches such as `as unknown as`, `as any`, `as never`, explicit `any`, and production `@ts-ignore` / `@ts-expect-error` usage.
+
+### Changed
+
+- Replace repeated native replay render-test `as never` casts with typed test render fixture helpers.
+
+### Fixed
+
+- Harden local Cursor cache/config JSON parsing so model-list, context-window, and fast-default files are validated from `unknown` before trusted values are used.
+
 ## 0.1.31 - 2026-06-01
 
 ### Added

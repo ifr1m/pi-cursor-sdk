@@ -6,22 +6,17 @@ import {
 	parseCursorReplayToolDetails,
 	parseStrictCurrentCursorReplayToolDetails,
 } from "../src/cursor-replay-tool-details.js";
-import {
-	renderCursorReplayResult,
-	type CursorReplayRenderTheme,
-} from "../src/cursor-native-tool-display-replay.js";
+import { renderCursorReplayResult } from "../src/cursor-native-tool-display-replay.js";
+import { createRenderContext, createRenderTheme } from "./helpers/render-fixtures.js";
 
-const theme = {
-	fg: (_name: string, value: string) => value,
-	bold: (value: string) => value,
-} as CursorReplayRenderTheme;
+const theme = createRenderTheme();
 
 function renderReplayResult(details: unknown, text = "ok", isError = false): string {
 	return renderCursorReplayResult(
 		{ content: [{ type: "text", text }], details },
 		{ expanded: false, isPartial: false },
 		theme,
-		{ isError, showImages: false } as never,
+		createRenderContext({ isError, showImages: false }),
 		isError,
 	)
 		.render(120)
@@ -310,7 +305,7 @@ describe("cursor replay tool details contract", () => {
 			},
 			{ expanded: false, isPartial: false },
 			theme,
-			{ isError: true, showImages: false } as never,
+			createRenderContext({ isError: true, showImages: false }),
 			true,
 		)
 			.render(120)

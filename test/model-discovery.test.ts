@@ -579,6 +579,28 @@ describe("discoverModels", () => {
 		}
 	});
 
+	it("ignores malformed context-window cache values", async () => {
+		const tmpAgentDir = mkdtempSync(join(tmpdir(), "pi-cursor-context-window-malformed-"));
+		process.env.PI_CODING_AGENT_DIR = tmpAgentDir;
+		try {
+			writeFileSync(contextWindowCacheTestUtils.getCachePath(), JSON.stringify({ contextWindows: { "composer-2": "201000" } }));
+			process.env.CURSOR_API_KEY = "test-key-123";
+			mockedList.mockResolvedValueOnce([
+				{
+					id: "composer-2",
+					displayName: "Composer 2",
+					variants: [{ params: [], displayName: "Composer 2", isDefault: true }],
+				},
+			]);
+
+			const models = await discoverModels();
+
+			expect(models.find((model) => model.id === "composer-2")?.contextWindow).toBe(200000);
+		} finally {
+			rmSync(tmpAgentDir, { recursive: true, force: true });
+		}
+	});
+
 	it("sets reasoning false for models without thinking controls", async () => {
 		process.env.CURSOR_API_KEY = "test-key-123";
 		mockedList.mockResolvedValueOnce([

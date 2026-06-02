@@ -13,6 +13,7 @@ import {
 	makeModel,
 } from "./helpers/pi-harness.js";
 import { createExtensionPi, resetIndexExtensionTestState } from "./helpers/index-extension-test-kit.js";
+import { createRenderContext, createRenderOptions, createRenderTheme } from "./helpers/render-fixtures.js";
 
 vi.mock("../src/model-discovery.js", () => ({
 	discoverModels: vi.fn(),
@@ -164,17 +165,16 @@ describe("extension native Cursor tool replay", () => {
 
 			const readTool = getHarnessRegisteredTool(pi._tools, "read");
 			expect(readTool).toBeDefined();
-			const theme = {
+			const theme = createRenderTheme({
 				fg: (style: string, text: string) => (style === "warning" || style === "muted" ? `<${style}>${text}</${style}>` : text),
-				bold: (text: string) => text,
-			} as never;
-			const replayContext = {
+			});
+			const replayContext = createRenderContext({
 				isError: false,
 				toolCallId: "cursor-replay-1-1-tool-1",
 				args: { path: "README.md", localReadPreview: true },
 				expanded: false,
-			} as never;
-			const options = { expanded: false, isPartial: false } as never;
+			});
+			const options = createRenderOptions();
 
 			const callRendered = readTool!.renderCall?.({ path: "README.md", localReadPreview: true }, theme, replayContext)?.render(120).join("\n") ?? "";
 			const resultRendered =
@@ -224,9 +224,9 @@ describe("extension native Cursor tool replay", () => {
 						expandedText: `generateImage Small badge\n\nSaved image: ${imagePath}`,
 					},
 				},
-				{ expanded: false, isPartial: false } as never,
-				{ fg: (_style: string, text: string) => text, bold: (text: string) => text } as never,
-				{ isError: false, showImages: true } as never,
+				createRenderOptions(),
+				createRenderTheme(),
+				createRenderContext({ isError: false, showImages: true }),
 			);
 
 			const rendered = component?.render(120).join("\n") ?? "";
@@ -244,13 +244,13 @@ describe("extension native Cursor tool replay", () => {
 		const pi = createExtensionPi();
 		await extensionFactory(pi);
 		await pi.runSessionStart();
-		const theme = { fg: (_style: string, text: string) => text, bold: (text: string) => text } as never;
+		const theme = createRenderTheme();
 		const cursorTool = getHarnessRegisteredTool(pi._tools, "cursor");
 
 		const rendered = [
-			cursorTool.renderCall?.({ activityTitle: "Cursor plan", activitySummary: "2 items", totalCount: 2 }, theme, { isPartial: true } as never)?.render(120).join("\n"),
-			cursorTool.renderCall?.({ activityTitle: "Cursor todos", activitySummary: "1/2 completed, 1 pending", totalCount: 2 }, theme, { isPartial: true } as never)?.render(120).join("\n"),
-			cursorTool.renderCall?.({ activityTitle: "Cursor MCP", activitySummary: "external_search", toolName: "external_search" }, theme, { isPartial: true } as never)?.render(120).join("\n"),
+			cursorTool.renderCall?.({ activityTitle: "Cursor plan", activitySummary: "2 items", totalCount: 2 }, theme, createRenderContext({ isPartial: true }))?.render(120).join("\n"),
+			cursorTool.renderCall?.({ activityTitle: "Cursor todos", activitySummary: "1/2 completed, 1 pending", totalCount: 2 }, theme, createRenderContext({ isPartial: true }))?.render(120).join("\n"),
+			cursorTool.renderCall?.({ activityTitle: "Cursor MCP", activitySummary: "external_search", toolName: "external_search" }, theme, createRenderContext({ isPartial: true }))?.render(120).join("\n"),
 		]
 			.filter((entry): entry is string => Boolean(entry))
 			.join("\n");
@@ -270,8 +270,8 @@ describe("extension native Cursor tool replay", () => {
 		const pi = createExtensionPi();
 		await extensionFactory(pi);
 		await pi.runSessionStart();
-		const theme = { fg: (_style: string, text: string) => text, bold: (text: string) => text } as never;
-		const context = { isError: false, showImages: false } as never;
+		const theme = createRenderTheme();
+		const context = createRenderContext({ isError: false, showImages: false });
 		const cursorTool = getHarnessRegisteredTool(pi._tools, "cursor");
 		const result = {
 			content: [{ type: "text" as const, text: "web search azure-functions python\n\nLinks:\n1. [Release](https://example.com)" }],
@@ -284,8 +284,8 @@ describe("extension native Cursor tool replay", () => {
 			},
 		};
 
-		const collapsed = cursorTool!.renderResult?.(result, { expanded: false, isPartial: false } as never, theme, context)?.render(120).join("\n").trimEnd() ?? "";
-		const expanded = cursorTool!.renderResult?.(result, { expanded: true, isPartial: false } as never, theme, context)?.render(120).join("\n") ?? "";
+		const collapsed = cursorTool!.renderResult?.(result, createRenderOptions(), theme, context)?.render(120).join("\n").trimEnd() ?? "";
+		const expanded = cursorTool!.renderResult?.(result, createRenderOptions({ expanded: true }), theme, context)?.render(120).join("\n") ?? "";
 
 		expect(collapsed).toBe("Cursor web search web search azure-functions python");
 		expect(collapsed).not.toContain("Links:");
@@ -300,9 +300,9 @@ describe("extension native Cursor tool replay", () => {
 		const pi = createExtensionPi();
 		await extensionFactory(pi);
 		await pi.runSessionStart();
-		const theme = { fg: (_style: string, text: string) => text, bold: (text: string) => text } as never;
-		const options = { expanded: false, isPartial: false } as never;
-		const context = { isError: false, showImages: false } as never;
+		const theme = createRenderTheme();
+		const options = createRenderOptions();
+		const context = createRenderContext({ isError: false, showImages: false });
 
 		const editTool = getHarnessRegisteredTool(pi._tools, "cursor_edit");
 		const writeTool = getHarnessRegisteredTool(pi._tools, "cursor_write");
@@ -313,7 +313,7 @@ describe("extension native Cursor tool replay", () => {
 		expect(mcpTool.renderShell).toBeUndefined();
 
 		const rendered = [
-			editTool.renderCall?.({ path: "src/index.ts" }, theme, { isPartial: true } as never)?.render(120).join("\n"),
+			editTool.renderCall?.({ path: "src/index.ts" }, theme, createRenderContext({ isPartial: true }))?.render(120).join("\n"),
 			writeTool.renderResult?.(
 				{
 					content: [{ type: "text", text: "write new.txt\n\nCreated 1 lines" }],
@@ -352,18 +352,17 @@ describe("extension native Cursor tool replay", () => {
 		const pi = createExtensionPi();
 		await extensionFactory(pi);
 		await pi.runSessionStart();
-		const theme = {
+		const theme = createRenderTheme({
 			fg: (style: string, text: string) =>
 				["toolDiffAdded", "toolDiffRemoved", "toolDiffContext", "toolOutput"].includes(style) ? `<${style}>${text}</${style}>` : text,
-			bold: (text: string) => text,
-		} as never;
-		const options = { expanded: false, isPartial: false } as never;
-		const replayContext = { isError: false, showImages: false, toolCallId: "cursor-replay-1-1-tool-1" } as never;
+		});
+		const options = createRenderOptions();
+		const replayContext = createRenderContext({ isError: false, showImages: false, toolCallId: "cursor-replay-1-1-tool-1" });
 
 		const editTool = getHarnessRegisteredTool(pi._tools, "edit");
 		const writeTool = getHarnessRegisteredTool(pi._tools, "write");
 		const rendered = [
-			editTool.renderCall?.({ path: "src/index.ts" }, theme, { isPartial: true, toolCallId: "cursor-replay-1-1-tool-1" } as never)?.render(120).join("\n"),
+			editTool.renderCall?.({ path: "src/index.ts" }, theme, createRenderContext({ isPartial: true, toolCallId: "cursor-replay-1-1-tool-1" }))?.render(120).join("\n"),
 			editTool.renderResult?.(
 				{
 					content: [{ type: "text", text: "edit src/index.ts\n\n+1 -1" }],
@@ -379,7 +378,7 @@ describe("extension native Cursor tool replay", () => {
 				theme,
 				replayContext,
 			)?.render(120).join("\n"),
-			writeTool!.renderCall?.({ path: "new.txt", content: "hello\n" }, theme, { isPartial: true, toolCallId: "cursor-replay-1-1-tool-2" } as never)?.render(120).join("\n"),
+			writeTool!.renderCall?.({ path: "new.txt", content: "hello\n" }, theme, createRenderContext({ isPartial: true, toolCallId: "cursor-replay-1-1-tool-2" }))?.render(120).join("\n"),
 			writeTool!.renderResult?.(
 				{
 					content: [{ type: "text", text: "write new.txt\n\nCreated 3 lines\n\n# Title\n\nBody" }],
@@ -412,13 +411,12 @@ describe("extension native Cursor tool replay", () => {
 		const pi = createExtensionPi();
 		await extensionFactory(pi);
 		await pi.runSessionStart();
-		const theme = {
+		const theme = createRenderTheme({
 			fg: (style: string, text: string) =>
 				["toolDiffAdded", "toolDiffRemoved", "toolDiffContext"].includes(style) ? `<${style}>${text}</${style}>` : text,
-			bold: (text: string) => text,
-		} as never;
-		const options = { expanded: false, isPartial: false } as never;
-		const context = { isError: false, showImages: false } as never;
+		});
+		const options = createRenderOptions();
+		const context = createRenderContext({ isError: false, showImages: false });
 
 		const todosTool = getHarnessRegisteredTool(pi._tools, "cursor_update_todos");
 		const todosRendered = todosTool.renderResult?.(

@@ -588,6 +588,17 @@ describe("Cursor runtime state", () => {
 		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(false);
 	});
 
+	it("filters global config entries with invalid fast default values", async () => {
+		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "gpt-5.5": true, "composer-2": "true" } }));
+		expect(__testUtils.loadGlobalFastPreferences()).toEqual(new Map([["gpt-5.5", true]]));
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m" });
+
+		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor fast");
+		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(true);
+	});
+
 	it("does not apply or persist --cursor-fast for unsupported Cursor models", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gemini-3.1-pro", cursorFastFlag: true });
 

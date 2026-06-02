@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { InteractionUpdate } from "@cursor/sdk";
 import {
 	CursorShellOutputTracker,
 	getCursorShellOutputDelta,
@@ -60,11 +61,11 @@ describe("mergeShellOutputDeltasIntoCursorToolCall", () => {
 
 describe("getCursorShellOutputDelta", () => {
 	it("parses stdout shell-output-delta updates", () => {
-		expect(
-			getCursorShellOutputDelta({
-				type: "shell-output-delta",
-				event: { case: "stdout", value: { data: "ok\n" } },
-			} as never),
-		).toEqual({ stream: "stdout", data: "ok\n" });
+		const update = {
+			type: "shell-output-delta",
+			event: { case: "stdout", value: { data: "ok\n" } },
+		} as InteractionUpdate;
+
+		expect(getCursorShellOutputDelta(update)).toEqual({ stream: "stdout", data: "ok\n" });
 	});
 });

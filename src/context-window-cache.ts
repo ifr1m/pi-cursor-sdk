@@ -18,15 +18,31 @@ function isPositiveInteger(value: unknown): value is number {
 	return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseContextWindowCacheFile(value: unknown): ContextWindowCacheFile | undefined {
+	if (!isRecord(value)) return undefined;
+	const { contextWindows } = value;
+	if (contextWindows === undefined) return {};
+	if (!isRecord(contextWindows)) return undefined;
+	return {
+		contextWindows: Object.fromEntries(
+			Object.entries(contextWindows).filter((entry): entry is [string, number] => isPositiveInteger(entry[1])),
+		),
+	};
+}
+
 function loadUserContextWindowOverrides(): Map<string, number> {
 	userContextWindowOverrideLoadCount += 1;
 	const path = getCachePath();
 	const overrides = new Map<string, number>();
 	if (!existsSync(path)) return overrides;
 	try {
-		const parsed = JSON.parse(readFileSync(path, "utf-8")) as ContextWindowCacheFile;
-		for (const [modelId, contextWindow] of Object.entries(parsed.contextWindows ?? {})) {
-			if (isPositiveInteger(contextWindow)) overrides.set(modelId, contextWindow);
+		const parsed = parseContextWindowCacheFile(JSON.parse(readFileSync(path, "utf-8")));
+		for (const [modelId, contextWindow] of Object.entries(parsed?.contextWindows ?? {})) {
+			overrides.set(modelId, contextWindow);
 		}
 	} catch {
 		return overrides;
@@ -52,10 +68,10 @@ export function getCachedContextWindow(modelId: string): number | undefined {
 }
 
 export function getCheckpointContextWindow(checkpoint: unknown): number | undefined {
-	if (checkpoint === null || typeof checkpoint !== "object") return undefined;
-	const tokenDetails = (checkpoint as Record<PropertyKey, unknown>).tokenDetails;
-	if (tokenDetails === null || typeof tokenDetails !== "object") return undefined;
-	const maxTokens = (tokenDetails as Record<PropertyKey, unknown>).maxTokens;
+	if (!isRecord(checkpoint)) return undefined;
+	const { tokenDetails } = checkpoint;
+	if (!isRecord(tokenDetails)) return undefined;
+	const { maxTokens } = tokenDetails;
 	if (!isPositiveInteger(maxTokens)) return undefined;
 	return maxTokens;
 }

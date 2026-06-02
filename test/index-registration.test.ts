@@ -208,7 +208,7 @@ describe("extension registration and discovery", () => {
 			},
 			undefined,
 			undefined,
-			createExtensionTestContext({ ui: { notify: vi.fn(), setStatus: vi.fn(), select, input } }) as never,
+			createExtensionTestContext({ ui: { notify: vi.fn(), setStatus: vi.fn(), select, input } }),
 		);
 
 		expect(select).toHaveBeenCalledWith("What kind of calculator should Cursor plan?", ["Web app", "CLI"]);

@@ -80,6 +80,47 @@ describe("model-list-cache", () => {
 		expect(loadAnyCachedModels(fp)).toBeUndefined();
 	});
 
+	it.each([
+		["non-finite", "1e309"],
+		["negative", "-1"],
+		["finite Date-invalid", "1e100"],
+		["far-future", `${Date.now() + __testUtils.DEFAULT_TTL_MS + 1}`],
+	])("ignores cache files with %s timestamps", (_label, fetchedAt) => {
+		writeFileSync(
+			__testUtils.getCachePath(),
+			`{"version":1,"fetchedAt":${fetchedAt},"keyFingerprint":${JSON.stringify(fp)},"models":${JSON.stringify(MODELS)}}`,
+		);
+
+		expect(loadFreshCachedModels(fp)).toBeUndefined();
+		expect(loadAnyCachedModels(fp)).toBeUndefined();
+	});
+
+	it.each([
+		["missing displayName", { id: "missing-display-name" }],
+		["parameter without values", { id: "raw-id", displayName: "Raw", parameters: [{ id: "context" }] }],
+		[
+			"parameter value without string value",
+			{ id: "raw-id", displayName: "Raw", parameters: [{ id: "context", values: [{ displayName: "1M" }] }] },
+		],
+		[
+			"variant param without string id/value",
+			{ id: "raw-id", displayName: "Raw", variants: [{ params: [{ id: "context" }], displayName: "Raw", isDefault: true }] },
+		],
+	])("ignores cache files with invalid model shapes: %s", (_label, model) => {
+		writeFileSync(
+			__testUtils.getCachePath(),
+			JSON.stringify({
+				version: 1,
+				fetchedAt: Date.now(),
+				keyFingerprint: fp,
+				models: [model],
+			}),
+		);
+
+		expect(loadFreshCachedModels(fp)).toBeUndefined();
+		expect(loadAnyCachedModels(fp)).toBeUndefined();
+	});
+
 	it("disables read and write when the disable env flag is set", () => {
 		process.env[__testUtils.DISABLE_ENV_VAR] = "1";
 		saveModelListCache(fp, MODELS);

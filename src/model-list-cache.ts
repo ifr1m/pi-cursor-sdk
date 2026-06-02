@@ -8,6 +8,7 @@ import { parseEnvBoolean } from "./cursor-env-boolean.js";
 const MODEL_LIST_CACHE_FILE = "cursor-sdk-model-list.json";
 const MODEL_LIST_CACHE_VERSION = 1;
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_CACHE_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const DISABLE_ENV_VAR = "PI_CURSOR_SDK_DISABLE_MODEL_CACHE";
 const TTL_ENV_VAR = "PI_CURSOR_SDK_MODEL_CACHE_TTL_MS";
 
@@ -45,20 +46,83 @@ export function fingerprintApiKey(apiKey: string): string {
 	return createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+	return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function isModelParameterValue(value: unknown): value is NonNullable<ModelListItem["variants"]>[number]["params"][number] {
+	return isRecord(value) && typeof value.id === "string" && typeof value.value === "string";
+}
+
+function isModelParameterDefinitionValue(value: unknown): value is NonNullable<ModelListItem["parameters"]>[number]["values"][number] {
+	return isRecord(value) && typeof value.value === "string" && (value.displayName === undefined || typeof value.displayName === "string");
+}
+
+function isModelParameterDefinition(value: unknown): value is NonNullable<ModelListItem["parameters"]>[number] {
+	if (!isRecord(value)) return false;
+	return (
+		typeof value.id === "string" &&
+		(value.displayName === undefined || typeof value.displayName === "string") &&
+		Array.isArray(value.values) &&
+		value.values.every(isModelParameterDefinitionValue)
+	);
+}
+
+function isModelVariant(value: unknown): value is NonNullable<ModelListItem["variants"]>[number] {
+	if (!isRecord(value)) return false;
+	return (
+		Array.isArray(value.params) &&
+		value.params.every(isModelParameterValue) &&
+		typeof value.displayName === "string" &&
+		(value.description === undefined || typeof value.description === "string") &&
+		(value.isDefault === undefined || typeof value.isDefault === "boolean")
+	);
+}
+
+function isModelListItem(value: unknown): value is ModelListItem {
+	if (!isRecord(value)) return false;
+	return (
+		typeof value.id === "string" &&
+		typeof value.displayName === "string" &&
+		(value.description === undefined || typeof value.description === "string") &&
+		(value.aliases === undefined || isStringArray(value.aliases)) &&
+		(value.parameters === undefined || (Array.isArray(value.parameters) && value.parameters.every(isModelParameterDefinition))) &&
+		(value.variants === undefined || (Array.isArray(value.variants) && value.variants.every(isModelVariant)))
+	);
+}
+
+function isValidFetchedAt(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= Date.now() + MAX_CACHE_CLOCK_SKEW_MS;
+}
+
+function parseModelListCacheFile(value: unknown): ModelListCacheFile | undefined {
+	if (!isRecord(value)) return undefined;
+	if (
+		value.version !== MODEL_LIST_CACHE_VERSION ||
+		!isValidFetchedAt(value.fetchedAt) ||
+		typeof value.keyFingerprint !== "string" ||
+		!Array.isArray(value.models) ||
+		!value.models.every(isModelListItem)
+	) {
+		return undefined;
+	}
+	return {
+		version: value.version,
+		fetchedAt: value.fetchedAt,
+		keyFingerprint: value.keyFingerprint,
+		models: value.models,
+	};
+}
+
 function readCacheFile(): ModelListCacheFile | undefined {
 	const path = getCachePath();
 	if (!existsSync(path)) return undefined;
 	try {
-		const parsed = JSON.parse(readFileSync(path, "utf-8")) as ModelListCacheFile;
-		if (
-			parsed.version !== MODEL_LIST_CACHE_VERSION ||
-			typeof parsed.fetchedAt !== "number" ||
-			typeof parsed.keyFingerprint !== "string" ||
-			!Array.isArray(parsed.models)
-		) {
-			return undefined;
-		}
-		return parsed;
+		return parseModelListCacheFile(JSON.parse(readFileSync(path, "utf-8")));
 	} catch {
 		return undefined;
 	}

@@ -69,10 +69,13 @@ export function parseCursorAgentMode(raw: unknown): AgentModeOption | undefined 
 	return isCursorAgentMode(mode) ? mode : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function isCursorFastEntryData(value: unknown): value is CursorFastEntryData {
-	if (!value || typeof value !== "object") return false;
-	const data = value as Record<string, unknown>;
-	return (typeof data.modelId === "string" || typeof data.baseModelId === "string") && typeof data.fast === "boolean";
+	if (!isRecord(value)) return false;
+	return (typeof value.modelId === "string" || typeof value.baseModelId === "string") && typeof value.fast === "boolean";
 }
 
 function getCursorFastEntryModelId(data: CursorFastEntryData): string {
@@ -80,9 +83,19 @@ function getCursorFastEntryModelId(data: CursorFastEntryData): string {
 }
 
 function isCursorModeEntryData(value: unknown): value is CursorModeEntryData {
-	if (!value || typeof value !== "object") return false;
-	const data = value as Record<string, unknown>;
-	return isCursorAgentMode(data.mode);
+	return isRecord(value) && isCursorAgentMode(value.mode);
+}
+
+function parseCursorGlobalConfig(value: unknown): CursorGlobalConfig | undefined {
+	if (!isRecord(value)) return undefined;
+	const { fastDefaults } = value;
+	if (fastDefaults === undefined) return {};
+	if (!isRecord(fastDefaults)) return undefined;
+	return {
+		fastDefaults: Object.fromEntries(
+			Object.entries(fastDefaults).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"),
+		),
+	};
 }
 
 function getConfigPath(): string {
@@ -93,12 +106,8 @@ function loadGlobalFastPreferences(): Map<string, boolean> {
 	const path = getConfigPath();
 	if (!existsSync(path)) return new Map();
 	try {
-		const parsed = JSON.parse(readFileSync(path, "utf-8")) as CursorGlobalConfig;
-		return new Map(
-			Object.entries(parsed.fastDefaults ?? {}).filter(
-				(entry): entry is [string, boolean] => typeof entry[1] === "boolean",
-			),
-		);
+		const parsed = parseCursorGlobalConfig(JSON.parse(readFileSync(path, "utf-8")));
+		return new Map(Object.entries(parsed?.fastDefaults ?? {}));
 	} catch {
 		return new Map();
 	}

@@ -8,27 +8,23 @@ import {
 	renderCursorReplayCall,
 	renderCursorReplayResult,
 	renderNativeLookingCursorReadReplayResult,
-	type CursorReplayRenderTheme,
 } from "../src/cursor-native-tool-display-replay.js";
 import { LOCAL_READ_PREVIEW_NOTICE } from "../src/cursor-transcript-utils.js";
 import { Text } from "@earendil-works/pi-tui";
+import { createRenderContext, createRenderTheme } from "./helpers/render-fixtures.js";
 
-const theme = {
-	fg: (_name: string, value: string) => value,
-	bold: (value: string) => value,
-} as CursorReplayRenderTheme;
+const theme = createRenderTheme();
 
-const taggedTheme = {
+const taggedTheme = createRenderTheme({
 	fg: (name: string, value: string) => `<${name}>${value}</${name}>`,
-	bold: (value: string) => value,
-} as CursorReplayRenderTheme;
+});
 
 function renderReplayResultWithDetails(details: unknown): string {
 	return renderCursorReplayResult(
 		{ content: [{ type: "text", text: "ok" }], details },
 		{ expanded: false, isPartial: false },
 		taggedTheme,
-		{ isError: false, showImages: false } as never,
+		createRenderContext({ isError: false, showImages: false }),
 		false,
 	)
 		.render(240)
@@ -170,9 +166,7 @@ describe("cursor native replay rendering", () => {
 			result,
 			{ expanded: false, isPartial: false },
 			theme,
-			{ isError: false, args: { path: "README.md", localReadPreview: true } } as Parameters<
-				typeof renderNativeLookingCursorReadReplayResult
-			>[3],
+			createRenderContext({ isError: false, args: { path: "README.md", localReadPreview: true } }),
 			() => new Text("", 0, 0),
 		)
 			.render(120)

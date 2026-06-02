@@ -59,7 +59,7 @@ function createMinimalExtensionUi(): ExtensionContext["ui"] {
 		setFooter: vi.fn(),
 		setHeader: vi.fn(),
 		setTitle: vi.fn(),
-		custom: vi.fn(async () => undefined as never),
+		custom: vi.fn(<T>() => Promise.resolve(undefined as T)) as ExtensionContext["ui"]["custom"],
 		pasteToEditor: vi.fn(),
 		setEditorText: vi.fn(),
 		getEditorText: vi.fn(() => ""),
