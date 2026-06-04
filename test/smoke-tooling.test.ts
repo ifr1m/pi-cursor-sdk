@@ -316,7 +316,6 @@ if (!positiveItemsOk || promptOnly[0]?.ok !== false) process.exit(1);
 		expect(paths.has("CHANGELOG.md")).toBe(true);
 		expect(paths.has("README.md")).toBe(true);
 		expect(paths.has("docs/platform-smoke.md")).toBe(true);
-		expect(paths.has("docs/crabbox-platform-testing-lessons.md")).toBe(true);
 		expect([...paths].some((path) => path.startsWith("dist/") || path.startsWith("coverage/") || path.startsWith(".pi/") || path.includes("smoke-dir"))).toBe(false);
 	}, 90_000);
 });

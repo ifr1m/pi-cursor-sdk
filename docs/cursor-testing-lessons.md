@@ -1,6 +1,6 @@
 # Cursor Testing Lessons
 
-> **Platform Smoke (new):** The required cross-platform release gate is `npm run smoke:platform:doctor && npm run smoke:platform:all`. See [docs/platform-smoke.md](./platform-smoke.md). For portable lessons other pi extension projects can adapt without sharing repo-specific state, see [Crabbox Platform Testing Lessons](./crabbox-platform-testing-lessons.md). The live smoke checklist remains useful for inner-loop development but is not the release gate.
+> **Platform Smoke (new):** The required cross-platform release gate is `npm run smoke:platform:doctor && npm run smoke:platform:all`. See [docs/platform-smoke.md](./platform-smoke.md). For portable lessons other pi extension projects can adapt without sharing repo-specific state, see the generic Crabbox platform testing guide at `/Users/mitchfultz/Projects/crabbox/crabbox-platform-testing-lessons.md`. The live smoke checklist remains useful for inner-loop development but is not the release gate.
 
 ## Purpose
 
