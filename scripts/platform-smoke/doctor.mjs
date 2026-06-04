@@ -55,11 +55,22 @@ function parseLeaseId(output) {
 		?? null;
 }
 
-function windowsCrabboxBaseArgs() {
-	const vm = env("PLATFORM_SMOKE_WINDOWS_VM") || "pi-extension-windows-template";
-	const snap = env("PLATFORM_SMOKE_WINDOWS_SNAPSHOT") || "crabbox-ready";
-	const user = env("PLATFORM_SMOKE_WINDOWS_USER") || env("USER");
-	const workRoot = env("PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT") || "C:\\crabbox\\pi-cursor-sdk";
+function windowsParallelsDefaults(config = {}) {
+	const windows = config?.windowsParallels ?? {};
+	return {
+		vm: windows.sourceVm || "pi-extension-windows-template",
+		snapshot: windows.snapshot || "crabbox-ready",
+		user: windows.user || env("USER"),
+		workRoot: windows.workRoot || "C:\\crabbox\\pi-cursor-sdk",
+	};
+}
+
+function windowsCrabboxBaseArgs(config = {}) {
+	const defaults = windowsParallelsDefaults(config);
+	const vm = env("PLATFORM_SMOKE_WINDOWS_VM") || defaults.vm;
+	const snap = env("PLATFORM_SMOKE_WINDOWS_SNAPSHOT") || defaults.snapshot;
+	const user = env("PLATFORM_SMOKE_WINDOWS_USER") || defaults.user;
+	const workRoot = env("PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT") || defaults.workRoot;
 	return [
 		"--provider", "parallels",
 		"--target", "windows",
@@ -91,9 +102,9 @@ function crabbox(cbox, args, timeout = 300_000) {
 	}
 }
 
-function disposableWindowsSshProbe(cbox) {
+function disposableWindowsSshProbe(cbox, config = {}) {
 	const slug = "pi-cursor-sdk-doctor-windows";
-	const baseArgs = windowsCrabboxBaseArgs();
+	const baseArgs = windowsCrabboxBaseArgs(config);
 	const warm = crabbox(cbox, ["warmup", ...baseArgs, "--slug", slug, "--keep", "--reclaim"], 300_000);
 	const leaseId = parseLeaseId(warm.stdout) ?? parseLeaseId(warm.stderr) ?? slug;
 	try {
@@ -131,10 +142,6 @@ function runChecks(config) {
 	console.log("\n── Environment variables ──");
 	const requiredVars = [
 		"CURSOR_API_KEY",
-		"PLATFORM_SMOKE_WINDOWS_VM",
-		"PLATFORM_SMOKE_WINDOWS_SNAPSHOT",
-		"PLATFORM_SMOKE_WINDOWS_USER",
-		"PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT",
 	];
 	const optionalVars = [
 		"PLATFORM_SMOKE_CRABBOX",
@@ -142,15 +149,27 @@ function runChecks(config) {
 		"PLATFORM_SMOKE_MAC_USER",
 		"PLATFORM_SMOKE_MAC_WORK_ROOT",
 		"PLATFORM_SMOKE_UBUNTU_IMAGE",
+		"PLATFORM_SMOKE_WINDOWS_VM",
+		"PLATFORM_SMOKE_WINDOWS_SNAPSHOT",
+		"PLATFORM_SMOKE_WINDOWS_USER",
+		"PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT",
 	];
 	for (const name of requiredVars) {
 		const v = env(name);
 		v ? ok(`${name} = ${name === "CURSOR_API_KEY" ? "(present, redacted)" : (v.length > 50 ? v.slice(0, 50) + "..." : v)}`)
 			: fail(`${name} missing`);
 	}
+	const windowsDefaults = windowsParallelsDefaults(config);
+	const optionalDefaults = {
+		PLATFORM_SMOKE_WINDOWS_VM: windowsDefaults.vm,
+		PLATFORM_SMOKE_WINDOWS_SNAPSHOT: windowsDefaults.snapshot,
+		PLATFORM_SMOKE_WINDOWS_USER: windowsDefaults.user,
+		PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT: windowsDefaults.workRoot,
+	};
 	for (const name of optionalVars) {
 		const v = env(name);
-		ok(`${name} = ${v || "(default)"}`);
+		const fallback = optionalDefaults[name] ? `(default: ${optionalDefaults[name]})` : "(default)";
+		ok(`${name} = ${v || fallback}`);
 	}
 
 	// ── Phase 2: Crabbox binary ──
@@ -205,7 +224,7 @@ function runChecks(config) {
 			fail("crabbox providers failed");
 		}
 		const ubuntuImage = env("PLATFORM_SMOKE_UBUNTU_IMAGE") || config?.ubuntuContainerImage || "cimg/node:24.16";
-		const lcDoc = silent(cbox, ["doctor", "--provider", "local-container", "--local-container-image", ubuntuImage, "--json"]);
+		const lcDoc = silent(cbox, ["doctor", "--provider", "local-container", "--target", "linux", "--local-container-image", ubuntuImage, "--json"]);
 		if (lcDoc) {
 			try {
 				const d = JSON.parse(lcDoc);
@@ -223,7 +242,7 @@ function runChecks(config) {
 			"doctor", "--provider", "ssh", "--target", "macos",
 			"--static-host", sshHost, "--static-user", sshUser,
 			"--static-port", "22", "--static-work-root", sshRoot,
-			"--json",
+			"--doctor-probe-ssh", "--json",
 		]);
 		if (sshDoc) {
 			try {
@@ -265,7 +284,7 @@ function runChecks(config) {
 		fail("prlctl not found");
 	} else {
 		ok("prlctl found");
-		const vmName = env("PLATFORM_SMOKE_WINDOWS_VM") || "pi-extension-windows-template";
+		const vmName = env("PLATFORM_SMOKE_WINDOWS_VM") || windowsParallelsDefaults(config).vm;
 		const list = shell("prlctl list -a --no-header 2>/dev/null");
 		if (list) {
 			const vms = list.split("\n").filter(Boolean);
@@ -279,7 +298,7 @@ function runChecks(config) {
 					fail(`VM "${vmName}" state: ${status} — source VM must be stopped for linked clones`);
 				}
 
-				const snapName = env("PLATFORM_SMOKE_WINDOWS_SNAPSHOT") || "crabbox-ready";
+				const snapName = env("PLATFORM_SMOKE_WINDOWS_SNAPSHOT") || windowsParallelsDefaults(config).snapshot;
 				const snapsJson = shell(`prlctl snapshot-list "${vmName}" -j 2>/dev/null`);
 				let snapshotFound = false;
 				let snapshotPowerOff = false;
@@ -323,7 +342,7 @@ function runChecks(config) {
 					} else {
 						ok(`template "${vmName}" has no IP; verifying Windows SSH/tools through a disposable Crabbox clone`);
 						if (cbox && snapshotFound && snapshotPowerOff) {
-							const probe = disposableWindowsSshProbe(cbox);
+							const probe = disposableWindowsSshProbe(cbox, config);
 							probe.ok ? ok(`disposable Windows clone SSH/tool probe OK: ${probe.message}`) : fail(probe.message);
 						} else {
 							fail(`Windows SSH probe could not run because "${vmName}" has no IP and no verified snapshot was available`);

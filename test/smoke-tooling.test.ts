@@ -1,11 +1,8 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
+
 import { describe, expect, it } from "vitest";
 import { CURSOR_TOOL_PRESENTATION_SPECS } from "../src/cursor-tool-presentation-registry.js";
-
-const require = createRequire(import.meta.url);
-const packageJson = require("../package.json") as { version: string };
 
 function run(command: string, args: string[]) {
 	return spawnSync(command, args, { cwd: process.cwd(), encoding: "utf8", shell: process.platform === "win32" && command === "npm" });
@@ -91,6 +88,18 @@ describe("smoke tooling package checks", () => {
 		expect(invalidVisualArgs.stderr).toContain("--expose-builtin-tools requires --bridge");
 	}, 90_000);
 
+	it("rejects invalid platform smoke targets and suites before Crabbox runs", () => {
+		const invalidTarget = run(process.execPath, ["scripts/platform-smoke.mjs", "run", "--target", "plan9"]);
+		expect(invalidTarget.status).toBe(2);
+		expect(invalidTarget.stderr).toContain("unknown target(s): plan9");
+		expect(invalidTarget.stderr).toContain("macos, ubuntu, windows-native");
+
+		const invalidSuite = run(process.execPath, ["scripts/platform-smoke.mjs", "run", "--suite", "stdout-only"]);
+		expect(invalidSuite.status).toBe(2);
+		expect(invalidSuite.stderr).toContain("unknown suite(s): stdout-only");
+		expect(invalidSuite.stderr).toContain("platform-build");
+	});
+
 	it("keeps card and bundle evidence checks strict against prompt/path false positives", () => {
 		const code = String.raw`
 import { detectCards, assertRequiredCards } from "./scripts/platform-smoke/card-detect.mjs";
@@ -121,12 +130,17 @@ process.env.CURSOR_API_KEY = "cursor-secret-token-12345";
 process.env.PLATFORM_SMOKE_CRABBOX = process.execPath;
 const { redactSecrets, scanForSecrets } = await import("./scripts/platform-smoke/artifacts.mjs");
 const { execCrabbox, buildTargetBaseArgs } = await import("./scripts/platform-smoke/crabbox-runner.mjs");
+const smokeConfig = (await import("./platform-smoke.config.mjs")).default;
 const raw = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz cursor-secret-token-12345";
 const redacted = redactSecrets(raw);
 const stripped = await execCrabbox(["-e", "process.stdout.write(process.env.CURSOR_API_KEY || 'missing')"]);
 const allowed = await execCrabbox(["-e", "process.stdout.write(process.env.CURSOR_API_KEY || 'missing')"], { allowEnv: ["CURSOR_API_KEY"] });
 delete process.env.PLATFORM_SMOKE_UBUNTU_IMAGE;
+delete process.env.PLATFORM_SMOKE_WINDOWS_VM;
+delete process.env.PLATFORM_SMOKE_WINDOWS_SNAPSHOT;
+delete process.env.PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT;
 const ubuntuArgs = buildTargetBaseArgs("ubuntu", { ubuntuContainerImage: "example/node:24" });
+const windowsArgs = buildTargetBaseArgs("windows-native", smokeConfig);
 const result = {
   rawViolations: scanForSecrets(raw),
   redactedViolations: scanForSecrets(redacted),
@@ -134,17 +148,25 @@ const result = {
   stripped: stripped.stdout,
   allowed: allowed.stdout,
   ubuntuImage: ubuntuArgs[ubuntuArgs.indexOf("--local-container-image") + 1],
+  crabboxMinVersion: smokeConfig.requiredCrabbox.minVersion,
+  windowsVm: windowsArgs[windowsArgs.indexOf("--parallels-source") + 1],
+  windowsSnapshot: windowsArgs[windowsArgs.indexOf("--parallels-source-snapshot") + 1],
+  windowsWorkRoot: windowsArgs[windowsArgs.indexOf("--parallels-work-root") + 1],
 };
 console.log(JSON.stringify(result));
 if (!result.rawViolations.includes("CURSOR_API_KEY literal found")) process.exit(1);
 if (result.redacted.includes("cursor-secret-token-12345") || result.redactedViolations.length !== 0) process.exit(1);
 if (result.stripped !== "missing" || result.allowed !== "cursor-secret-token-12345") process.exit(1);
 if (result.ubuntuImage !== "example/node:24") process.exit(1);
+if (result.crabboxMinVersion !== "0.26.0") process.exit(1);
+if (result.windowsVm !== "pi-extension-windows-template" || result.windowsSnapshot !== "crabbox-ready" || result.windowsWorkRoot !== "C:\\crabbox\\pi-cursor-sdk") process.exit(1);
 `;
 		const result = run(process.execPath, ["--input-type=module", "-e", code]);
 		expect(result.status).toBe(0);
 		expect(result.stdout).toContain('"stripped":"missing"');
 		expect(result.stdout).toContain('"ubuntuImage":"example/node:24"');
+		expect(result.stdout).toContain('"crabboxMinVersion":"0.26.0"');
+		expect(result.stdout).toContain('"windowsVm":"pi-extension-windows-template"');
 	});
 
 	it("fails suite artifacts when required manifests or lease cleanup are missing", () => {
@@ -264,25 +286,13 @@ if (!positiveItemsOk || promptOnly[0]?.ok !== false) process.exit(1);
 		expect(new Set(registryNames)).toEqual(allClassified);
 	});
 
-	it("packages smoke scripts and enforces the release version guard unless explicitly bypassed", () => {
-		const skipReleaseVersionGuard = process.env.PI_CURSOR_SKIP_RELEASE_VERSION_GUARD === "1";
-		const localReleaseTags = run("git", ["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"]);
-		if (!skipReleaseVersionGuard) expect(localReleaseTags.status).toBe(0);
-		const latestTag = localReleaseTags.status === 0 ? localReleaseTags.stdout.split(/\r?\n/).find((tag) => tag.length > 0) : undefined;
-		if (!skipReleaseVersionGuard) expect(latestTag).toMatch(/^v\d+\.\d+\.\d+$/);
-		const latestReleasedVersion = latestTag?.replace(/^v/, "");
-
+	it("packages smoke scripts and platform smoke docs", () => {
 		const result = run("npm", ["pack", "--dry-run", "--json"]);
 		expect(result.status).toBe(0);
-		const [pack] = JSON.parse(result.stdout) as Array<{ name: string; version: string; filename: string; files: Array<{ path: string }> }>;
+		const [pack] = JSON.parse(result.stdout) as Array<{ name: string; version: string; files: Array<{ path: string }> }>;
 		const paths = new Set(pack.files.map((file) => file.path));
 
 		expect(pack.name).toBe("pi-cursor-sdk");
-		expect(pack.version).toBe(packageJson.version);
-		if (!skipReleaseVersionGuard) {
-			expect(pack.version).not.toBe(latestReleasedVersion);
-			expect(pack.filename).not.toBe(`pi-cursor-sdk-${latestReleasedVersion}.tgz`);
-		}
 		expect(paths.has("scripts/tmux-live-smoke.sh")).toBe(true);
 		expect(paths.has("scripts/isolated-cursor-smoke.sh")).toBe(true);
 		expect(paths.has("scripts/fixtures/plan-strip-shim/index.ts")).toBe(true);

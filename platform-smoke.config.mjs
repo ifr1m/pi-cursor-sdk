@@ -14,8 +14,13 @@ export default {
 	],
 	requiredCrabbox: {
 		install: "Homebrew package or PLATFORM_SMOKE_CRABBOX override",
-		minVersion: "0.24.0",
+		minVersion: "0.26.0",
 	},
 	ubuntuContainerImage: "cimg/node:24.16",
 	nodeValidationMajor: 24,
+	windowsParallels: {
+		sourceVm: "pi-extension-windows-template",
+		snapshot: "crabbox-ready",
+		workRoot: "C:\\crabbox\\pi-cursor-sdk",
+	},
 };

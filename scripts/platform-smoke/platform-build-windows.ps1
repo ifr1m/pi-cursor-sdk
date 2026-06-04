@@ -62,19 +62,15 @@ Write-SectionFile "NPM_CI_STDOUT" $NpmCiOut
 Write-SectionFile "NPM_CI_STDERR" $NpmCiErr
 
 Write-Output "=== check:platform-smoke ==="
-$env:PI_CURSOR_SKIP_RELEASE_VERSION_GUARD = "1"
 & npm.cmd run check:platform-smoke 1> $CheckPlatformSmokeOut 2> $CheckPlatformSmokeErr
 $CHECK_PLATFORM_SMOKE_EXIT = Exit-CodeFromLastCommand
-Remove-Item Env:\PI_CURSOR_SKIP_RELEASE_VERSION_GUARD -ErrorAction SilentlyContinue
 Write-Output "PLATFORM_CHECK_PLATFORM_SMOKE_EXIT=$CHECK_PLATFORM_SMOKE_EXIT"
 Write-SectionFile "CHECK_PLATFORM_SMOKE_STDOUT" $CheckPlatformSmokeOut
 Write-SectionFile "CHECK_PLATFORM_SMOKE_STDERR" $CheckPlatformSmokeErr
 
 Write-Output "=== npm test ==="
-$env:PI_CURSOR_SKIP_RELEASE_VERSION_GUARD = "1"
 & npm.cmd test 1> $NpmTestOut 2> $NpmTestErr
 $TEST_EXIT = Exit-CodeFromLastCommand
-Remove-Item Env:\PI_CURSOR_SKIP_RELEASE_VERSION_GUARD -ErrorAction SilentlyContinue
 Write-Output "PLATFORM_NPM_TEST_EXIT=$TEST_EXIT"
 Write-SectionFile "NPM_TEST_STDOUT" $NpmTestOut
 Write-SectionFile "NPM_TEST_STDERR" $NpmTestErr

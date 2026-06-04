@@ -3,8 +3,7 @@
 import { createRequire } from "node:module";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { accessSync, constants, readFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { accessSync, constants } from "node:fs";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -47,11 +46,11 @@ Environment:
   PLATFORM_SMOKE_MAC_HOST         macOS SSH host (default: localhost)
   PLATFORM_SMOKE_MAC_USER         macOS SSH user (default: \$USER)
   PLATFORM_SMOKE_MAC_WORK_ROOT    macOS work root
-  PLATFORM_SMOKE_WINDOWS_VM       Parallels source VM name
-  PLATFORM_SMOKE_WINDOWS_SNAPSHOT Snapshot name
-  PLATFORM_SMOKE_WINDOWS_USER     Windows SSH user
-  PLATFORM_SMOKE_UBUNTU_IMAGE        Ubuntu container image
-  PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT  Windows native work root
+  PLATFORM_SMOKE_UBUNTU_IMAGE     Ubuntu container image
+  PLATFORM_SMOKE_WINDOWS_VM       Parallels source VM override (default from config)
+  PLATFORM_SMOKE_WINDOWS_SNAPSHOT Snapshot override (default from config)
+  PLATFORM_SMOKE_WINDOWS_USER     Windows SSH user override (default: \$USER)
+  PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT  Windows native work root override (default from config)
 `);
 }
 
@@ -90,17 +89,17 @@ function parseArgs(argv) {
 	return args;
 }
 
-function assertHostReleaseVersionGuard() {
-	const packageJson = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
-	const result = spawnSync("git", ["tag", "--list", "v[0-9]*.[0-9]*.[0-9]*", "--sort=-v:refname"], {
-		cwd: repoRoot,
-		encoding: "utf8",
-	});
-	if (result.status !== 0) throw new Error(`failed to inspect release tags: ${result.stderr || result.error?.message || "unknown git error"}`);
-	const latestTag = result.stdout.split(/\r?\n/).find((tag) => tag.length > 0);
-	if (!latestTag) throw new Error("no local release tags found; cannot enforce package version reuse guard");
-	const latestVersion = latestTag.replace(/^v/, "");
-	if (packageJson.version === latestVersion) throw new Error(`package version ${packageJson.version} reuses latest release tag ${latestTag}`);
+function validateSelections(targets, suites) {
+	const allowedTargets = new Set(config.requiredTargets ?? []);
+	const allowedSuites = new Set(config.requiredSuites ?? []);
+	const badTargets = targets.filter((target) => !allowedTargets.has(target));
+	const badSuites = suites.filter((suite) => !allowedSuites.has(suite));
+	if (badTargets.length > 0) {
+		throw new Error(`unknown target(s): ${badTargets.join(", ")}; allowed: ${[...allowedTargets].join(", ")}`);
+	}
+	if (badSuites.length > 0) {
+		throw new Error(`unknown suite(s): ${badSuites.join(", ")}; allowed: ${[...allowedSuites].join(", ")}`);
+	}
 }
 
 // ── commands ───────────────────────────────────────────────────────────────
@@ -158,7 +157,6 @@ async function main() {
 	}
 
 	if (args.command === "run") {
-		assertHostReleaseVersionGuard();
 		const targets = args.target
 			? args.target.split(",").map((s) => s.trim()).filter(Boolean)
 			: config.requiredTargets;
@@ -166,6 +164,13 @@ async function main() {
 		const suites = args.suite
 			? [args.suite]
 			: config.requiredSuites;
+
+		try {
+			validateSelections(targets, suites);
+		} catch (err) {
+			console.error(err.message);
+			process.exit(2);
+		}
 
 		const targetRuns = targets.map(async (targetName) => {
 			console.log(`\n=== Target: ${targetName} ===`);

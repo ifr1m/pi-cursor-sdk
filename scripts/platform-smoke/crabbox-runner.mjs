@@ -98,10 +98,11 @@ export function buildTargetBaseArgs(targetName, config = {}) {
 			];
 		}
 		case "windows-native": {
-			const vm = env("PLATFORM_SMOKE_WINDOWS_VM") || "pi-extension-windows-template";
-			const snap = env("PLATFORM_SMOKE_WINDOWS_SNAPSHOT") || "crabbox-ready";
-			const user = env("PLATFORM_SMOKE_WINDOWS_USER") || env("USER");
-			const workRoot = env("PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT") || "C:\\crabbox\\pi-cursor-sdk";
+			const windows = config.windowsParallels ?? {};
+			const vm = env("PLATFORM_SMOKE_WINDOWS_VM") || windows.sourceVm || "pi-extension-windows-template";
+			const snap = env("PLATFORM_SMOKE_WINDOWS_SNAPSHOT") || windows.snapshot || "crabbox-ready";
+			const user = env("PLATFORM_SMOKE_WINDOWS_USER") || windows.user || env("USER");
+			const workRoot = env("PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT") || windows.workRoot || "C:\\crabbox\\pi-cursor-sdk";
 			return [
 				"--provider", "parallels",
 				"--target", "windows",

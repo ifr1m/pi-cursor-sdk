@@ -6,6 +6,8 @@ Branch introduced by: `feat/crabbox-platform-smoke`
 
 Oracle review incorporated: this gate resolves the packed-install workspace conflict, Cursor budget contradiction, Windows shell drift, artifact-on-failure gap, render-location ambiguity, provider-debug ambiguity, and registry-classification gap called out during review.
 
+Crabbox best-practice baseline applied from `~/Projects/crabbox`: Crabbox owns lease, sync, run, evidence transport, and cleanup; this repo owns target policy, package setup, scenario meaning, assertions, artifacts, auth forwarding, redaction, and release criteria.
+
 ## Decision
 
 Crabbox is the required platform smoke runner for `pi-cursor-sdk` releases that touch Cursor provider/runtime behavior.
@@ -53,7 +55,7 @@ Current baseline:
 
 ```text
 install: brew install openclaw/tap/crabbox
-version: 0.24.0 or newer
+version: 0.26.0 or newer
 binary: Homebrew `crabbox` on PATH (`/opt/homebrew/bin/crabbox` on Apple Silicon Homebrew installs)
 ```
 
@@ -74,6 +76,8 @@ scenario + target capability + artifact contract
 ```
 
 not a one-off shell script.
+
+Crabbox is deliberately kept as the transport/lifecycle layer. It must not be treated as proof that the pi extension behavior passed; every suite still fails or passes from project-owned assertions and artifact manifests.
 
 High-level flow:
 
@@ -145,19 +149,21 @@ scripts/platform-smoke/artifacts.mjs
 scripts/platform-smoke/card-detect.mjs
 scripts/platform-smoke/crabbox-runner.mjs
 scripts/platform-smoke/doctor.mjs
+scripts/platform-smoke/jsonl-text.mjs
 scripts/platform-smoke/live-suite-runner.mjs
 scripts/platform-smoke/platform-build-windows.ps1
 scripts/platform-smoke/pty-capture.mjs
 scripts/platform-smoke/render-ansi.mjs
 scripts/platform-smoke/scenarios.mjs
 scripts/platform-smoke/targets.mjs
+scripts/platform-smoke/visual-evidence.mjs
 ```
 
 Package scripts:
 
 ```json
 {
-  "check:platform-smoke": "node --check <platform smoke scripts> && vitest run test/smoke-tooling.test.ts",
+  "check:platform-smoke": "node --check platform-smoke.config.mjs && node --check <platform smoke scripts> && vitest run test/smoke-tooling.test.ts",
   "smoke:platform": "node scripts/platform-smoke.mjs",
   "smoke:platform:doctor": "node scripts/platform-smoke.mjs doctor",
   "smoke:platform:macos": "node scripts/platform-smoke.mjs run --target macos",
@@ -167,7 +173,7 @@ Package scripts:
 }
 ```
 
-Add `.artifacts/`, `.crabbox/`, and `.platform-smoke-runs/` to `.gitignore`.
+Add `.artifacts/`, `.crabbox/`, `.debug/`, and `.platform-smoke-runs/` to `.gitignore`.
 
 ## Configuration source
 
@@ -189,18 +195,25 @@ export default {
   ],
   requiredCrabbox: {
     install: "Homebrew package or PLATFORM_SMOKE_CRABBOX override",
-    minVersion: "0.24.0",
+    minVersion: "0.26.0",
   },
   ubuntuContainerImage: "cimg/node:24.16",
   nodeValidationMajor: 24,
+  windowsParallels: {
+    sourceVm: "pi-extension-windows-template",
+    snapshot: "crabbox-ready",
+    workRoot: "C:\\crabbox\\pi-cursor-sdk",
+  },
 };
 ```
 
 `ubuntuContainerImage` defaults the local-container Ubuntu target to an Ubuntu 24.04 Node 24 image with a current glibc baseline for native test dependencies; Crabbox still bootstraps SSH/Git/rsync/curl as needed. `nodeValidationMajor: 24` is the release-smoke validation baseline. It does not change the package engine by itself. A separate compatibility lane can test Node 22.19 later; this required gate validates Node 24 on every target.
 
+`windowsParallels` records this repo's default shared Windows template contract. Environment overrides may point at a temporary candidate template during infrastructure work, but release runs should use the shared `pi-extension-windows-template` / `crabbox-ready` baseline unless this document is updated.
+
 ## Required local environment
 
-The doctor fails if any required value is missing.
+The config owns reusable defaults. Environment variables are local-machine knobs and one-off overrides, not a second source of truth. The doctor fails if required auth or target readiness is missing.
 
 ```bash
 # Optional override; by default the gate uses Homebrew `crabbox` from PATH.
@@ -211,11 +224,13 @@ PLATFORM_SMOKE_MAC_USER="$USER"
 PLATFORM_SMOKE_MAC_WORK_ROOT="/Users/$USER/crabbox/pi-cursor-sdk"
 PLATFORM_SMOKE_UBUNTU_IMAGE="cimg/node:24.16"
 
-PLATFORM_SMOKE_WINDOWS_VM="Windows 11"
+# Optional Parallels overrides; defaults come from platform-smoke.config.mjs.
+PLATFORM_SMOKE_WINDOWS_VM="pi-extension-windows-template"
 PLATFORM_SMOKE_WINDOWS_SNAPSHOT="crabbox-ready"
 PLATFORM_SMOKE_WINDOWS_USER="<windows-ssh-user>"
 PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT="C:\\crabbox\\pi-cursor-sdk"
 
+# Required for live suites; doctor fails before spending Cursor tokens if absent.
 CURSOR_API_KEY="..."
 ```
 
@@ -278,7 +293,13 @@ Required:
 
 ### Windows template VM
 
-The user's daily Windows VM is not the long-term test target. A dedicated template VM and snapshot are required.
+The user's daily Windows VM is not the long-term test target. Use the shared pi-extension Parallels template unless this project documents a replacement with equal evidence:
+
+```text
+source VM: pi-extension-windows-template
+snapshot: crabbox-ready
+work root: C:\\crabbox\\pi-cursor-sdk
+```
 
 Template requirements:
 
@@ -293,8 +314,9 @@ Template requirements:
 - `node-pty` self-test passes in native Windows.
 - Source VM is powered off.
 - Snapshot named `crabbox-ready` exists.
+- The template contains reusable platform tools only; no repo checkout, `.pi` state, Cursor API key, browser auth, smoke artifacts, or temp files.
 
-Crabbox Parallels creates linked clones from the powered-off snapshot. The source template VM is never used directly for smoke runs.
+Crabbox Parallels creates linked clones from the powered-off snapshot. The source template VM is never used directly for smoke runs. If a run has to install a missing global tool or browser on every Windows clone, treat that as template drift and refresh the shared template instead of making the per-run fallback normal.
 
 ### Windows native
 
@@ -313,13 +335,13 @@ tar --version
 
 Doctor checks:
 
-1. Required env vars exist.
+1. Required auth is present and optional target overrides resolve against config defaults.
 2. Homebrew `crabbox` is available on PATH, or `PLATFORM_SMOKE_CRABBOX` points at an executable override.
 3. Crabbox build matches the configured baseline.
 4. Crabbox provider registry includes `local-container`, `ssh`, and `parallels`.
-5. `crabbox doctor --provider local-container --json` passes.
+5. `crabbox doctor --provider local-container --target linux --json` passes.
 6. Docker runtime is active.
-7. macOS SSH localhost probe passes and sees Node, npm, Git, rsync, and tar.
+7. Crabbox macOS static SSH doctor with `--doctor-probe-ssh` passes, and the localhost SSH probe sees Node, npm, Git, rsync, and tar.
 8. `prlctl` exists.
 9. Windows source VM exists.
 10. Windows source snapshot exists.
@@ -358,7 +380,7 @@ Per target, `platform-build` must:
 
 1. Record `node --version` and assert the target Node major is at least `nodeValidationMajor`.
 2. Run `npm ci` in `extensionSourceRoot`.
-3. Run `npm run check:platform-smoke` on the target so smoke harness syntax and invariant tests fail before live Cursor calls, with only the target-local release-tag guard bypassed because Crabbox worktrees may not have release tags.
+3. Run `npm run check:platform-smoke` on the target so config syntax, smoke harness syntax, invalid target/suite guards, and invariant tests fail before live Cursor calls.
 4. Run `npm test` on the target with the same target-local release-tag guard bypass.
 5. Run `npm run typecheck`.
 6. Run `npm pack`.
@@ -379,7 +401,7 @@ Purpose:
 - fail before spending Cursor tokens;
 - produce the packed extension used by later suites.
 
-The host `smoke:platform:all` entrypoint enforces doctor first and then the release-version reuse guard before running targets, using local git tags and `package.json`. Required artifacts include `node-version.txt`, `npm-version.txt`, stdout/stderr for `npm ci`, `npm run check:platform-smoke`, `npm test`, `npm run typecheck`, `npm pack`, packed npm install, `pi install`, and `pi list`, plus `packed-tarball.txt`, `summary.json`, `artifact-manifest.json`, `assertions.json`, and `failures.md` on failed assertions.
+The host `smoke:platform:all` entrypoint enforces doctor first before running targets. Required artifacts include `node-version.txt`, `npm-version.txt`, stdout/stderr for `npm ci`, `npm run check:platform-smoke`, `npm test`, `npm run typecheck`, `npm pack`, packed npm install, `pi install`, and `pi list`, plus `packed-tarball.txt`, `summary.json`, `artifact-manifest.json`, `assertions.json`, and `failures.md` on failed assertions.
 
 ### `cursor-native-visual-matrix`
 
@@ -596,7 +618,7 @@ cursor-abort-cleanup: 1
 
 Maximum per target: `3` Cursor invocations.
 
-Maximum full gate: `12` Cursor invocations.
+Maximum full gate: `9` Cursor invocations.
 
 The merge gate is `npm run smoke:platform:all`; that script runs doctor first and then the matrix to preserve this budget. No suite adds a new Cursor invocation without updating this plan and `platform-smoke.config.mjs`.
 
