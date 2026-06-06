@@ -60,7 +60,7 @@ describe("cursor native replay rendering", () => {
 	});
 
 	it("colors unified diff body lines in neutral Cursor edit activity cards", () => {
-		// Legacy path (no diffString): still exercises extract + canonical renderer for old JSONL.
+		// Unstructured path (no diffString): still exercises extract + canonical renderer.
 		const rendered = renderReplayResultWithDetails({
 			variant: "activity",
 			sourceToolName: "edit",
@@ -79,9 +79,8 @@ describe("cursor native replay rendering", () => {
 	});
 
 	it("colors collapsed diff lines when transcript preamble exceeds preview budget", () => {
-		// This test (explicitly required to be kept) exercises the legacy extract path for old JSONL
-		// that only have diff in expandedText + no diffString on details. It now routes through the
-		// single canonical renderer (no duplicate coloring code) while still proving preamble is ignored.
+		// This exercises the extract path for activity details that only have diff in expandedText
+		// and no diffString. It routes through the single canonical renderer while proving preamble is ignored.
 		const preamble = Array.from({ length: 12 }, (_, index) => `note ${index + 1}`).join("\n");
 		const rendered = renderReplayResultWithDetails({
 			variant: "activity",
@@ -96,7 +95,7 @@ describe("cursor native replay rendering", () => {
 		expect(rendered).toContain("<toolDiffAdded>+1 new line</toolDiffAdded>");
 	});
 
-	it("activity edit with structured diffString uses canonical colored diff renderer (ignores expandedText preamble; legacy extract not used)", () => {
+	it("activity edit with structured diffString uses canonical colored diff renderer (ignores expandedText preamble; text extraction not used)", () => {
 		// Structured primary path (new sessions): diffString present on details -> formatCursorReplayDiff directly.
 		// Long preamble in expandedText must not affect; no reliance on extractUnifiedDiffSection for coloring.
 		const preamble = Array.from({ length: 20 }, (_, index) => `preamble note ${index + 1}`).join("\n");
@@ -107,7 +106,7 @@ describe("cursor native replay rendering", () => {
 			title: "Cursor edit",
 			summary: "src/file.ts updated",
 			diffString: structuredDiff,
-			// expandedText has long preamble (as in old JSONL); structured must win for colors.
+			// expandedText has a long preamble; structured diffString must win for colors.
 			expandedText: `${preamble}\n\nsome transcript\n${structuredDiff}`,
 		});
 
@@ -123,7 +122,7 @@ describe("cursor native replay rendering", () => {
 	});
 
 	it("colors unified diff body lines in neutral Cursor write activity cards", () => {
-		// Legacy write path (no diffString) still exercises extract + canonical renderer.
+		// Unstructured write path (no diffString) still exercises extract + canonical renderer.
 		const rendered = renderReplayResultWithDetails({
 			variant: "activity",
 			sourceToolName: "write",
@@ -205,16 +204,26 @@ describe("cursor native replay rendering", () => {
 		expect(rendered).toContain("Cursor MCP git · ## Git Status ✅");
 	});
 
-	it("renders legacy replay fallbacks for semSearch and recordScreen partial calls", () => {
+	it("renders neutral cursor partial calls from activity metadata", () => {
 		const rendered = [
-			renderCursorReplayCall("cursor_sem_search", { query: "main entrypoint", targetDirectories: ["src"] }, theme, true),
 			renderCursorReplayCall(
-				"cursor_record_screen",
-				{ path: ".cursor/recordings/demo.webm", recordingDurationMs: 4200 },
+				CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
+				{ activityTitle: "Cursor semantic search", activitySummary: "main entrypoint (1 dir)" },
 				theme,
 				true,
 			),
-			renderCursorReplayCall("cursor_delete", { path: ".debug/delete-me.txt" }, theme, true),
+			renderCursorReplayCall(
+				CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
+				{ activityTitle: "Cursor screen recording", activitySummary: ".cursor/recordings/demo.webm · 4.2s" },
+				theme,
+				true,
+			),
+			renderCursorReplayCall(
+				CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
+				{ activityTitle: "Cursor delete", activitySummary: ".debug/delete-me.txt" },
+				theme,
+				true,
+			),
 		]
 			.map((component) => component.render(120).join("\n"))
 			.join("\n");
@@ -222,5 +231,6 @@ describe("cursor native replay rendering", () => {
 		expect(rendered).toContain("Cursor semantic search main entrypoint (1 dir)");
 		expect(rendered).toContain("Cursor screen recording .cursor/recordings/demo.webm · 4.2s");
 		expect(rendered).toContain("Cursor delete .debug/delete-me.txt");
+		expect(rendered).not.toContain("cursor_");
 	});
 });

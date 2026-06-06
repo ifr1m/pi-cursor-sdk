@@ -88,7 +88,7 @@ describe("buildCursorPrompt", () => {
 			messages: [
 				{
 					role: "assistant",
-					content: "Legacy assistant text",
+					content: "String assistant text",
 					api: "cursor-sdk",
 					provider: "cursor",
 					model: "test",
@@ -99,7 +99,7 @@ describe("buildCursorPrompt", () => {
 			],
 		};
 		const result = buildCursorPrompt(ctx);
-		expect(result.text).toContain("Assistant: Legacy assistant text");
+		expect(result.text).toContain("Assistant: String assistant text");
 	});
 
 	it("omits thinking content from transcript", () => {
@@ -207,21 +207,20 @@ describe("buildCursorPrompt", () => {
 		expect(result.text).not.toContain("Tool result (Cursor write");
 	});
 
-	it("labels legacy Cursor replay tools without rewriting literal transcript text", () => {
+	it("labels canonical neutral Cursor replay activity without rewriting literal transcript text", () => {
 		const ctx: Context = {
 			messages: [
 				{
 					role: "user",
-					content: "Please search for the literal string cursor_edit.",
+					content: "Please search for the literal string replay_marker.",
 					timestamp: 0,
 				} satisfies UserMessage,
 				{
 					role: "assistant",
 					content: [
-						{ type: "text", text: "I will preserve literal cursor_delete text." },
-						{ type: "toolCall", id: "edit-call", name: "cursor_edit", arguments: { note: "cursor_write" } },
-						{ type: "toolCall", id: "mcp-call", name: "cursor_mcp", arguments: { toolName: "git" } },
-						{ type: "toolCall", id: "bash-call", name: "bash", arguments: { command: "echo cursor_mcp" } },
+						{ type: "text", text: "I will preserve literal activity_marker text." },
+						{ type: "toolCall", id: "activity-call", name: "cursor", arguments: { activityTitle: "Cursor MCP", note: "result_marker" } },
+						{ type: "toolCall", id: "bash-call", name: "bash", arguments: { command: "echo mcp_marker" } },
 					],
 					api: "cursor-sdk",
 					provider: "cursor",
@@ -232,36 +231,23 @@ describe("buildCursorPrompt", () => {
 				} satisfies AssistantMessage,
 				{
 					role: "toolResult",
-					toolCallId: "edit-call",
-					toolName: "cursor_edit",
-					content: [{ type: "text", text: "legacy cursor_edit result" }],
+					toolCallId: "activity-call",
+					toolName: "cursor",
+					content: [{ type: "text", text: "recorded replay_marker result" }],
 					isError: false,
 					timestamp: 2,
-				} satisfies ToolResultMessage,
-				{
-					role: "toolResult",
-					toolCallId: "write-call",
-					toolName: "cursor_write",
-					content: [{ type: "text", text: "legacy cursor_mcp text" }],
-					isError: false,
-					timestamp: 3,
 				} satisfies ToolResultMessage,
 			],
 		};
 
 		const result = buildCursorPrompt(ctx);
 
-		expect(result.text).toContain("User: Please search for the literal string cursor_edit.");
-		expect(result.text).toContain("Assistant: I will preserve literal cursor_delete text.");
-		expect(result.text).toContain("Tool call (Cursor edit, call edit-call)");
-		expect(result.text).toContain('{"note":"cursor_write"}');
-		expect(result.text).toContain("Tool call (Cursor MCP, call mcp-call):");
-		expect(result.text).toContain('Tool call (bash, call bash-call): {"command":"echo cursor_mcp"}');
-		expect(result.text).toContain("Tool result (Cursor edit, call edit-call): legacy cursor_edit result");
-		expect(result.text).toContain("Tool result (Cursor write, call write-call): legacy cursor_mcp text");
-		expect(result.text).not.toContain("Tool call (cursor_edit");
-		expect(result.text).not.toContain("Tool call (cursor_mcp");
-		expect(result.text).not.toContain("Tool result (cursor_write");
+		expect(result.text).toContain("User: Please search for the literal string replay_marker.");
+		expect(result.text).toContain("Assistant: I will preserve literal activity_marker text.");
+		expect(result.text).toContain("Tool call (Cursor activity, call activity-call)");
+		expect(result.text).toContain('{"activityTitle":"Cursor MCP","note":"result_marker"}');
+		expect(result.text).toContain('Tool call (bash, call bash-call): {"command":"echo mcp_marker"}');
+		expect(result.text).toContain("Tool result (Cursor activity, call activity-call): recorded replay_marker result");
 	});
 
 	it("estimates assistant prompt-message tokens from replayed text and tool calls but not thinking", () => {

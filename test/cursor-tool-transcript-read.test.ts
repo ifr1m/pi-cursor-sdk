@@ -7,15 +7,11 @@ import { buildCursorPiToolDisplay, formatCursorToolTranscript, getCursorCreatePl
 
 
 describe("formatCursorToolTranscript read and shell", () => {
-	it("defines shared bridge exclusions for neutral and legacy Cursor replay activity names", () => {
+	it("defines shared bridge exclusions for only the neutral Cursor replay activity name", () => {
 		expect(isExcludedFromCursorBridgeExposure("cursor")).toBe(true);
-		expect(isExcludedFromCursorBridgeExposure("cursor_edit")).toBe(true);
-		expect(isExcludedFromCursorBridgeExposure("cursor_write")).toBe(true);
-		expect(isExcludedFromCursorBridgeExposure("cursor_mcp")).toBe(true);
-		expect(isExcludedFromCursorBridgeExposure("cursor_sem_search")).toBe(true);
-		expect(isExcludedFromCursorBridgeExposure("cursor_record_screen")).toBe(true);
-		expect(isExcludedFromCursorBridgeExposure("cursor_web_search")).toBe(true);
-		expect(isExcludedFromCursorBridgeExposure("cursor_web_fetch")).toBe(true);
+		expect(isExcludedFromCursorBridgeExposure("oldCursorEdit")).toBe(false);
+		expect(isExcludedFromCursorBridgeExposure("oldCursorWrite")).toBe(false);
+		expect(isExcludedFromCursorBridgeExposure("oldCursorMcp")).toBe(false);
 		expect(isExcludedFromCursorBridgeExposure("bash")).toBe(false);
 		expect(isExcludedFromCursorBridgeExposure("edit")).toBe(false);
 		expect(isExcludedFromCursorBridgeExposure("write")).toBe(false);

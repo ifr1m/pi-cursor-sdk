@@ -280,11 +280,10 @@ describe("streamCursor bridge MCP", () => {
 		delete process.env.PI_CURSOR_PI_TOOL_BRIDGE;
 		delete process.env.PI_CURSOR_EXPOSE_BUILTIN_TOOLS;
 		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor");
-		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor_edit");
 		vi.clearAllMocks();
 		registerBridgeForProviderTest({
-			active: ["cursor", "cursor_edit"],
-			tools: [createTestToolInfo("cursor"), createTestToolInfo("cursor_edit")],
+			active: ["cursor"],
+			tools: [createTestToolInfo("cursor")],
 		});
 		mockCreatedAgent({
 			agentId: "agent-2",

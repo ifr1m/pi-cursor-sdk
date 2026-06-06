@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.1.37 - 2026-06-06
+
+### Changed
+
+- Cut Cursor native replay over to one canonical replay surface: neutral `cursor` activity cards plus native-compatible `read`, `bash`, `grep`, `find`, `ls`, `edit`, and `write` cards. Legacy `cursor_*` replay wrapper names, alias exports, old `cursorToolName` replay-detail parsing, and replay-only prompt metadata are removed instead of preserved behind compatibility shims (#123).
+- Keep edit/write replay previews on the shared structured diff/file preview renderers, while retaining unstructured `expandedText` unified-diff extraction only as a fallback for current SDK payloads that do not include structured diff fields.
+
+### Fixed
+
+- Stop registering duplicate replay-only prompt snippets/guidelines for every Cursor SDK activity wrapper, eliminating the inflated prompt metadata reported by issue #123 while preserving current TUI replay card titles, summaries, typed details, and `sourceToolName` display metadata.
+
 ## 0.1.36 - 2026-06-05
 
 ### Fixed

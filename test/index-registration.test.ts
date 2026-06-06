@@ -73,7 +73,7 @@ describe("extension registration and discovery", () => {
 			"cursor-refresh-models",
 			expect.objectContaining({ description: expect.stringContaining("Refresh the live Cursor model catalog") }),
 		);
-		expect(pi.registerTool).toHaveBeenCalledTimes(23);
+		expect(pi.registerTool).toHaveBeenCalledTimes(10);
 		expect(pi._tools.map((tool) => tool.name)).toEqual([
 			CURSOR_ASK_QUESTION_TOOL_NAME,
 			CURSOR_ACTIVATE_SKILL_TOOL_NAME,
@@ -81,19 +81,6 @@ describe("extension registration and discovery", () => {
 			"find",
 			"ls",
 			"cursor",
-			"cursor_edit",
-			"cursor_write",
-			"cursor_delete",
-			"cursor_read_lints",
-			"cursor_update_todos",
-			"cursor_create_plan",
-			"cursor_task",
-			"cursor_generate_image",
-			"cursor_mcp",
-			"cursor_sem_search",
-			"cursor_record_screen",
-			"cursor_web_search",
-			"cursor_web_fetch",
 			"read",
 			"bash",
 			"edit",
@@ -101,6 +88,9 @@ describe("extension registration and discovery", () => {
 		]);
 		expect(pi._tools.find((tool) => tool.name === CURSOR_ASK_QUESTION_TOOL_NAME)?.promptSnippet).toContain("clarifying question");
 		expect(pi._tools.find((tool) => tool.name === CURSOR_ACTIVATE_SKILL_TOOL_NAME)?.promptSnippet).toContain("Agent Skill");
+		const replayTool = pi._tools.find((tool) => tool.name === "cursor");
+		expect(replayTool?.promptSnippet).toBeUndefined();
+		expect(replayTool?.promptGuidelines).toBeUndefined();
 		expect(pi.setActiveTools).toHaveBeenCalledWith([
 			"read",
 			"bash",
@@ -128,7 +118,7 @@ describe("extension registration and discovery", () => {
 		expect(call.config.streamSimple).toBe(mockedStreamCursor);
 	});
 
-	it("keeps legacy Cursor replay-only tools out of active tools", async () => {
+	it("keeps only canonical Cursor replay tools active for Cursor models", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		mockedDiscover.mockResolvedValueOnce([]);
 		const pi = createExtensionPi();
@@ -137,11 +127,8 @@ describe("extension registration and discovery", () => {
 
 		expect(pi._activeToolNames()).toContain("cursor");
 		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
-		expect(pi._activeToolNames()).not.toContain("cursor_edit");
 
 		await pi.runModelSelect(makeHarnessModel("openai-codex", "openai-codex-responses", "gpt-5.5"));
-		expect(pi._activeToolNames()).not.toContain("cursor_edit");
-		expect(pi._activeToolNames()).not.toContain("cursor_generate_image");
 		expect(pi._activeToolNames()).not.toContain("cursor");
 		expect(pi._activeToolNames()).not.toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
 		expect(pi._activeToolNames()).not.toContain("grep");
@@ -151,8 +138,6 @@ describe("extension registration and discovery", () => {
 		await pi.runModelSelect(makeModel("composer-2.5"));
 		expect(pi._activeToolNames()).toContain("cursor");
 		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
-		expect(pi._activeToolNames()).not.toContain("cursor_edit");
-		expect(pi._activeToolNames()).not.toContain("cursor_generate_image");
 	});
 
 	it("registers and resyncs Cursor-only tools before a turn when session startup did not know the model", async () => {

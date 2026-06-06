@@ -103,7 +103,6 @@ export function buildIncompleteCursorToolDisplay(
 	return {
 		toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 		args: {
-			cursorToolName: visibility.normalizedName,
 			activityTitle,
 			activitySummary: reasonText,
 			incomplete: true,

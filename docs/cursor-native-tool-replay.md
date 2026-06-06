@@ -72,7 +72,7 @@ Source of truth for SDK tool names: `@cursor/sdk@1.0.17` conversation `ToolType`
 
 Implementation owners: `src/cursor-tool-presentation-registry.ts` (canonical names, labels, visibility, replay policy, bridge exclusions for internal replay wrappers, and display-spec key completeness), `src/cursor-transcript-tool-specs.ts` (registry-keyed `TOOL_DISPLAY_SPECS` formatters/builders), `src/cursor-native-tool-display-replay.ts` (replay card rendering derived from registry replay metadata), and `src/cursor-transcript-utils.ts` (`normalizeToolName()` delegating to the registry).
 
-**Maintainer invariants — edit/write replay previews:** All colored diff rendering (native `edit` cards and `Cursor edit` activity fallbacks) flows through the single `formatCursorReplayDiff()` in `src/cursor-native-tool-display-replay.ts`. Activity write fallbacks with structured `fileContentAfterWrite` use the same `formatCursorReplayFilePreview()` path as native `write` cards. Structured `diffString` (and `diff`/`lines*`) or `fileContentAfterWrite` on `CursorReplay*Details` (including activity variants) is the source of truth for TUI preview coloring/highlighting. `expandedText` on activity details is for summary/expansion and legacy JSONL compatibility only; it is never the primary preview source when structured fields are present. Legacy paths retain `extractUnifiedDiffSection` + delegation solely for old session JSONL that predates structured population; no parallel +/- coloring loops exist for new paths.
+**Maintainer invariants — edit/write replay previews:** All colored diff rendering (native `edit` cards and `Cursor edit` activity fallbacks) flows through the single `formatCursorReplayDiff()` in `src/cursor-native-tool-display-replay.ts`. Activity write fallbacks with structured `fileContentAfterWrite` use the same `formatCursorReplayFilePreview()` path as native `write` cards. Structured `diffString` (and `diff`/`lines*`) or `fileContentAfterWrite` on `CursorReplay*Details` (including activity variants) is the source of truth for TUI preview coloring/highlighting. `expandedText` on activity details is for summary/expansion and as a fallback when the current SDK reports a unified diff only in text; it is never the primary preview source when structured fields are present. No parallel +/- coloring loops exist.
 
 This matrix covers **Cursor native tool replay only**. It does not describe the [live pi MCP bridge](#live-bridge-vs-replay) or Cursor-native host tools, settings, plugins, and configured MCP servers from the Cursor SDK local-agent path.
 
@@ -100,9 +100,9 @@ This matrix covers **Cursor native tool replay only**. It does not describe the 
 
 **Unknown/future fallback path:** SDK tool names with no registry-backed `TOOL_DISPLAY_SPECS` entry (future or unknown types) use `buildGenericPiToolDisplay()` in `src/cursor-transcript-tool-specs.ts` with bounded `formatFallback()` content from `src/cursor-transcript-tool-formatters.ts`. Lookup uses `Object.hasOwn(TOOL_DISPLAY_SPECS, name)` so inherited object keys such as `constructor` or `toString` cannot accidentally match a registry spec. When native replay is enabled, those completions queue through neutral pi tool name `cursor` (not native pi `read`/`bash`/… cards). Collapsed labels read like **Cursor futureSemSearchWidget** (title `Cursor` plus the SDK tool name) with optional bounded `activitySummary` from scrubbed args/result lines. Errors keep `details.summary` undefined so unbounded raw errors do not leak into replay cards (#52). Known explicit specs still win over this path; real pi bridge tool names such as `edit` and `write` are not suppressed by internal replay-wrapper exclusions.
 
-**Replay detail disposition model:** `src/cursor-replay-tool-details.ts` stores replay card disposition separately from SDK source tool identity. Variants are `nativeEdit`, `nativeWrite`, `activity` (`sourceToolName` + display `title`), `generateImage`, and `genericFallback`. Path-only or notebook edit/write fallbacks produce `activity` details (neutral `cursor` cards) instead of structured edit/write variants with optional `title` escape hatches. Native edit/write cards use `nativeEdit` / `nativeWrite` only when pi-facing replay args satisfy the matching schema. The renderer dispatches on `variant` only; legacy payloads with `cursorToolName`/`title` are parsed into the matching disposition at the boundary.
+**Replay detail disposition model:** `src/cursor-replay-tool-details.ts` stores replay card disposition separately from SDK source tool identity. Variants are `nativeEdit`, `nativeWrite`, `activity` (`sourceToolName` + display `title`), `generateImage`, and `genericFallback`. Path-only or notebook edit/write fallbacks produce `activity` details (neutral `cursor` cards) instead of structured edit/write variants with optional `title` escape hatches. Native edit/write cards use `nativeEdit` / `nativeWrite` only when pi-facing replay args satisfy the matching schema. The renderer dispatches on `variant` only.
 
-Neutral activity rows use pi tool name `cursor` with `activityTitle` / `activitySummary` metadata. Legacy internal replay label keys such as `cursor_sem_search` are compatibility details; user-visible collapsed cards use labels like **Cursor semantic search**.
+Neutral activity rows use pi tool name `cursor` with `activityTitle` / `activitySummary` metadata. User-visible collapsed cards use labels like **Cursor semantic search**.
 
 ## Runtime alias normalization
 
@@ -184,15 +184,15 @@ For shell replay, completed `stdout` / `stderr` remain the primary source. If a 
 
 Non-interactive and session consumers still receive bounded scrubbed transcript data so `pi -p` keeps printing normal assistant text.
 
-## Synthetic-name policy
+## Replay-name policy
 
-Synthetic replay names are internal compatibility details. New model-facing prompt text and user-visible cards use native tool names when renderer-compatible, or neutral Cursor activity labels when not. Legacy sessions that already contain old internal replay names are rewritten to safe labels in prompt text and display surfaces.
+Cursor native replay has one neutral replay tool name, `cursor`, plus native-compatible card names when renderer-compatible: `read`, `bash`, `grep`, `find`, `ls`, `edit`, and `write`. Neutral replay identity lives in `activityTitle`, `activitySummary`, and typed replay details, not in extra registered tool names.
 
 Bridge MCP names are also not pi tool names. Cursor may see names such as `pi__sem_reindex` inside the local MCP bridge, but pi session output uses the real pi tool name.
 
 ## Conflicts and opt out
 
-Native replay wrappers are registered only for tool names not already owned by another extension. If another extension already owns a wrapper name needed for replay, pi-cursor-sdk skips only the conflicting wrapper and uses the scrubbed Cursor activity transcript for that tool instead. Legacy replay wrappers remain registered for old sessions, but their model-facing and user-visible labels are sanitized.
+Native replay wrappers are registered only for tool names not already owned by another extension. If another extension already owns a wrapper name needed for replay, pi-cursor-sdk skips only the conflicting wrapper and uses the scrubbed Cursor activity transcript for that tool instead.
 
 Disable native replay registration entirely:
 

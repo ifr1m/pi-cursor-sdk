@@ -93,7 +93,6 @@ describe("cursor incomplete tool visibility", () => {
 			title: "Cursor image generation did not complete",
 			summary: "missing completion",
 		});
-		expect(display.result.details).not.toHaveProperty("cursorToolName");
 		expect(formatIncompleteCursorToolTrace(display)).toContain(
 			"Cursor image generation did not complete: missing completion",
 		);

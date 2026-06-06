@@ -8,9 +8,6 @@ import { LOCAL_READ_PREVIEW_NOTICE, isLocalReadPreviewContent } from "./cursor-t
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 	getCursorReplayCallSummary,
-	getCursorReplaySideEffectDescription,
-	getCursorReplayOperationLabel,
-	getCursorReplayWrapperLabel,
 	type CursorReplayToolName,
 } from "./cursor-tool-presentation-registry.js";
 import {
@@ -28,24 +25,17 @@ import {
 
 export type {
 	CursorReplayNativeEditDetails,
-	CursorReplayEditDetails,
 	CursorReplayGenerateImageDetails,
 	CursorReplayGenericFallbackDetails,
 	CursorReplayActivityDetails,
-	CursorReplayTitledActivityDetails,
 	CursorReplayToolDetails,
 	CursorReplayNativeWriteDetails,
-	CursorReplayWriteDetails,
 } from "./cursor-replay-tool-details.js";
 export {
-	asCursorReplayToolDetails,
 	isCursorReplayNativeEditDetails,
-	isCursorReplayEditDetails,
 	isCursorReplayGenerateImageDetails,
 	isCursorReplayActivityDetails,
-	isCursorReplayTitledActivityDetails,
 	isCursorReplayNativeWriteDetails,
-	isCursorReplayWriteDetails,
 	parseCursorReplayToolDetails,
 } from "./cursor-replay-tool-details.js";
 
@@ -245,10 +235,8 @@ function formatCursorReplayActivityDiffPreview(
 	const body = (stripHeader ? stripCursorReplayHeader(text) : text).trimEnd();
 	const diffSection = body ? extractUnifiedDiffSection(body) : undefined;
 	if (!diffSection || !hasUnifiedDiffHunk(diffSection)) return undefined;
-	// Legacy-only shim (old JSONL with no diffString on the activity details).
-	// All actual diff coloring now lives in the single `formatCursorReplayDiff` renderer.
-	// This path exists solely so pre-structured sessions still get colored diffs via the same
-	// high-quality implementation used for nativeEdit and new structured activity cases.
+	// Fallback for unstructured activity details that carry a unified diff only in expanded text.
+	// All actual diff coloring lives in the single `formatCursorReplayDiff` renderer.
 	return formatCursorReplayDiff(diffSection, theme, maxLines);
 }
 
@@ -350,11 +338,11 @@ export function formatCursorReplayFilePreview(
 	return renderedLines.join("\n");
 }
 
-function getCursorReplayActivityTitle(toolName: CursorReplayToolName, args: Record<string, unknown> | undefined): string {
+function getCursorReplayCardTitle(toolName: CursorReplayToolName, args: Record<string, unknown> | undefined): string {
 	if (toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME && typeof args?.activityTitle === "string" && args.activityTitle.trim()) {
 		return args.activityTitle.trim();
 	}
-	return getCursorReplayWrapperLabel(toolName);
+	return "Cursor activity";
 }
 
 export function renderCursorReplayCall(
@@ -364,7 +352,7 @@ export function renderCursorReplayCall(
 	isPartial: boolean,
 ): Text {
 	if (!isPartial) return new Text("", 0, 0);
-	let text = theme.fg("toolTitle", theme.bold(`${getCursorReplayActivityTitle(toolName, args)} `));
+	let text = theme.fg("toolTitle", theme.bold(`${getCursorReplayCardTitle(toolName, args)} `));
 	const summary = getCursorReplayCallSummary(toolName, args);
 	if (summary) text += theme.fg("accent", summary);
 	return new Text(text.trimEnd(), 0, 0);
@@ -602,19 +590,13 @@ export function renderNativeLookingCursorReadReplayResult(
 }
 
 export function createCursorReplayOnlyToolDefinition(toolName: CursorReplayToolName): ToolDefinition<typeof cursorReplayToolSchema, unknown> {
-	const cursorToolName = toolName === CURSOR_REPLAY_ACTIVITY_TOOL_NAME ? "activity" : getCursorReplayOperationLabel(toolName);
-	const sideEffectDescription = getCursorReplaySideEffectDescription(toolName);
 	return {
 		name: toolName,
-		label: getCursorReplayWrapperLabel(toolName),
-		description: `Replay display for a Cursor SDK ${cursorToolName} operation. This tool only returns recorded Cursor results and never executes ${sideEffectDescription} directly.`,
-		promptSnippet: `Render a recorded Cursor SDK ${cursorToolName} operation without executing ${sideEffectDescription}.`,
-		promptGuidelines: [
-			`Use this tool only for replaying Cursor SDK ${cursorToolName} results that were already produced by Cursor; it does not execute ${sideEffectDescription}.`,
-		],
+		label: "Cursor activity",
+		description: "Display recorded Cursor SDK tool activity. This tool only returns recorded Cursor results and never executes work directly.",
 		parameters: cursorReplayToolSchema,
 		async execute() {
-			throw new Error(`No recorded Cursor ${cursorToolName} result was available. This replay-only tool does not execute ${sideEffectDescription}.`);
+			throw new Error("No recorded Cursor activity result was available. This replay-only tool does not execute work directly.");
 		},
 		renderCall(args, theme, context) {
 			return renderCursorReplayCall(toolName, args as Record<string, unknown>, theme, context.isPartial);

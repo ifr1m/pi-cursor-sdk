@@ -131,20 +131,16 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 			createToolInfo("bash", "Run shell commands"),
 			createToolInfo("sem_reindex", "Reindex semantic cache", dynamicParameters),
 			createToolInfo("cursor"),
-			createToolInfo("cursor_edit"),
-			createToolInfo("cursor_mcp"),
 		];
 		const pi = createBridgePiHarness({
-			active: ["custom_read", "sem_reindex", "inactive_missing", "cursor", "cursor_edit", "cursor_mcp"],
+			active: ["custom_read", "sem_reindex", "inactive_missing", "cursor"],
 			tools,
 		});
 
 		const externalSnapshot = buildCursorPiToolBridgeSnapshot(pi);
-		expect(externalSnapshot.tools.map((tool) => tool.piToolName)).toEqual(["custom_read", "sem_reindex", "cursor", "cursor_edit", "cursor_mcp"]);
+		expect(externalSnapshot.tools.map((tool) => tool.piToolName)).toEqual(["custom_read", "sem_reindex", "cursor"]);
 
 		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor");
-		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor_edit");
-		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor_mcp");
 		const snapshot = buildCursorPiToolBridgeSnapshot(pi);
 
 		expect(snapshot.tools.map((tool) => tool.piToolName)).toEqual(["custom_read", "sem_reindex"]);
@@ -304,7 +300,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 	});
 
 	it("skips MCP injection when disabled or when the active snapshot is empty", async () => {
-		const tools = [createToolInfo("cursor"), createToolInfo("cursor_edit")];
+		const tools = [createToolInfo("cursor")];
 		const disabledRegistry = __testUtils.createRegistry(
 			createBridgePiHarness({ active: ["read"], tools: [createToolInfo("read")] }),
 			{ PI_CURSOR_PI_TOOL_BRIDGE: "0" },
@@ -315,9 +311,8 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 		expect(disabledRegistry.getEndpointCount()).toBe(0);
 
 		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor");
-		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor_edit");
 		const emptyRegistry = __testUtils.createRegistry(
-			createBridgePiHarness({ active: ["cursor", "cursor_edit"], tools }),
+			createBridgePiHarness({ active: ["cursor"], tools }),
 			{},
 		);
 		const emptyRun = await emptyRegistry.createRun();

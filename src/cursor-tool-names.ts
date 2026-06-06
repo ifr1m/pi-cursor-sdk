@@ -1,18 +1,9 @@
 export {
-	CURSOR_REPLAY_ACTIVITY_LABEL_KEYS_BY_TOOL_NAME,
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-	CURSOR_REPLAY_LEGACY_TOOL_NAMES,
-	getCursorReplayActivityLabelKey,
 	getCursorReplayActivityTitle,
-	getCursorReplayDisplayLabel,
 	getCursorReplayPromptLabel,
-	getCursorReplaySideEffectDescription,
-	getCursorReplayOperationLabel,
-	getCursorReplayWrapperLabel,
-	isCursorReplayLegacyToolName,
 	isCursorReplayToolName,
 	isExcludedFromCursorBridgeExposure,
 	type CursorReplayActivityToolName,
-	type CursorReplayLegacyToolName,
 	type CursorReplayToolName,
 } from "./cursor-tool-presentation-registry.js";

@@ -6,25 +6,37 @@ import {
 } from "../src/cursor-transcript-tool-specs.js";
 import {
 	CURSOR_KNOWN_NORMALIZED_TOOL_NAMES,
-	CURSOR_REPLAY_ACTIVITY_LABEL_KEYS_BY_TOOL_NAME,
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-	CURSOR_REPLAY_LEGACY_TOOL_NAMES,
 	CURSOR_TOOL_PRESENTATION_SPECS,
 	classifyCursorWebToolKind,
 	getCursorReplayActivityTitle,
 	getCursorReplayCallSummary,
-	getCursorReplayOperationLabel,
-	getCursorReplaySideEffectDescription,
-	getCursorReplayWrapperLabel,
 	getCursorToolLifecycleLabelKind,
 	getCursorToolPresentationSpec,
 	getCursorToolVisibilityPolicy,
 	isExcludedFromCursorBridgeExposure,
+	isCursorReplayToolName,
 	normalizeCursorToolName,
 	type CursorNormalizedToolName,
 } from "../src/cursor-tool-presentation-registry.js";
 import { classifyCursorToolVisibility } from "../src/cursor-tool-visibility.js";
 import { normalizeCursorToolName as normalizeToolName } from "../src/cursor-tool-presentation-registry.js";
+
+const NEUTRAL_ACTIVITY_SOURCE_NAMES = [
+	"edit",
+	"write",
+	"delete",
+	"readLints",
+	"updateTodos",
+	"createPlan",
+	"task",
+	"generateImage",
+	"mcp",
+	"semSearch",
+	"recordScreen",
+	"webSearch",
+	"webFetch",
+] as const satisfies readonly CursorNormalizedToolName[];
 
 describe("cursor tool presentation registry", () => {
 	it("lists every known normalized tool exactly once", () => {
@@ -40,28 +52,26 @@ describe("cursor tool presentation registry", () => {
 		}
 	});
 
-	it("maps legacy replay tool names and bridge exclusion from the registry", () => {
-		const legacyNamesFromSpecs = CURSOR_TOOL_PRESENTATION_SPECS.flatMap((spec) =>
-			"replayLegacyName" in spec ? [spec.replayLegacyName] : [],
-		);
-		expect(new Set(CURSOR_REPLAY_LEGACY_TOOL_NAMES)).toEqual(new Set(legacyNamesFromSpecs));
-		expect(CURSOR_REPLAY_LEGACY_TOOL_NAMES).toHaveLength(legacyNamesFromSpecs.length);
-		for (const legacyName of CURSOR_REPLAY_LEGACY_TOOL_NAMES) {
-			const spec = getCursorToolPresentationSpec(legacyName);
-			expect(spec && "replayLegacyName" in spec ? spec.replayLegacyName : undefined).toBe(legacyName);
-			expect(isExcludedFromCursorBridgeExposure(legacyName)).toBe(true);
-		}
+	it("excludes only the canonical neutral replay tool from bridge exposure", () => {
+		expect(isCursorReplayToolName(CURSOR_REPLAY_ACTIVITY_TOOL_NAME)).toBe(true);
 		expect(isExcludedFromCursorBridgeExposure(CURSOR_REPLAY_ACTIVITY_TOOL_NAME)).toBe(true);
+		for (const toolName of ["oldCursorEdit", "oldCursorWrite", "oldCursorMcp", "oldCursorSearch"]) {
+			expect(isCursorReplayToolName(toolName)).toBe(false);
+			expect(isExcludedFromCursorBridgeExposure(toolName)).toBe(false);
+		}
 		expect(isExcludedFromCursorBridgeExposure("read")).toBe(false);
 		expect(isExcludedFromCursorBridgeExposure("edit")).toBe(false);
 		expect(isExcludedFromCursorBridgeExposure("write")).toBe(false);
 	});
 
-	it("derives replay activity label keys from normalized names", () => {
-		for (const [normalizedName, legacyName] of Object.entries(CURSOR_REPLAY_ACTIVITY_LABEL_KEYS_BY_TOOL_NAME)) {
-			const spec = getCursorToolPresentationSpec(normalizedName as CursorNormalizedToolName);
-			expect(spec && "replayLegacyName" in spec ? spec.replayLegacyName : undefined).toBe(legacyName);
+	it("derives neutral activity titles from current source tool names", () => {
+		for (const normalizedName of NEUTRAL_ACTIVITY_SOURCE_NAMES) {
+			expect(getCursorReplayActivityTitle(normalizedName)).toBe(getCursorToolPresentationSpec(normalizedName)?.displayLabel);
+			expect(classifyCursorToolVisibility({ name: normalizedName }).activityTitle).toBe(getCursorReplayActivityTitle(normalizedName));
 		}
+		expect(getCursorReplayActivityTitle("read")).toBeUndefined();
+		expect(getCursorReplayActivityTitle("grep")).toBeUndefined();
+		expect(getCursorReplayActivityTitle("shell")).toBeUndefined();
 	});
 
 	it("normalizes aliases from the registry", () => {
@@ -71,9 +81,10 @@ describe("cursor tool presentation registry", () => {
 		expect(normalizeToolName("str_replace")).toBe("edit");
 	});
 
-	it("classifies web tools from registry patterns", () => {
+	it("classifies web tools from current registry patterns", () => {
 		expect(classifyCursorWebToolKind("web-search")).toBe("webSearch");
-		expect(classifyCursorWebToolKind("cursor_web_fetch")).toBe("webFetch");
+		expect(classifyCursorWebToolKind("WebFetch")).toBe("webFetch");
+		expect(classifyCursorWebToolKind("oldCursorWebFetch")).toBeUndefined();
 		expect(classifyCursorWebToolKind("grep")).toBeUndefined();
 	});
 
@@ -87,38 +98,11 @@ describe("cursor tool presentation registry", () => {
 		}
 	});
 
-	it("aligns replay activity titles with visibility classification", () => {
-		for (const spec of CURSOR_TOOL_PRESENTATION_SPECS) {
-			if (!("replayLegacyName" in spec)) continue;
-			const title = getCursorReplayActivityTitle(spec.normalizedName);
-			expect(title).toBe(spec.displayLabel);
-			expect(classifyCursorToolVisibility({ name: spec.normalizedName }).activityTitle).toBe(title);
-		}
-	});
-
-	it("derives replay operation labels from normalized names with explicit overrides", () => {
-		expect(getCursorReplayOperationLabel("cursor_edit")).toBe("edit");
-		expect(getCursorReplayOperationLabel("cursor_mcp")).toBe("MCP");
-		expect(getCursorReplayOperationLabel("cursor_web_search")).toBe("web search");
-		expect(getCursorReplayOperationLabel("cursor_web_fetch")).toBe("web fetch");
-	});
-
-	it("derives replay wrapper labels and side-effect policy from the registry", () => {
-		expect(getCursorReplayWrapperLabel("cursor_edit")).toBe("edit");
-		expect(getCursorReplayWrapperLabel("cursor_write")).toBe("write");
-		expect(getCursorReplayWrapperLabel("cursor_mcp")).toBe("Cursor MCP");
-		expect(getCursorReplaySideEffectDescription("cursor_edit")).toBe("file mutations");
-		expect(getCursorReplaySideEffectDescription("cursor_write")).toBe("file mutations");
-		expect(getCursorReplaySideEffectDescription(CURSOR_REPLAY_ACTIVITY_TOOL_NAME)).toBe("file mutations");
-		expect(getCursorReplaySideEffectDescription("cursor_mcp")).toBe("real tool work");
-	});
-
 	it("derives replay call summaries from registry display policy", () => {
-		for (const legacyName of CURSOR_REPLAY_LEGACY_TOOL_NAMES) {
-			expect(getCursorReplayCallSummary(legacyName, { activitySummary: "summary" })).toBe("summary");
-		}
+		expect(getCursorReplayCallSummary(CURSOR_REPLAY_ACTIVITY_TOOL_NAME, { activitySummary: "summary" })).toBe("summary");
 		expect(getCursorReplayCallSummary(CURSOR_REPLAY_ACTIVITY_TOOL_NAME, { toolName: "custom" })).toBe("custom");
-		expect(getCursorReplayCallSummary("cursor_sem_search", { query: "main", targetDirectories: ["src"] })).toBe("main (1 dir)");
+		expect(getCursorReplayCallSummary("semSearch", { query: "main", targetDirectories: ["src"] })).toBe("main (1 dir)");
+		expect(getCursorReplayCallSummary("mcp", { toolName: "git", preview: "status" })).toBe("git · status");
 	});
 
 	it("builds transcript displays for every registry-backed spec key", () => {

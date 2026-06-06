@@ -101,7 +101,7 @@ describe("extension native Cursor tool replay", () => {
 				createExtensionTestContext({ cwd: secondDir }),
 			);
 
-			expect(pi.registerTool).toHaveBeenCalledTimes(23);
+			expect(pi.registerTool).toHaveBeenCalledTimes(10);
 			expect(result.content).toEqual([{ type: "text", text: "from second cwd\n" }]);
 		} finally {
 			rmSync(firstDir, { recursive: true, force: true });
@@ -210,13 +210,12 @@ describe("extension native Cursor tool replay", () => {
 			await extensionFactory(pi);
 			await pi.runSessionStart();
 
-			const generateImageTool = getHarnessRegisteredTool(pi._tools, "cursor_generate_image");
-			const component = generateImageTool.renderResult?.(
+			const cursorTool = getHarnessRegisteredTool(pi._tools, "cursor");
+			const component = cursorTool.renderResult?.(
 				{
 					content: [{ type: "text", text: `generateImage Small badge\n\nSaved image: ${imagePath}` }],
 					details: {
-						cursorToolName: "generateImage",
-						title: "Cursor generateImage",
+						variant: "generateImage",
 						summary: `saved ${imagePath}`,
 						imagePath,
 						imageDisplayPath: imagePath,
@@ -230,7 +229,7 @@ describe("extension native Cursor tool replay", () => {
 			);
 
 			const rendered = component?.render(120).join("\n") ?? "";
-			expect(rendered).toContain(`Cursor generateImage saved ${imagePath}`);
+			expect(rendered).toContain(`Cursor image generation saved ${imagePath}`);
 			expect(rendered).toContain("[Image: badge.png [image/png] 1x1]");
 		} finally {
 			resetCapabilitiesCache();
@@ -259,9 +258,7 @@ describe("extension native Cursor tool replay", () => {
 		expect(rendered).toContain("Cursor todos 1/2 completed, 1 pending");
 		expect(rendered).toContain("Cursor MCP external_search");
 		expect(rendered).not.toContain("Cursor activity");
-		expect(rendered).not.toContain("cursor_create_plan");
-		expect(rendered).not.toContain("cursor_update_todos");
-		expect(rendered).not.toContain("cursor_mcp");
+		expect(rendered).not.toContain("Cursor activity");
 	});
 
 	it("renders Cursor web replay cards summary-only until expanded", async () => {
@@ -276,7 +273,8 @@ describe("extension native Cursor tool replay", () => {
 		const result = {
 			content: [{ type: "text" as const, text: "web search azure-functions python\n\nLinks:\n1. [Release](https://example.com)" }],
 			details: {
-				cursorToolName: "webSearch",
+				variant: "activity",
+				sourceToolName: "webSearch",
 				title: "Cursor web search",
 				summary: "web search azure-functions python",
 				expandedText: "web search azure-functions python\n\nLinks:\n1. [Release](https://example.com)",
@@ -294,7 +292,7 @@ describe("extension native Cursor tool replay", () => {
 		expect(expanded).toContain("https://example.com");
 	});
 
-	it("renders legacy Cursor replay-only tool labels without raw synthetic names", async () => {
+	it("renders canonical neutral Cursor activity labels", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		mockedDiscover.mockResolvedValueOnce([]);
 		const pi = createExtensionPi();
@@ -304,26 +302,15 @@ describe("extension native Cursor tool replay", () => {
 		const options = createRenderOptions();
 		const context = createRenderContext({ isError: false, showImages: false });
 
-		const editTool = getHarnessRegisteredTool(pi._tools, "cursor_edit");
-		const writeTool = getHarnessRegisteredTool(pi._tools, "cursor_write");
-		const mcpTool = getHarnessRegisteredTool(pi._tools, "cursor_mcp");
+		const cursorTool = getHarnessRegisteredTool(pi._tools, "cursor");
 
-		// Cursor replay-only tools should use pi's default tool shell so they get
+		// The neutral replay-only tool should use pi's default tool shell so it gets
 		// the same green/red status card background as native tools.
-		expect(mcpTool.renderShell).toBeUndefined();
+		expect(cursorTool.renderShell).toBeUndefined();
 
 		const rendered = [
-			editTool.renderCall?.({ path: "src/index.ts" }, theme, createRenderContext({ isPartial: true }))?.render(120).join("\n"),
-			writeTool.renderResult?.(
-				{
-					content: [{ type: "text", text: "write new.txt\n\nCreated 1 lines" }],
-					details: { variant: "nativeWrite", path: "new.txt", linesCreated: 1, fileSize: 6, expandedText: "Created 1 lines" },
-				},
-				options,
-				theme,
-				context,
-			)?.render(120).join("\n"),
-			mcpTool!.renderResult?.(
+			cursorTool.renderCall?.({ activityTitle: "Cursor MCP", activitySummary: "git" }, theme, createRenderContext({ isPartial: true }))?.render(120).join("\n"),
+			cursorTool.renderResult?.(
 				{
 					content: [{ type: "text", text: "mcp git\n\nstatus" }],
 					details: { variant: "activity", sourceToolName: "mcp", title: "Cursor MCP activity", summary: "git", expandedText: "status" },
@@ -336,14 +323,8 @@ describe("extension native Cursor tool replay", () => {
 			.filter((entry): entry is string => Boolean(entry))
 			.join("\n");
 
-		expect(rendered).toContain("edit src/index.ts");
-		expect(rendered).toContain("write new.txt");
-		expect(rendered).not.toContain("Cursor edit");
-		expect(rendered).not.toContain("Cursor write");
+		expect(rendered).toContain("Cursor MCP git");
 		expect(rendered).toContain("Cursor MCP activity git");
-		expect(rendered).not.toContain("cursor_edit");
-		expect(rendered).not.toContain("cursor_write");
-		expect(rendered).not.toContain("cursor_mcp");
 	});
 
 	it("renders native edit and write replay wrappers without synthetic card names", async () => {
@@ -367,7 +348,7 @@ describe("extension native Cursor tool replay", () => {
 				{
 					content: [{ type: "text", text: "edit src/index.ts\n\n+1 -1" }],
 					details: {
-						cursorToolName: "edit",
+						variant: "nativeEdit",
 						path: "src/index.ts",
 						linesAdded: 1,
 						linesRemoved: 1,
@@ -416,14 +397,15 @@ describe("extension native Cursor tool replay", () => {
 				["toolDiffAdded", "toolDiffRemoved", "toolDiffContext"].includes(style) ? `<${style}>${text}</${style}>` : text,
 		});
 		const options = createRenderOptions();
-		const context = createRenderContext({ isError: false, showImages: false });
+		const context = createRenderContext({ isError: false, showImages: false, toolCallId: "cursor-replay-1-1-tool-1" });
 
-		const todosTool = getHarnessRegisteredTool(pi._tools, "cursor_update_todos");
-		const todosRendered = todosTool.renderResult?.(
+		const cursorTool = getHarnessRegisteredTool(pi._tools, "cursor");
+		const todosRendered = cursorTool.renderResult?.(
 			{
 				content: [{ type: "text", text: "updateTodos\n\n✓ Demo TodoWrite tool output (completed)\n… Run remaining Cursor tools once (inProgress)" }],
 				details: {
-					cursorToolName: "updateTodos",
+					variant: "activity",
+					sourceToolName: "updateTodos",
 					title: "Cursor todos",
 					summary: "1/2 completed, 1 in progress",
 					expandedText: "updateTodos\n\n✓ Demo TodoWrite tool output (completed)\n… Run remaining Cursor tools once (inProgress)",
@@ -436,12 +418,12 @@ describe("extension native Cursor tool replay", () => {
 		expect(todosRendered).toContain("Demo TodoWrite tool output");
 		expect(todosRendered).toContain("Run remaining Cursor tools once");
 
-		const taskTool = getHarnessRegisteredTool(pi._tools, "cursor_task");
-		const taskRendered = taskTool.renderResult?.(
+		const taskRendered = cursorTool.renderResult?.(
 			{
 				content: [{ type: "text", text: "task Quick repo file count\n\n20" }],
 				details: {
-					cursorToolName: "task",
+					variant: "activity",
+					sourceToolName: "task",
 					title: "Cursor task",
 					summary: "Quick repo file count: 20",
 					expandedText: "task Quick repo file count\n\n20",
@@ -453,12 +435,12 @@ describe("extension native Cursor tool replay", () => {
 		)?.render(120).join("\n") ?? "";
 		expect(taskRendered).toContain("Cursor task Quick repo file count: 20");
 
-		const editTool = getHarnessRegisteredTool(pi._tools, "cursor_edit");
+		const editTool = getHarnessRegisteredTool(pi._tools, "edit");
 		const editRendered = editTool.renderResult?.(
 			{
 				content: [{ type: "text", text: "edit src/index.ts\n\n+1 -1" }],
 				details: {
-					cursorToolName: "edit",
+					variant: "nativeEdit",
 					path: "src/index.ts",
 					linesAdded: 1,
 					linesRemoved: 1,
@@ -481,7 +463,7 @@ describe("extension native Cursor tool replay", () => {
 			{
 				content: [{ type: "text", text: "edit new.txt\n\n+2 -1" }],
 				details: {
-					cursorToolName: "edit",
+					variant: "nativeEdit",
 					path: "new.txt",
 					linesAdded: 2,
 					linesRemoved: 1,
@@ -499,8 +481,7 @@ describe("extension native Cursor tool replay", () => {
 		expect(createRendered).not.toContain("/dev/null");
 		expect(createRendered).not.toContain("@@");
 
-		const neutralPathOnlyEditTool = getHarnessRegisteredTool(pi._tools, "cursor");
-		const neutralPathOnlyEditRendered = neutralPathOnlyEditTool.renderResult?.(
+		const neutralPathOnlyEditRendered = cursorTool.renderResult?.(
 			{
 				content: [{ type: "text", text: "edit .tool-demo/ux-demo.ts\n\n+1 -1" }],
 				details: {
@@ -683,19 +664,6 @@ describe("extension native Cursor tool replay", () => {
 			"find",
 			"ls",
 			"cursor",
-			"cursor_edit",
-			"cursor_write",
-			"cursor_delete",
-			"cursor_read_lints",
-			"cursor_update_todos",
-			"cursor_create_plan",
-			"cursor_task",
-			"cursor_generate_image",
-			"cursor_mcp",
-			"cursor_sem_search",
-			"cursor_record_screen",
-			"cursor_web_search",
-			"cursor_web_fetch",
 			"bash",
 			"edit",
 			"write",
@@ -707,7 +675,6 @@ describe("extension native Cursor tool replay", () => {
 		expect(canRenderCursorToolNatively("grep")).toBe(true);
 		expect(canRenderCursorToolNatively("find")).toBe(true);
 		expect(canRenderCursorToolNatively("cursor")).toBe(true);
-		expect(canRenderCursorToolNatively("cursor_edit")).toBe(true);
 		expect(canRenderCursorToolNatively("ls")).toBe(true);
 	});
 });

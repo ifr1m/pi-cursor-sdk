@@ -316,7 +316,6 @@ describe("formatCursorToolTranscript bounds and aliases", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: {
-				cursorToolName: "futureSemSearchWidget",
 				activityTitle: "Cursor futureSemSearchWidget",
 			},
 			result: {
@@ -357,7 +356,6 @@ describe("formatCursorToolTranscript bounds and aliases", () => {
 		expect(display).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 			args: {
-				cursorToolName: "futureBrokenWidget",
 				activityTitle: "Cursor futureBrokenWidget",
 			},
 			isError: true,
@@ -378,10 +376,9 @@ describe("formatCursorToolTranscript bounds and aliases", () => {
 			});
 			expect(display.toolName).toBe(CURSOR_REPLAY_ACTIVITY_TOOL_NAME);
 			expect(display.args).toMatchObject({
-				cursorToolName: inheritedName,
 				activityTitle: `Cursor ${inheritedName}`,
 			});
-			expect(display.result.details).toMatchObject({
+				expect(display.result.details).toMatchObject({
 				variant: "activity",
 				sourceToolName: CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME,
 				title: `Cursor ${inheritedName}`,

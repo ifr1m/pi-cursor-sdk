@@ -1,15 +1,12 @@
 import {
 	CURSOR_KNOWN_NORMALIZED_TOOL_NAMES,
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-	getCursorReplayActivityLabelKey,
 	getCursorReplayActivityTitle,
 	getCursorReplayCallSummary,
-	getCursorReplayDisplayLabel,
 	getCursorToolActivityReplaySpec,
 	getCursorToolGenerateImageReplaySpec,
 	type CursorNormalizedToolName,
 	type CursorReplayActivityToolName,
-	type CursorReplayLegacyToolName,
 } from "./cursor-tool-presentation-registry.js";
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
 import {
@@ -88,12 +85,6 @@ interface ToolDisplaySpec {
 	buildPiToolDisplay: (context: ToolDisplayContext) => CursorPiToolDisplay;
 }
 
-function requireReplayActivityLabelKey(normalizedName: CursorReplayActivityToolName): CursorReplayLegacyToolName {
-	const labelKey = getCursorReplayActivityLabelKey(normalizedName);
-	if (!labelKey) throw new Error(`Missing replay activity label for ${normalizedName}`);
-	return labelKey;
-}
-
 function textToolResult(text: string, details?: unknown): PiToolDisplayResult {
 	return { content: [{ type: "text", text }], details };
 }
@@ -112,10 +103,10 @@ function buildCursorActivityDisplayArgs(
 }
 
 function buildRegistryReplaySummary(
-	labelKey: CursorReplayLegacyToolName,
+	sourceToolName: CursorReplayActivityToolName,
 	args: CursorReplaySummaryArgs,
 ): string | undefined {
-	return getCursorReplayCallSummary(labelKey, args);
+	return getCursorReplayCallSummary(sourceToolName, args);
 }
 
 function buildReplaySummaryDisplay(
@@ -151,10 +142,9 @@ function buildActivityReplayDisplay(
 	const spec = TOOL_DISPLAY_SPECS[sourceToolName];
 	const activity = getCursorToolActivityReplaySpec(sourceToolName);
 	if (!activity) throw new Error(`Missing activity replay spec for ${sourceToolName}`);
-	const labelKey = requireReplayActivityLabelKey(sourceToolName);
-	const activityTitle = getCursorReplayDisplayLabel(labelKey);
+	const activityTitle = getCursorReplayActivityTitle(sourceToolName) ?? buildGenericUnknownToolActivityTitle(sourceToolName);
 	const replayArgs = activity.buildActivityArgs(context);
-	const activitySummary = buildRegistryReplaySummary(labelKey, replayArgs);
+	const activitySummary = buildRegistryReplaySummary(sourceToolName, replayArgs);
 	const activityArgs = buildCursorActivityDisplayArgs({ ...replayArgs }, activityTitle, activitySummary);
 	const contentText = spec.formatTranscript(context).trimEnd();
 	const activityFields = activity.buildDetails(context, contentText);
@@ -173,10 +163,9 @@ function buildGenerateImageReplayDisplay(context: ToolDisplayContext): CursorPiT
 	const spec = TOOL_DISPLAY_SPECS.generateImage;
 	const replay = getCursorToolGenerateImageReplaySpec("generateImage");
 	if (!replay) throw new Error("Missing generate image replay spec");
-	const labelKey = requireReplayActivityLabelKey("generateImage");
-	const activityTitle = getCursorReplayDisplayLabel(labelKey);
+	const activityTitle = getCursorReplayActivityTitle("generateImage") ?? "Cursor image generation";
 	const replayArgs = replay.buildActivityArgs(context);
-	const activitySummary = buildRegistryReplaySummary(labelKey, replayArgs);
+	const activitySummary = buildRegistryReplaySummary("generateImage", replayArgs);
 	const activityArgs = buildCursorActivityDisplayArgs({ ...replayArgs }, activityTitle, activitySummary);
 	const contentText = spec.formatTranscript(context).trimEnd();
 	const details = assembleCursorReplayGenerateImageDetails(
@@ -201,11 +190,7 @@ function buildGenericPiToolDisplay(context: ToolDisplayContext): CursorPiToolDis
 	const fallbackBody = contentText.includes("\n\n") ? contentText.slice(contentText.indexOf("\n\n") + 2) : "";
 	const activitySummary =
 		result.status === "error" ? undefined : firstNonEmptyLine(fallbackBody);
-	const activityArgs = buildCursorActivityDisplayArgs(
-		{ cursorToolName: displayName === "unknown" ? "tool" : displayName },
-		activityTitle,
-		activitySummary,
-	);
+	const activityArgs = buildCursorActivityDisplayArgs({}, activityTitle, activitySummary);
 	const summary =
 		result.status === "error"
 			? undefined

@@ -58,7 +58,7 @@ Regression protection:
 
 Root cause:
 - `sanitizeCursorReplayNamesForPrompt()` performed global `replaceAll()` over system text, user text, assistant text, tool result bodies, and serialized tool args.
-- Literal text such as `cursor_edit` or `cursor_mcp` was changed before Cursor saw the prompt.
+- Literal transcript text matching synthetic tool strings was changed before Cursor saw the prompt.
 
 Fix:
 - Removed global replay-name text sanitization.

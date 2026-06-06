@@ -55,8 +55,6 @@ export interface CursorReplayGenerateImageDetails {
 	imageMimeType?: string;
 	summary?: string;
 	expandedText?: string;
-	/** Legacy parsed title retained on older payloads; display always uses `Cursor generateImage`. */
-	title?: string;
 	collapseDetailsByDefault?: boolean;
 }
 
@@ -79,7 +77,7 @@ export interface CursorReplayActivityDetails {
 	fileContentAfterWrite?: string;
 }
 
-/** Parsed replay details without a display title (legacy or malformed payloads). */
+/** Parsed replay details without a display title. */
 export interface CursorReplayGenericFallbackDetails {
 	variant: "genericFallback";
 	sourceToolName: CursorReplayUnknownSourceToolName;
@@ -93,21 +91,6 @@ export type CursorReplayToolDetails =
 	| CursorReplayGenerateImageDetails
 	| CursorReplayActivityDetails
 	| CursorReplayGenericFallbackDetails;
-
-/** @deprecated Use {@link CursorReplayNativeEditDetails}. */
-export type CursorReplayEditDetails = CursorReplayNativeEditDetails;
-
-/** @deprecated Use {@link CursorReplayNativeWriteDetails}. */
-export type CursorReplayWriteDetails = CursorReplayNativeWriteDetails;
-
-/** @deprecated Use {@link CursorReplayActivityDetails}. */
-export type CursorReplayTitledActivityDetails = CursorReplayActivityDetails;
-
-/** @deprecated Use {@link CursorReplayActivitySourceToolName}. */
-export type CursorReplayActivityCursorToolName = CursorReplayActivitySourceToolName;
-
-/** @deprecated Use {@link CursorReplayUnknownSourceToolName}. */
-export type CursorReplayUnknownCursorToolName = CursorReplayUnknownSourceToolName;
 
 export type CursorReplayActivityDetailFields = Pick<
 	CursorReplayActivityDetails,
@@ -147,19 +130,12 @@ function readOptionalBoolean(record: Record<string, unknown>, key: string): bool
 	return typeof value === "boolean" ? value : undefined;
 }
 
-function readCurrentSourceToolName(record: Record<string, unknown>): string | undefined {
+function readSourceToolName(record: Record<string, unknown>): string | undefined {
 	const sourceToolName = readOptionalString(record, "sourceToolName");
 	return sourceToolName?.trim() ? sourceToolName.trim() : undefined;
 }
 
-function readLegacySourceToolName(record: Record<string, unknown>): string | undefined {
-	const sourceToolName = readCurrentSourceToolName(record);
-	if (sourceToolName) return sourceToolName;
-	const cursorToolName = readOptionalString(record, "cursorToolName");
-	return cursorToolName?.trim() ? cursorToolName.trim() : undefined;
-}
-
-function readLegacyVariant(record: Record<string, unknown>): string | undefined {
+function readVariant(record: Record<string, unknown>): string | undefined {
 	const variant = readOptionalString(record, "variant");
 	return variant?.trim() ? variant.trim() : undefined;
 }
@@ -191,7 +167,6 @@ function parseCursorReplayNativeWriteDetails(record: Record<string, unknown>): C
 }
 
 function parseCursorReplayGenerateImageDetails(record: Record<string, unknown>): CursorReplayGenerateImageDetails {
-	const title = readOptionalString(record, "title");
 	const collapseDetailsByDefault = readOptionalBoolean(record, "collapseDetailsByDefault");
 	return {
 		variant: "generateImage",
@@ -200,7 +175,6 @@ function parseCursorReplayGenerateImageDetails(record: Record<string, unknown>):
 		imageMimeType: readOptionalString(record, "imageMimeType"),
 		summary: readOptionalString(record, "summary"),
 		expandedText: readOptionalString(record, "expandedText"),
-		...(title !== undefined ? { title } : {}),
 		...(collapseDetailsByDefault !== undefined ? { collapseDetailsByDefault } : {}),
 	};
 }
@@ -263,37 +237,9 @@ export function resolveIncompleteReplayActivitySourceToolName(
 	return resolveParseActivitySourceToolName(sourceToolName);
 }
 
-function hasNativeEditChanges(record: Record<string, unknown>): boolean {
-	return Boolean(
-		readOptionalString(record, "diffString")?.trim()
-		|| readOptionalString(record, "diff")?.trim()
-		|| readOptionalNumber(record, "linesAdded")
-		|| readOptionalNumber(record, "linesRemoved"),
-	);
-}
-
-function parseLegacyEditDetails(record: Record<string, unknown>): CursorReplayToolDetails {
-	const title = readOptionalString(record, "title")?.trim();
-	if (title) {
-		return parseCursorReplayActivityDetails(record, resolveParseActivitySourceToolName("edit"), title);
-	}
-	return parseCursorReplayNativeEditDetails(record);
-}
-
-function parseLegacyWriteDetails(record: Record<string, unknown>): CursorReplayToolDetails {
-	const title = readOptionalString(record, "title")?.trim();
-	if (title) {
-		return parseCursorReplayActivityDetails(record, resolveParseActivitySourceToolName("write"), title);
-	}
-	return parseCursorReplayNativeWriteDetails(record);
-}
-
 type CursorReplayVariantParser = (record: Record<string, unknown>) => CursorReplayToolDetails | undefined;
 
-function parseActivityVariantDetails(
-	record: Record<string, unknown>,
-	readSourceToolName: (record: Record<string, unknown>) => string | undefined,
-): CursorReplayActivityDetails | undefined {
+function parseActivityVariantDetails(record: Record<string, unknown>): CursorReplayActivityDetails | undefined {
 	const title = readOptionalString(record, "title")?.trim();
 	if (!title) return undefined;
 	return parseCursorReplayActivityDetails(
@@ -307,56 +253,16 @@ const CURRENT_REPLAY_VARIANT_PARSERS: Readonly<Record<CursorReplayToolDetailsVar
 	nativeEdit: parseCursorReplayNativeEditDetails,
 	nativeWrite: parseCursorReplayNativeWriteDetails,
 	generateImage: parseCursorReplayGenerateImageDetails,
-	activity: (record) => {
-		if (!readCurrentSourceToolName(record) && readOptionalString(record, "cursorToolName")?.trim()) return undefined;
-		return parseActivityVariantDetails(record, readCurrentSourceToolName);
-	},
-	genericFallback: (record) => parseCursorReplayGenericFallbackDetails(record, readCurrentSourceToolName(record) ?? "tool"),
+	activity: parseActivityVariantDetails,
+	genericFallback: (record) => parseCursorReplayGenericFallbackDetails(record, readSourceToolName(record) ?? "tool"),
 };
 
-const LEGACY_REPLAY_VARIANT_UPGRADERS: Readonly<Record<string, CursorReplayVariantParser>> = {
-	edit: parseLegacyEditDetails,
-	write: parseLegacyWriteDetails,
-	titledActivity: (record) => parseActivityVariantDetails(record, readLegacySourceToolName),
-};
-
-export function parseStrictCurrentCursorReplayToolDetails(value: unknown): CursorReplayToolDetails | undefined {
+export function parseCursorReplayToolDetails(value: unknown): CursorReplayToolDetails | undefined {
 	if (!isRecord(value)) return undefined;
-	const variant = readLegacyVariant(value);
+	const variant = readVariant(value);
 	if (!variant) return undefined;
 	return CURRENT_REPLAY_VARIANT_PARSERS[variant as CursorReplayToolDetailsVariant]?.(value);
 }
-
-export function upgradeLegacyCursorReplayToolDetails(value: unknown): CursorReplayToolDetails | undefined {
-	if (!isRecord(value)) return undefined;
-	const explicitVariant = readLegacyVariant(value);
-	if (explicitVariant) {
-		return LEGACY_REPLAY_VARIANT_UPGRADERS[explicitVariant]?.(value);
-	}
-	const sourceToolName = readLegacySourceToolName(value);
-	if (sourceToolName === "edit") return parseLegacyEditDetails(value);
-	if (sourceToolName === "write") return parseLegacyWriteDetails(value);
-	if (sourceToolName === "generateImage") return parseCursorReplayGenerateImageDetails(value);
-	const title = readOptionalString(value, "title")?.trim();
-	if (title) {
-		return parseCursorReplayActivityDetails(
-			value,
-			resolveParseActivitySourceToolName(sourceToolName ?? CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME),
-			title,
-		);
-	}
-	if (sourceToolName === undefined && hasNativeEditChanges(value)) {
-		return parseCursorReplayNativeEditDetails(value);
-	}
-	return undefined;
-}
-
-export function parseCursorReplayToolDetails(value: unknown): CursorReplayToolDetails | undefined {
-	return parseStrictCurrentCursorReplayToolDetails(value) ?? upgradeLegacyCursorReplayToolDetails(value);
-}
-
-/** @deprecated Prefer {@link parseCursorReplayToolDetails} for validated narrowing. */
-export const asCursorReplayToolDetails = parseCursorReplayToolDetails;
 
 export function buildCursorReplayNativeEditDetails(
 	fields: Omit<CursorReplayNativeEditDetails, "variant">,
@@ -364,17 +270,11 @@ export function buildCursorReplayNativeEditDetails(
 	return { variant: "nativeEdit", ...fields };
 }
 
-/** @deprecated Prefer {@link buildCursorReplayNativeEditDetails}. */
-export const buildCursorReplayEditDetails = buildCursorReplayNativeEditDetails;
-
 export function buildCursorReplayNativeWriteDetails(
 	fields: Omit<CursorReplayNativeWriteDetails, "variant">,
 ): CursorReplayNativeWriteDetails {
 	return { variant: "nativeWrite", ...fields };
 }
-
-/** @deprecated Prefer {@link buildCursorReplayNativeWriteDetails}. */
-export const buildCursorReplayWriteDetails = buildCursorReplayNativeWriteDetails;
 
 export function assembleCursorReplayActivityDetails(
 	sourceToolName: CursorReplayActivitySourceToolName,
@@ -402,10 +302,7 @@ export function assembleCursorReplayActivityDetails(
 	};
 }
 
-/** @deprecated Prefer {@link assembleCursorReplayActivityDetails}. */
-export const assembleCursorReplayTitledActivityDetails = assembleCursorReplayActivityDetails;
-
-export const CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE = "Cursor generateImage" as const;
+export const CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE = "Cursor image generation" as const;
 
 export function assembleCursorReplayGenerateImageDetails(
 	fields: CursorReplayGenerateImageDetailFields,
@@ -430,17 +327,11 @@ export function isCursorReplayNativeEditDetails(
 	return details.variant === "nativeEdit";
 }
 
-/** @deprecated Prefer {@link isCursorReplayNativeEditDetails}. */
-export const isCursorReplayEditDetails = isCursorReplayNativeEditDetails;
-
 export function isCursorReplayNativeWriteDetails(
 	details: CursorReplayToolDetails,
 ): details is CursorReplayNativeWriteDetails {
 	return details.variant === "nativeWrite";
 }
-
-/** @deprecated Prefer {@link isCursorReplayNativeWriteDetails}. */
-export const isCursorReplayWriteDetails = isCursorReplayNativeWriteDetails;
 
 export function isCursorReplayGenerateImageDetails(
 	details: CursorReplayToolDetails,
@@ -453,9 +344,6 @@ export function isCursorReplayActivityDetails(
 ): details is CursorReplayActivityDetails {
 	return details.variant === "activity";
 }
-
-/** @deprecated Prefer {@link isCursorReplayActivityDetails}. */
-export const isCursorReplayTitledActivityDetails = isCursorReplayActivityDetails;
 
 export function isCursorReplayGenericFallbackDetails(
 	details: CursorReplayToolDetails,

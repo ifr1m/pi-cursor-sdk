@@ -4,7 +4,6 @@ import {
 	CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE,
 	buildCursorReplayNativeEditDetails,
 	parseCursorReplayToolDetails,
-	parseStrictCurrentCursorReplayToolDetails,
 } from "../src/cursor-replay-tool-details.js";
 import { renderCursorReplayResult } from "../src/cursor-native-tool-display-replay.js";
 import { createRenderContext, createRenderTheme } from "./helpers/render-fixtures.js";
@@ -24,7 +23,7 @@ function renderReplayResult(details: unknown, text = "ok", isError = false): str
 }
 
 describe("cursor replay tool details contract", () => {
-	it("parses known nativeEdit, nativeWrite, and generateImage detail variants", () => {
+	it("parses known nativeEdit, nativeWrite, activity, generateImage, and genericFallback detail variants", () => {
 		const edit = parseCursorReplayToolDetails({
 			variant: "nativeEdit",
 			path: "src/a.ts",
@@ -36,44 +35,39 @@ describe("cursor replay tool details contract", () => {
 			path: "out.txt",
 			linesCreated: 3,
 		});
+		const activity = parseCursorReplayToolDetails({
+			variant: "activity",
+			sourceToolName: "mcp",
+			title: "Cursor MCP",
+			summary: "git status",
+			expandedText: "line one",
+		});
 		const image = parseCursorReplayToolDetails({
 			variant: "generateImage",
 			imagePath: "/tmp/out.png",
 			summary: "saved /tmp/out.png",
 		});
+		const fallback = parseCursorReplayToolDetails({
+			variant: "genericFallback",
+			sourceToolName: "futureTool",
+			summary: "done",
+		});
 
 		expect(edit).toMatchObject({ variant: "nativeEdit" });
 		expect(write).toMatchObject({ variant: "nativeWrite" });
+		expect(activity).toMatchObject({ variant: "activity", sourceToolName: "mcp", title: "Cursor MCP" });
 		expect(image).toMatchObject({ variant: "generateImage" });
+		expect(fallback).toMatchObject({ variant: "genericFallback", sourceToolName: "futureTool" });
 	});
 
-	it("parses legacy cursorToolName payloads into disposition variants", () => {
-		const nativeEdit = parseCursorReplayToolDetails({
-			cursorToolName: "edit",
-			path: "src/a.ts",
-			diffString: "--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new",
-			linesAdded: 1,
+	it("does not upgrade payloads without current replay variants", () => {
+		expect(parseCursorReplayToolDetails({ path: "src/a.ts" })).toBeUndefined();
+		expect(parseCursorReplayToolDetails({ variant: "activity", title: "Cursor MCP" })).toMatchObject({
+			variant: "activity",
+			sourceToolName: "unregisteredActivity",
+			title: "Cursor MCP",
 		});
-		const activityEdit = parseCursorReplayToolDetails({
-			cursorToolName: "edit",
-			title: "Cursor edit",
-			path: "src/a.ts",
-		});
-		const nativeWrite = parseCursorReplayToolDetails({
-			cursorToolName: "write",
-			path: "out.txt",
-			linesCreated: 3,
-		});
-		const activityWrite = parseCursorReplayToolDetails({
-			cursorToolName: "write",
-			title: "Cursor write",
-			path: "out.txt",
-		});
-
-		expect(nativeEdit).toMatchObject({ variant: "nativeEdit" });
-		expect(activityEdit).toMatchObject({ variant: "activity", sourceToolName: "edit", title: "Cursor edit" });
-		expect(nativeWrite).toMatchObject({ variant: "nativeWrite" });
-		expect(activityWrite).toMatchObject({ variant: "activity", sourceToolName: "write", title: "Cursor write" });
+		expect(parseCursorReplayToolDetails({ variant: "edit", path: "src/a.ts" })).toBeUndefined();
 	});
 
 	it("parses activity details and ignores unknown fields at the boundary", () => {
@@ -85,7 +79,7 @@ describe("cursor replay tool details contract", () => {
 			expandedText: "line one",
 			untrusted: "drop-me",
 		});
-		expect(parsed).toEqual({
+		expect(parsed).toMatchObject({
 			variant: "activity",
 			sourceToolName: "mcp",
 			title: "Cursor MCP",
@@ -135,46 +129,10 @@ describe("cursor replay tool details contract", () => {
 			sourceToolName: "generateImage",
 			imagePath: "/tmp/out.png",
 		});
-		const read = parseCursorReplayToolDetails({
-			variant: "genericFallback",
-			sourceToolName: "read",
-			summary: "done",
-		});
 
 		expect(edit).toMatchObject({ variant: "genericFallback", sourceToolName: "edit" });
 		expect(write).toMatchObject({ variant: "genericFallback", sourceToolName: "write" });
 		expect(image).toMatchObject({ variant: "genericFallback", sourceToolName: "generateImage" });
-		expect(read).toMatchObject({ variant: "genericFallback", sourceToolName: "read" });
-	});
-
-	it("strict current parsing rejects legacy-only source fields", () => {
-		expect(parseStrictCurrentCursorReplayToolDetails({
-			variant: "activity",
-			cursorToolName: "read",
-			title: "Cursor read",
-		})).toBeUndefined();
-		expect(parseStrictCurrentCursorReplayToolDetails({
-			variant: "genericFallback",
-			cursorToolName: "futureTool",
-			summary: "done",
-		})).toEqual({
-			variant: "genericFallback",
-			sourceToolName: "tool",
-			summary: "done",
-		});
-	});
-
-	it("parses generic fallback details without a title", () => {
-		const parsed = parseCursorReplayToolDetails({
-			variant: "genericFallback",
-			sourceToolName: "futureTool",
-			summary: "done",
-		});
-		expect(parsed).toEqual({
-			variant: "genericFallback",
-			sourceToolName: "futureTool",
-			summary: "done",
-		});
 	});
 
 	it("renders nativeEdit replay through the typed edit renderer path", () => {
@@ -218,7 +176,7 @@ describe("cursor replay tool details contract", () => {
 		expect(details).not.toHaveProperty("title");
 	});
 
-	it("renders generateImage producer details with the legacy visible title and path", () => {
+	it("renders generateImage producer details with the current visible title and path", () => {
 		const display = buildCursorPiToolDisplayFromSpec({
 			rawName: "generateImage",
 			name: "generateImage",
@@ -228,7 +186,7 @@ describe("cursor replay tool details contract", () => {
 		});
 		const rendered = renderReplayResult(display.result.details, display.result.content[0]?.text ?? "");
 		expect(rendered).toContain(`${CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE} generated.png`);
-		expect(rendered).not.toContain("Cursor image generation");
+		expect(rendered).not.toContain("Cursor generateImage");
 	});
 
 	it("renders path-only edit errors with the activity error body", () => {
@@ -290,7 +248,7 @@ describe("cursor replay tool details contract", () => {
 		expect(rendered).not.toMatch(/^write src\/a\.ts$/m);
 	});
 
-	it("renders generateImage producer error details with the legacy visible title", () => {
+	it("renders generateImage producer error details with the current visible title", () => {
 		const display = buildCursorPiToolDisplayFromSpec({
 			rawName: "generateImage",
 			name: "generateImage",
@@ -311,6 +269,7 @@ describe("cursor replay tool details contract", () => {
 			.render(120)
 			.join("\n");
 		expect(rendered).toContain(CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE);
+		expect(rendered).not.toContain("Cursor generateImage");
 		expect(rendered).not.toMatch(/^image generation failed$/m);
 	});
 });

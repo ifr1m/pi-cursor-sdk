@@ -13,7 +13,6 @@ import type { TSchema } from "typebox";
 import { getCursorSessionCwd } from "./cursor-session-cwd.js";
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-	CURSOR_REPLAY_LEGACY_TOOL_NAMES,
 	isCursorReplayToolName,
 } from "./cursor-tool-names.js";
 import {
@@ -31,7 +30,7 @@ import {
 } from "./cursor-native-tool-display-state.js";
 
 const CURSOR_MODEL_ACTIVE_REPLAY_TOOL_NAMES = [CURSOR_REPLAY_ACTIVITY_TOOL_NAME] as const;
-const CURSOR_REPLAY_TOOL_NAMES = [CURSOR_REPLAY_ACTIVITY_TOOL_NAME, ...CURSOR_REPLAY_LEGACY_TOOL_NAMES] as const;
+const CURSOR_REPLAY_TOOL_NAMES = [CURSOR_REPLAY_ACTIVITY_TOOL_NAME] as const;
 
 type AnyToolDefinition = ToolDefinition<TSchema, unknown, unknown>;
 type RenderCall = NonNullable<AnyToolDefinition["renderCall"]>;
