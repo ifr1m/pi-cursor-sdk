@@ -3,15 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-	__testUtils as cursorSessionCwdTestUtils,
+	__testUtils as cursorSessionScopeTestUtils,
 	getCursorSessionCwd,
-	registerCursorSessionCwd,
-} from "../src/cursor-session-cwd.js";
+	registerCursorSessionScope,
+} from "../src/cursor-session-scope.js";
 import { createEventHarness } from "./helpers/pi-harness.js";
 
-describe("cursor-session-cwd", () => {
+describe("cursor-session-scope cwd", () => {
 	afterEach(() => {
-		cursorSessionCwdTestUtils.reset();
+		cursorSessionScopeTestUtils.reset();
 	});
 
 	it("falls back to process.cwd() before session_start", () => {
@@ -22,7 +22,7 @@ describe("cursor-session-cwd", () => {
 		const sessionDir = mkdtempSync(join(tmpdir(), "pi-cursor-session-cwd-"));
 		try {
 			const pi = createEventHarness();
-			registerCursorSessionCwd(pi);
+			registerCursorSessionScope(pi);
 			await pi.runSessionStart({ cwd: sessionDir });
 
 			expect(getCursorSessionCwd()).toBe(sessionDir);
@@ -36,7 +36,7 @@ describe("cursor-session-cwd", () => {
 		const secondDir = mkdtempSync(join(tmpdir(), "pi-cursor-session-cwd-b-"));
 		try {
 			const pi = createEventHarness();
-			registerCursorSessionCwd(pi);
+			registerCursorSessionScope(pi);
 
 			await pi.runSessionStart({ cwd: firstDir });
 			expect(getCursorSessionCwd()).toBe(firstDir);

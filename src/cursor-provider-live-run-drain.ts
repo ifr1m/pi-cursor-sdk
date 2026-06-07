@@ -17,7 +17,7 @@ import {
 	deleteCursorNativeToolDisplay,
 	recordCursorNativeToolDisplay,
 	type CursorNativeToolDisplayItem,
-} from "./cursor-native-tool-display.js";
+} from "./cursor-native-tool-display-state.js";
 import { type CursorPiBridgeToolRequest } from "./cursor-pi-tool-bridge.js";
 import { resetSessionCursorAgent } from "./cursor-session-agent.js";
 import { applyCursorApproximateUsage } from "./cursor-usage-accounting.js";

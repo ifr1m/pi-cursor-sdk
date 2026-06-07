@@ -1,6 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
-import { abandonSessionCursorAgent } from "./cursor-provider-live-run-drain.js";
+import { abandonSessionCursorAgent, cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
 import {
 	classifyCursorRunEmission,
 	getCursorRunAbortMessage,
@@ -12,7 +11,10 @@ import {
 	sanitizeCursorProviderError,
 } from "./cursor-provider-errors.js";
 import { CursorLiveRunAbortError } from "./cursor-live-run-coordinator.js";
-import type { IncompleteCursorToolRunOutcomeInput } from "./cursor-incomplete-tool-visibility.js";
+import {
+	buildIncompleteCursorToolRunOutcome,
+	type IncompleteCursorToolRunOutcomeInput,
+} from "./cursor-incomplete-tool-visibility.js";
 import type { installCursorSdkProcessErrorGuard } from "./cursor-sdk-process-error-guard.js";
 import type { CursorSdkEventDebugSink } from "./cursor-sdk-event-debug.js";
 import { awaitFinalizeCursorRunOutcome } from "./cursor-provider-turn-finalize.js";
@@ -24,8 +26,6 @@ import type {
 } from "./cursor-provider-turn-types.js";
 import { applyCursorApproximateUsage } from "./cursor-usage-accounting.js";
 import { hasUsableText } from "./cursor-record-utils.js";
-import { buildIncompleteCursorToolRunOutcome } from "./cursor-incomplete-tool-visibility.js";
-
 export type CursorTurnTerminalEvent =
 	| {
 			kind: "direct";

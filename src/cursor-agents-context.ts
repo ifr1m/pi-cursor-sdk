@@ -10,8 +10,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { parseEnvBoolean } from "./cursor-env-boolean.js";
 import { isCursorModel } from "./cursor-model.js";
 import {
-	cursorSettingSourcesLoadProjectAgentsRules,
-	cursorSettingSourcesLoadUserAgentsRules,
+	cursorSettingSourcesIncludes,
 	getEffectiveCursorSettingSources,
 } from "./cursor-setting-sources.js";
 import type { SettingSource } from "@cursor/sdk";
@@ -49,18 +48,24 @@ export function getAgentsContextFileBaseName(filePath: string): string {
 	return normalized.slice(normalized.lastIndexOf("/") + 1).toLowerCase();
 }
 
+function isPiAgentDirContextFilePath(
+	filePath: string,
+	fileName: "agents.md" | "claude.md",
+	agentDir: string = getAgentDir(),
+): boolean {
+	const normalized = normalizeContextPath(filePath);
+	const expectedPath = `${normalizeDirPath(agentDir)}/${fileName}`;
+	return normalized.toLowerCase() === expectedPath.toLowerCase();
+}
+
 /** Actual pi agent dir `AGENTS.md` — overlaps Cursor `user` setting source (global agent instructions). */
 export function isPiAgentDirAgentsMdPath(filePath: string, agentDir: string = getAgentDir()): boolean {
-	const normalized = normalizeContextPath(filePath);
-	const agentsMdPath = `${normalizeDirPath(agentDir)}/agents.md`;
-	return normalized.toLowerCase() === agentsMdPath.toLowerCase();
+	return isPiAgentDirContextFilePath(filePath, "agents.md", agentDir);
 }
 
 /** Actual pi agent dir `CLAUDE.md` — kept because Cursor user rules use `~/.claude/CLAUDE.md`. */
 export function isPiAgentDirClaudeMdPath(filePath: string, agentDir: string = getAgentDir()): boolean {
-	const normalized = normalizeContextPath(filePath);
-	const claudeMdPath = `${normalizeDirPath(agentDir)}/claude.md`;
-	return normalized.toLowerCase() === claudeMdPath.toLowerCase();
+	return isPiAgentDirContextFilePath(filePath, "claude.md", agentDir);
 }
 
 /**
@@ -87,9 +92,9 @@ export function shouldRemovePiAgentsContextFile(
 ): boolean {
 	switch (classifyContextFileOverlap(file.path, agentDir)) {
 		case "cursor-user-agents":
-			return cursorSettingSourcesLoadUserAgentsRules(settingSources);
+			return cursorSettingSourcesIncludes(settingSources, "user");
 		case "cursor-project-rules":
-			return cursorSettingSourcesLoadProjectAgentsRules(settingSources);
+			return cursorSettingSourcesIncludes(settingSources, "project");
 		default:
 			return false;
 	}

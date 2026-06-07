@@ -10,7 +10,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { TSchema } from "typebox";
-import { getCursorSessionCwd } from "./cursor-session-cwd.js";
+import { getCursorSessionCwd } from "./cursor-session-scope.js";
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 	isCursorReplayToolName,

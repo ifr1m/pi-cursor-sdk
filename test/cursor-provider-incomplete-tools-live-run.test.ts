@@ -18,7 +18,7 @@ import {
 	mockCreatedAgent,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
-import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display.js";
+import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display-state.js";
 
 
 describe("streamCursor incomplete native replay tools", () => {

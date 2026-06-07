@@ -7,7 +7,7 @@ import {
 	type CursorLiveRunAccountingState,
 	type CursorLiveToolResultConsumption,
 } from "./cursor-live-run-accounting.js";
-import type { CursorNativeToolDisplayItem } from "./cursor-native-tool-display.js";
+import type { CursorNativeToolDisplayItem } from "./cursor-native-tool-display-state.js";
 import type { CursorPiBridgeToolRequest, CursorPiToolBridgeRun } from "./cursor-pi-tool-bridge.js";
 import { getCursorSessionScopeKey } from "./cursor-session-scope.js";
 import type { CursorSdkEventDebugRecorder } from "./cursor-sdk-event-debug.js";

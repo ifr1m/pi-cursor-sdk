@@ -8,6 +8,7 @@ import {
 	type SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
 import {
+	cursorLiveRuns,
 	DEFAULT_CURSOR_NATIVE_REPLAY_IDLE_DISPOSE_MS,
 	getPendingCursorLiveRun,
 	hasTrailingUserMessagesAfterToolResults,
@@ -15,7 +16,6 @@ import {
 	resetCursorNativeReplayIdleDisposeMs,
 	setCursorNativeReplayIdleDisposeMs,
 } from "./cursor-provider-live-run-drain.js";
-import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
 import { disposeAllSessionCursorAgents } from "./cursor-session-agent.js";
 import { attachCursorSdkEventDebugPiStreamTap, type CursorSdkEventDebugSink } from "./cursor-sdk-event-debug.js";
 import { installCursorSdkProcessErrorGuard } from "./cursor-sdk-process-error-guard.js";

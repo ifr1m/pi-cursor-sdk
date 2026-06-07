@@ -15,12 +15,10 @@ export function getEffectiveCursorSettingSources(raw: string | undefined = proce
 	return resolveCursorSettingSources(raw);
 }
 
-export function cursorSettingSourcesLoadUserAgentsRules(settingSources: SettingSource[] | undefined): boolean {
+export function cursorSettingSourcesIncludes(
+	settingSources: SettingSource[] | undefined,
+	source: Extract<SettingSource, "user" | "project">,
+): boolean {
 	if (!settingSources?.length) return false;
-	return settingSources.includes("all") || settingSources.includes("user");
-}
-
-export function cursorSettingSourcesLoadProjectAgentsRules(settingSources: SettingSource[] | undefined): boolean {
-	if (!settingSources?.length) return false;
-	return settingSources.includes("all") || settingSources.includes("project");
+	return settingSources.includes("all") || settingSources.includes(source);
 }

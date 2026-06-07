@@ -34,15 +34,13 @@ vi.mock("@cursor/sdk", () => {
 });
 
 import { Agent, createAgentPlatform } from "@cursor/sdk";
-import { __testUtils as cursorSessionCwdTestUtils } from "../../src/cursor-session-cwd.js";
+import { __testUtils as cursorSessionScopeTestUtils } from "../../src/cursor-session-scope.js";
 import { __testUtils as cursorStateTestUtils } from "../../src/cursor-state.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../../src/cursor-provider.js";
 import { registerCursorPiToolBridge, __testUtils as cursorPiToolBridgeTestUtils } from "../../src/cursor-pi-tool-bridge.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../../src/model-discovery.js";
-import {
-	__testUtils as nativeToolDisplayTestUtils,
-	registerCursorNativeToolDisplay,
-} from "../../src/cursor-native-tool-display.js";
+import { __testUtils as nativeToolDisplayTestUtils } from "../../src/cursor-native-tool-display-state.js";
+import { registerCursorNativeToolDisplay } from "../../src/cursor-native-tool-display-registration.js";
 import type { CursorNativeToolDisplayExtensionApi } from "../../src/cursor-native-tool-display-registration.js";
 import type { ModelListItem, Run, SDKAgent, SendOptions } from "@cursor/sdk";
 import type { AssistantMessage, AssistantMessageEvent, TextContent, ImageContent, ToolCall } from "@earendil-works/pi-ai";
@@ -355,7 +353,7 @@ export async function resetCursorProviderTestState(): Promise<void> {
 	expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
 	cursorProviderTestUtils.resetCursorNativeReplayIdleDisposeMs();
 	await cursorProviderTestUtils.resetSessionCursorAgents();
-	cursorSessionCwdTestUtils.reset();
+	cursorSessionScopeTestUtils.reset();
 	cursorStateTestUtils.resetCursorModeStateForTests();
 	nativeToolDisplayTestUtils.reset();
 	modelDiscoveryTestUtils.registerModelItems(cursorModelItems);

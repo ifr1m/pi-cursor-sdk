@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	CURSOR_SETTING_SOURCES_ENV,
-	cursorSettingSourcesLoadProjectAgentsRules,
-	cursorSettingSourcesLoadUserAgentsRules,
+	cursorSettingSourcesIncludes,
 	getEffectiveCursorSettingSources,
 	resolveCursorSettingSources,
 } from "../src/cursor-setting-sources.js";
@@ -36,19 +35,19 @@ describe("resolveCursorSettingSources", () => {
 	});
 });
 
-describe("cursorSettingSourcesLoadAgentsRules", () => {
+describe("cursorSettingSourcesIncludes", () => {
 	it("loads user rules only when user or all is enabled", () => {
-		expect(cursorSettingSourcesLoadUserAgentsRules(["all"])).toBe(true);
-		expect(cursorSettingSourcesLoadUserAgentsRules(["user"])).toBe(true);
-		expect(cursorSettingSourcesLoadUserAgentsRules(["project"])).toBe(false);
-		expect(cursorSettingSourcesLoadUserAgentsRules(undefined)).toBe(false);
+		expect(cursorSettingSourcesIncludes(["all"], "user")).toBe(true);
+		expect(cursorSettingSourcesIncludes(["user"], "user")).toBe(true);
+		expect(cursorSettingSourcesIncludes(["project"], "user")).toBe(false);
+		expect(cursorSettingSourcesIncludes(undefined, "user")).toBe(false);
 	});
 
 	it("loads project rules only when project or all is enabled", () => {
-		expect(cursorSettingSourcesLoadProjectAgentsRules(["all"])).toBe(true);
-		expect(cursorSettingSourcesLoadProjectAgentsRules(["project"])).toBe(true);
-		expect(cursorSettingSourcesLoadProjectAgentsRules(["user"])).toBe(false);
-		expect(cursorSettingSourcesLoadProjectAgentsRules(["plugins"])).toBe(false);
+		expect(cursorSettingSourcesIncludes(["all"], "project")).toBe(true);
+		expect(cursorSettingSourcesIncludes(["project"], "project")).toBe(true);
+		expect(cursorSettingSourcesIncludes(["user"], "project")).toBe(false);
+		expect(cursorSettingSourcesIncludes(["plugins"], "project")).toBe(false);
 	});
 });
 

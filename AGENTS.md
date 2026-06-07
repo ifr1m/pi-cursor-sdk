@@ -19,6 +19,7 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-provider-run-finalizer.ts` owns live-run wait completion, outcome application, debug finalization, and SDK abort-suppression disposal.
 - `src/cursor-run-final-text.ts` owns final assistant text selection for run outcomes and live-run drain.
 - `src/cursor-provider-errors.ts` owns scrubbed Cursor SDK run failure detail, abort reason formatting, and provider error sanitization.
+- `src/cursor-session-scope.ts` owns pi session cwd, session file/id scope keys, and `session_start` registration for session-agent pooling and debug grouping.
 - `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, send-state commits, busy tracking for in-flight SDK `run.wait()` work, and lifecycle invalidation on compaction/tree/shutdown.
 - `src/cursor-session-compaction-prep.ts` owns `prepareCursorSessionForCompaction()` (release scoped live runs, reset pooled agent) wired from `session_before_compact` in `src/index.ts`.
 - `src/cursor-session-send-policy.ts` owns session send planning (`bootstrap` vs `incremental`), periodic agent rebootstrap threshold, and prompt mode selection.
@@ -56,7 +57,6 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-pi-tool-bridge-diagnostics.ts` owns bridge debug diagnostics serialization and stderr logging.
 - `src/cursor-pi-tool-bridge-mcp.ts` owns MCP name/schema conversion and pi-to-MCP content helpers for the bridge.
 - `src/cursor-question-tool.ts` owns the bridge-exposed `cursor_ask_question` pi UI tool.
-- `src/cursor-native-tool-display.ts` re-exports native replay display registration and state APIs.
 - `src/cursor-native-tool-display-registration.ts` owns native replay tool registration and model-scoped activation.
 - `src/cursor-native-replay-routing.ts` owns canonical native replay disposition (`queue_replay` / `inactive_trace` / `transcript_trace`) and context-tool partitioning for drain.
 - `src/cursor-native-replay-trace.ts` owns inactive native replay trace formatting (`title: summary`).

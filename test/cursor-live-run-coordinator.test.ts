@@ -6,7 +6,7 @@ import {
 	hasTrailingUserMessagesAfterToolResults,
 	type CursorLiveRun,
 } from "../src/cursor-live-run-coordinator.js";
-import type { CursorNativeToolDisplayItem } from "../src/cursor-native-tool-display.js";
+import type { CursorNativeToolDisplayItem } from "../src/cursor-native-tool-display-state.js";
 import type { CursorPiToolBridgeRun } from "../src/cursor-pi-tool-bridge.js";
 import { __testUtils as cursorSdkProcessGuardTestUtils } from "../src/cursor-sdk-process-error-guard.js";
 

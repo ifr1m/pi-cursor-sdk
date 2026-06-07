@@ -1,11 +1,11 @@
 import type { ExtensionAPI, ProviderConfig, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { discoverModels, type CursorModelFallbackIssue } from "./model-discovery.js";
 import { registerCursorRuntimeControls } from "./cursor-state.js";
-import { registerCursorNativeToolDisplay } from "./cursor-native-tool-display.js";
+import { registerCursorNativeToolDisplay } from "./cursor-native-tool-display-registration.js";
 import { registerCursorPiToolBridge } from "./cursor-pi-tool-bridge.js";
 import { registerCursorQuestionTool } from "./cursor-question-tool.js";
 import { registerCursorSkillTool } from "./cursor-skill-tool.js";
-import { registerCursorSessionCwd } from "./cursor-session-cwd.js";
+import { registerCursorSessionScope } from "./cursor-session-scope.js";
 import { registerCursorAgentsContextDedup } from "./cursor-agents-context.js";
 import { registerCursorSessionAgent } from "./cursor-session-agent.js";
 import { prepareCursorSessionForCompaction } from "./cursor-session-compaction-prep.js";
@@ -14,7 +14,7 @@ import { CURSOR_API_KEY_CONFIG_VALUE } from "./cursor-api-key.js";
 
 type CursorExtensionApi =
 	& Pick<ExtensionAPI, "registerProvider" | "registerCommand" | "on">
-	& Parameters<typeof registerCursorSessionCwd>[0]
+	& Parameters<typeof registerCursorSessionScope>[0]
 	& Parameters<typeof registerCursorSessionAgent>[0]
 	& Parameters<typeof registerCursorRuntimeControls>[0]
 	& Parameters<typeof registerCursorNativeToolDisplay>[0]
@@ -40,7 +40,7 @@ function registerCursorProvider(pi: Pick<ExtensionAPI, "registerProvider">, mode
 
 export default async function (pi: CursorExtensionApi) {
 	// Session cwd must register before other session_start listeners that depend on it.
-	registerCursorSessionCwd(pi);
+	registerCursorSessionScope(pi);
 	registerCursorSessionAgent(pi);
 	pi.on("session_before_compact", async () => {
 		await prepareCursorSessionForCompaction();

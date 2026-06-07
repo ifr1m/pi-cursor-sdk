@@ -31,7 +31,7 @@ const mockedDiscover = vi.mocked(discoverModels);
 import {
 	canRenderCursorToolNatively,
 	recordCursorNativeToolDisplay,
-} from "../src/cursor-native-tool-display.js";
+} from "../src/cursor-native-tool-display-state.js";
 import { CURSOR_ASK_QUESTION_TOOL_NAME } from "../src/cursor-question-tool.js";
 import { CURSOR_ACTIVATE_SKILL_TOOL_NAME } from "../src/cursor-skill-tool.js";
 

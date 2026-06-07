@@ -1,7 +1,7 @@
 import type { SendOptions } from "@cursor/sdk";
+import { countCursorAgentMessages } from "./cursor-agent-message-web-tools.js";
 import { CursorLiveRunAbortError } from "./cursor-live-run-coordinator.js";
 import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
-import { getCursorAgentMessageOffset } from "./cursor-provider-turn-message-offset.js";
 import type { installCursorSdkProcessErrorGuard } from "./cursor-sdk-process-error-guard.js";
 import type {
 	CursorProviderTurnRunnerParams,
@@ -41,7 +41,12 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 	try {
 		abortRegistration?.signal.addEventListener("abort", abortListener, { once: true });
 		throwIfAborted();
-		const cursorAgentMessageOffset = await getCursorAgentMessageOffset(agent.agentId, cwd, sdkEventDebug);
+		let cursorAgentMessageOffset: number | undefined;
+		try {
+			cursorAgentMessageOffset = await countCursorAgentMessages(agent.agentId, cwd);
+		} catch (error) {
+			sdkEventDebug?.recordError("cursor_agent_message_count", error);
+		}
 		throwIfAborted();
 		sdkEventDebug?.recordSendMeta({
 			mode: meta.sendPlan.mode,

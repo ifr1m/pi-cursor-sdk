@@ -1,4 +1,4 @@
-import { canRenderCursorToolNatively } from "./cursor-native-tool-display.js";
+import { canRenderCursorToolNatively } from "./cursor-native-tool-display-state.js";
 import { getActiveContextToolNames } from "./cursor-context-tools.js";
 import type { Context } from "@earendil-works/pi-ai";
 

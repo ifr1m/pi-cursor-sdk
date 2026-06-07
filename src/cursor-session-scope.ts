@@ -34,7 +34,12 @@ export function getCursorSessionScopeKey(): string {
 	return ANONYMOUS_SESSION_SCOPE_KEY;
 }
 
-export function getCursorSessionCwdFromScope(): string {
+/**
+ * Pi session cwd when known; falls back to process.cwd() before session_start.
+ * Updated on session_start only until pi threads cwd into streamSimple—mid-session cwd
+ * changes without a new session_start event are not reflected here.
+ */
+export function getCursorSessionCwd(): string {
 	return state.sessionCwd;
 }
 

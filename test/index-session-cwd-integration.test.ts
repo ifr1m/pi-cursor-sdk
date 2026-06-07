@@ -50,7 +50,7 @@ import { Agent, type SDKAgent } from "@cursor/sdk";
 import extensionFactory from "../src/index.js";
 import { discoverModels } from "../src/model-discovery.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
-import { __testUtils as cursorSessionCwdTestUtils } from "../src/cursor-session-cwd.js";
+import { __testUtils as cursorSessionScopeTestUtils } from "../src/cursor-session-scope.js";
 import { __testUtils as cursorPiToolBridgeTestUtils } from "../src/cursor-pi-tool-bridge.js";
 import {
 	collectEvents,
@@ -71,7 +71,7 @@ describe("extension session cwd integration", () => {
 		delete process.env.PI_CURSOR_REGISTER_NATIVE_TOOLS;
 		delete process.env.PI_CURSOR_SETTING_SOURCES;
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
-		cursorSessionCwdTestUtils.reset();
+		cursorSessionScopeTestUtils.reset();
 		mockedAgentCreate.mockResolvedValue(createMockAgent());
 		mockedDiscover.mockResolvedValue([
 			makeProviderModelConfig("composer-2.5", { name: "Cursor Composer 2.5", input: ["text"] }),
@@ -79,7 +79,7 @@ describe("extension session cwd integration", () => {
 	});
 
 	afterEach(async () => {
-		cursorSessionCwdTestUtils.reset();
+		cursorSessionScopeTestUtils.reset();
 		await cursorPiToolBridgeTestUtils.resetRegisteredBridgeForTests();
 	});
 

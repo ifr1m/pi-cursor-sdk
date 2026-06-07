@@ -1,10 +1,11 @@
+import { getFirstStringByKeys } from "./cursor-record-utils.js";
 import {
 	classifyCursorWebToolKind,
 	normalizeCursorToolName as normalizeToolName,
 } from "./cursor-tool-presentation-registry.js";
 
 function getMcpToolName(args: Record<string, unknown>): string | undefined {
-	const toolName = typeof args.toolName === "string" ? args.toolName : typeof args.tool_name === "string" ? args.tool_name : undefined;
+	const toolName = getFirstStringByKeys(args, ["toolName", "tool_name"]);
 	const trimmed = toolName?.trim();
 	return trimmed || undefined;
 }

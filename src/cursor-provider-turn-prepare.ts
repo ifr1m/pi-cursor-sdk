@@ -11,8 +11,11 @@ import type { CursorPiBridgeToolRequest } from "./cursor-pi-tool-bridge.js";
 import { estimateCursorPromptInputTokens, getCursorPromptOptions } from "./cursor-usage-accounting.js";
 import { getActiveContextToolNames } from "./cursor-context-tools.js";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
-import { abandonSessionCursorAgent, cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
-import { createCursorNativeReplayId } from "./cursor-provider-live-run-drain.js";
+import {
+	abandonSessionCursorAgent,
+	createCursorNativeReplayId,
+	cursorLiveRuns,
+} from "./cursor-provider-live-run-drain.js";
 import { getEffectiveCursorAgentMode, getEffectiveFastForModelId } from "./cursor-state.js";
 import { buildCursorModelSelection } from "./model-discovery.js";
 import { getEffectiveCursorSettingSources } from "./cursor-setting-sources.js";
@@ -21,7 +24,7 @@ import {
 	buildCursorToolManifestText,
 	resolveCursorToolManifestEnabled,
 } from "./cursor-tool-manifest.js";
-import { isCursorNativeToolDisplayRuntimeEnabled } from "./cursor-native-tool-display.js";
+import { isCursorNativeToolDisplayRuntimeEnabled } from "./cursor-native-tool-display-state.js";
 import { MISSING_CURSOR_API_KEY_MESSAGE } from "./cursor-provider-errors.js";
 import { CursorSdkTurnCoordinator } from "./cursor-provider-turn-coordinator.js";
 import { resolveCursorApiKey } from "./cursor-api-key.js";

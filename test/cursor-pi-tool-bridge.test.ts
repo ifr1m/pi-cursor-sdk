@@ -11,7 +11,7 @@ import {
 	createTestToolInfo,
 	getCursorPiBridgeMcpUrl,
 } from "./helpers/pi-harness.js";
-import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display.js";
+import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display-state.js";
 import {
 	__testUtils,
 	buildCursorPiToolBridgeSnapshot,
