@@ -1,5 +1,5 @@
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
-import { extractWebFetchTarget, extractWebSearchQuery } from "./cursor-web-tool-activity.js";
+import { extractWebFetchTarget, extractWebSearchQuery } from "./cursor-web-tool-args.js";
 import { getFirstStringByKeys } from "./cursor-record-utils.js";
 import {
 	collectTaskText,

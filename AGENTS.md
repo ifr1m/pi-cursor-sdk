@@ -65,7 +65,7 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-native-tool-display-replay.ts` owns replay card rendering and diff/preview formatting.
 - `src/cursor-native-tool-display-tools.ts` owns native/replay tool definition factories and replay execute wrappers.
 - `src/cursor-native-tool-display-state.ts` owns native replay display state, env gating, and record/consume helpers.
-- `src/cursor-tool-transcript.ts`, `src/cursor-transcript-utils.ts`, `src/cursor-transcript-tool-formatters.ts`, and `src/cursor-tool-names.ts` handle display-only Cursor native tool replay and transcript labels.
+- `src/cursor-tool-transcript.ts`, `src/cursor-transcript-utils.ts`, and `src/cursor-transcript-tool-formatters.ts` handle display-only Cursor native tool replay and transcript labels.
 - `src/cursor-mcp-timeout-override.ts` owns Cursor SDK MCP timeout overrides: 3600s default for `callTool`, 10s default for verified initialize/listTools paths on first send, and SDK-default behavior for unknown MCP protocol stacks.
 - `src/cursor-state.ts` owns Cursor runtime controls: `/cursor-fast`, `--cursor-fast`, `--cursor-no-fast`, `/cursor-mode`, `--cursor-mode`, `/cursor-tools`, session state, and global fast defaults.
 - `src/context.ts`, `src/context-window-cache.ts`, and `src/bundled-context-windows.ts` handle prompt conversion and context-window caches.

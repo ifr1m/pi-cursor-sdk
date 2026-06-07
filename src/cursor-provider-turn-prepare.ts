@@ -24,7 +24,7 @@ import {
 import { isCursorNativeToolDisplayRuntimeEnabled } from "./cursor-native-tool-display.js";
 import { MISSING_CURSOR_API_KEY_MESSAGE } from "./cursor-provider-errors.js";
 import { CursorSdkTurnCoordinator } from "./cursor-provider-turn-coordinator.js";
-import { resolveCursorApiKey } from "./cursor-provider-turn-api-key.js";
+import { resolveCursorApiKey } from "./cursor-api-key.js";
 import { loadCursorSdk } from "./cursor-sdk-runtime.js";
 import type {
 	CursorProviderTurnPrepareResult,

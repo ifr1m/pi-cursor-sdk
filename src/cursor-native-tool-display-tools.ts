@@ -14,7 +14,7 @@ import { getCursorSessionCwd } from "./cursor-session-cwd.js";
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 	isCursorReplayToolName,
-} from "./cursor-tool-names.js";
+} from "./cursor-tool-presentation-registry.js";
 import {
 	createCursorReplayOnlyToolDefinition,
 	isCursorReplayNativeEditDetails,

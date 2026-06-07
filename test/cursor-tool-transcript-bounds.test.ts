@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME } from "../src/cursor-replay-tool-details.js";
-import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME } from "../src/cursor-tool-names.js";
+import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME } from "../src/cursor-tool-presentation-registry.js";
 import { buildCursorPiToolDisplay, formatCursorToolTranscript, mergeCursorToolCalls } from "../src/cursor-tool-transcript.js";
 import { getCursorDisplayDetailSummary } from "./helpers/cursor-display-details.js";
 

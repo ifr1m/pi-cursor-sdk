@@ -15,7 +15,7 @@ import {
 	registeredNativeToolNames,
 	skippedNativeToolNames,
 } from "./cursor-native-tool-display-state.js";
-import { isCursorReplayToolName } from "./cursor-tool-names.js";
+import { isCursorReplayToolName } from "./cursor-tool-presentation-registry.js";
 
 export const CURSOR_CORE_PI_REPLAY_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
 const CORE_PI_TOOL_NAMES = new Set<string>(CURSOR_CORE_PI_REPLAY_TOOL_NAMES);

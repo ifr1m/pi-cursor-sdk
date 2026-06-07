@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { Context, Message, ToolCall } from "@earendil-works/pi-ai";
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type { SDKImage } from "@cursor/sdk";
-import { getCursorReplayPromptLabel } from "./cursor-tool-names.js";
+import { getCursorReplayPromptLabel } from "./cursor-tool-presentation-registry.js";
 
 export interface CursorPrompt {
 	text: string;

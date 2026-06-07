@@ -10,6 +10,7 @@ import {
 	CURSOR_TOOL_PRESENTATION_SPECS,
 	classifyCursorWebToolKind,
 	getCursorReplayActivityTitle,
+	getCursorToolActivityTitle,
 	getCursorReplayCallSummary,
 	getCursorToolLifecycleLabelKind,
 	getCursorToolPresentationSpec,
@@ -67,11 +68,22 @@ describe("cursor tool presentation registry", () => {
 	it("derives neutral activity titles from current source tool names", () => {
 		for (const normalizedName of NEUTRAL_ACTIVITY_SOURCE_NAMES) {
 			expect(getCursorReplayActivityTitle(normalizedName)).toBe(getCursorToolPresentationSpec(normalizedName)?.displayLabel);
+			expect(getCursorToolActivityTitle(normalizedName)).toBe(getCursorReplayActivityTitle(normalizedName));
 			expect(classifyCursorToolVisibility({ name: normalizedName }).activityTitle).toBe(getCursorReplayActivityTitle(normalizedName));
 		}
 		expect(getCursorReplayActivityTitle("read")).toBeUndefined();
 		expect(getCursorReplayActivityTitle("grep")).toBeUndefined();
 		expect(getCursorReplayActivityTitle("shell")).toBeUndefined();
+		expect(getCursorToolActivityTitle("read")).toBe("Cursor read");
+		expect(getCursorToolActivityTitle("unknown")).toBe("Cursor tool");
+		expect(getCursorToolActivityTitle("futureSemSearchWidget")).toBe("Cursor futureSemSearchWidget");
+	});
+
+	it("sanitizes and truncates fallback activity titles for unknown tools", () => {
+		const longName = "x".repeat(200);
+		const truncatedSegment = `${"x".repeat(119)}…`;
+		expect(getCursorToolActivityTitle(longName)).toBe(`Cursor ${truncatedSegment}`);
+		expect(getCursorToolActivityTitle("foo\nbar\tbaz")).toBe("Cursor foo bar baz");
 	});
 
 	it("normalizes aliases from the registry", () => {

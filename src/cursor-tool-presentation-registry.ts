@@ -22,6 +22,7 @@ import {
 	type CursorReplayWebFetchSummaryArgs,
 	type CursorReplayWebSearchSummaryArgs,
 } from "./cursor-replay-summary-args.js";
+import { truncateCursorDisplayLine } from "./cursor-display-text.js";
 import {
 	buildCollapsedReplayDetailFields,
 	buildCreatePlanReplaySummaryArgs,
@@ -380,6 +381,20 @@ export function getCursorReplayActivityTitle(toolName: string): string | undefin
 	const spec = getCursorToolPresentationSpec(toolName);
 	if (!spec || !hasNeutralActivityTitle(spec)) return undefined;
 	return spec.displayLabel;
+}
+
+function buildCursorGenericActivityTitle(displayName: string): string {
+	if (!displayName || displayName === "unknown") return "Cursor tool";
+	return `Cursor ${truncateCursorDisplayLine(displayName, 120)}`;
+}
+
+/** Canonical activity title: registry label when known, otherwise neutral fallback. */
+export function getCursorToolActivityTitle(toolName: string): string {
+	const normalized = normalizeCursorToolName(toolName);
+	const known = getCursorReplayActivityTitle(normalized);
+	if (known) return known;
+	const label = toolName.trim() || normalized;
+	return buildCursorGenericActivityTitle(label);
 }
 
 function getCursorToolPresentationSpecByNormalizedKey(normalizedKey: string): CursorToolPresentationSpec | undefined {

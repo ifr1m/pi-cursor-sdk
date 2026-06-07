@@ -7,7 +7,7 @@ import type {
 import { parseEnvBoolean } from "./cursor-env-boolean.js";
 import { createMcpToolName, normalizeMcpInputSchema, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
 import { isRegisteredCursorNativeToolName } from "./cursor-native-tool-display-state.js";
-import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-names.js";
+import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-presentation-registry.js";
 
 export const CURSOR_PI_TOOL_BRIDGE_ENV = "PI_CURSOR_PI_TOOL_BRIDGE";
 export const CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV = "PI_CURSOR_EXPOSE_BUILTIN_TOOLS";

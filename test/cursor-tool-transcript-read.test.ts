@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME, isExcludedFromCursorBridgeExposure } from "../src/cursor-tool-names.js";
+import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME, isExcludedFromCursorBridgeExposure } from "../src/cursor-tool-presentation-registry.js";
 import { buildCursorPiToolDisplay, formatCursorToolTranscript, getCursorCreatePlanText } from "../src/cursor-tool-transcript.js";
 
 

@@ -416,7 +416,6 @@ export {
 	planCursorSessionSend,
 	type CursorSessionSendPlan,
 } from "./cursor-session-send-policy.js";
-export { shouldBootstrapCursorContext, shouldBootstrapCursorSend } from "./context.js";
 
 export function invalidateSessionAgent(scopeKey: string = getCursorSessionScopeKey()): void {
 	invalidatedScopeKeys.add(scopeKey);

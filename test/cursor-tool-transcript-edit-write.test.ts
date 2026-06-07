@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME } from "../src/cursor-tool-names.js";
+import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME } from "../src/cursor-tool-presentation-registry.js";
 import { buildCursorPiToolDisplay } from "../src/cursor-tool-transcript.js";
 
 

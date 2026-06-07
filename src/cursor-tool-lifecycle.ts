@@ -1,7 +1,7 @@
 import { truncateCursorDisplayLine } from "./cursor-display-text.js";
 import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import { getCursorToolLifecycleLabelKind } from "./cursor-tool-presentation-registry.js";
-import { extractWebSearchQuery } from "./cursor-web-tool-activity.js";
+import { extractWebSearchQuery } from "./cursor-web-tool-args.js";
 import { firstNonEmptyLine, getArray, getString, truncateArg } from "./cursor-transcript-utils.js";
 import { classifyCursorToolVisibility } from "./cursor-tool-visibility.js";
 

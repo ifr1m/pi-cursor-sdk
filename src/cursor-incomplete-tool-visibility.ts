@@ -1,4 +1,4 @@
-import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME } from "./cursor-tool-names.js";
+import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME, getCursorToolActivityTitle } from "./cursor-tool-presentation-registry.js";
 import { truncateCursorDisplayLine } from "./cursor-display-text.js";
 import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import {
@@ -11,7 +11,7 @@ import {
 	resolveIncompleteReplayActivitySourceToolName,
 } from "./cursor-replay-tool-details.js";
 import { asRecord } from "./cursor-record-utils.js";
-import { truncateArg, type CursorPiToolDisplay } from "./cursor-transcript-utils.js";
+import { type CursorPiToolDisplay } from "./cursor-transcript-utils.js";
 import { classifyCursorToolVisibility } from "./cursor-tool-visibility.js";
 
 export type IncompleteCursorToolDiscardReason = DiscardedIncompleteStartedToolCallReason;
@@ -60,11 +60,6 @@ export function resolveIncompleteCursorToolVisibility(
 	return "emit";
 }
 
-function buildGenericIncompleteActivityTitle(displayName: string): string {
-	if (!displayName || displayName === "unknown") return "Cursor tool";
-	return `Cursor ${truncateArg(displayName)}`;
-}
-
 export function formatIncompleteCursorToolReasonText(reason: IncompleteCursorToolDiscardReason): string {
 	switch (reason) {
 		case DISCARDED_INCOMPLETE_TOOL_CALL_REASON:
@@ -80,7 +75,7 @@ export function formatIncompleteCursorToolReasonText(reason: IncompleteCursorToo
 
 export function getIncompleteCursorToolActivityTitle(toolCall: unknown): string {
 	const visibility = classifyCursorToolVisibility(toolCall);
-	return visibility.incompleteTitle ?? buildGenericIncompleteActivityTitle(visibility.displayName);
+	return visibility.incompleteTitle ?? getCursorToolActivityTitle(visibility.displayName);
 }
 
 export function buildIncompleteCursorToolDisplay(

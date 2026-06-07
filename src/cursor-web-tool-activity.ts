@@ -1,20 +1,12 @@
 import {
-	classifyCursorWebToolKind as classifyCursorWebToolKindFromRegistry,
+	classifyCursorWebToolKind,
 	normalizeCursorToolName as normalizeToolName,
-	type CursorWebToolKind,
 } from "./cursor-tool-presentation-registry.js";
-
-export type { CursorWebToolKind } from "./cursor-tool-presentation-registry.js";
-export { extractWebFetchTarget, extractWebSearchQuery } from "./cursor-web-tool-args.js";
 
 function getMcpToolName(args: Record<string, unknown>): string | undefined {
 	const toolName = typeof args.toolName === "string" ? args.toolName : typeof args.tool_name === "string" ? args.tool_name : undefined;
 	const trimmed = toolName?.trim();
 	return trimmed || undefined;
-}
-
-export function classifyCursorWebToolKind(name: string | undefined): CursorWebToolKind | undefined {
-	return classifyCursorWebToolKindFromRegistry(name);
 }
 
 /**

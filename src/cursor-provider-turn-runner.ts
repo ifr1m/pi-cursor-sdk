@@ -17,7 +17,7 @@ import type {
 	CursorProviderTurnSendResult,
 } from "./cursor-provider-turn-types.js";
 
-export { resolveCursorApiKey } from "./cursor-provider-turn-api-key.js";
+export { resolveCursorApiKey } from "./cursor-api-key.js";
 export type { CursorProviderTurnRunnerParams } from "./cursor-provider-turn-types.js";
 
 export class CursorProviderTurnRunner {

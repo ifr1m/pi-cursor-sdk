@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME } from "../src/cursor-tool-names.js";
+import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME } from "../src/cursor-tool-presentation-registry.js";
 import {
 	CURSOR_REPLAY_COLLAPSED_PREVIEW_LINES,
 	CURSOR_REPLAY_PREVIEW_MAX_LINE_CHARS,

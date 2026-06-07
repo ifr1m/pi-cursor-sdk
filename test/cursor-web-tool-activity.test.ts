@@ -1,12 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-	classifyCursorWebToolKind,
-	extractWebFetchTarget,
-	extractWebSearchQuery,
-	resolveTranscriptToolName,
-} from "../src/cursor-web-tool-activity.js";
+import { resolveTranscriptToolName } from "../src/cursor-web-tool-activity.js";
+import { classifyCursorWebToolKind, CURSOR_REPLAY_ACTIVITY_TOOL_NAME } from "../src/cursor-tool-presentation-registry.js";
+import { extractWebFetchTarget, extractWebSearchQuery } from "../src/cursor-web-tool-args.js";
 import { buildCursorPiToolDisplay, formatCursorToolTranscript } from "../src/cursor-tool-transcript.js";
-import { CURSOR_REPLAY_ACTIVITY_TOOL_NAME } from "../src/cursor-tool-names.js";
 
 describe("cursor web tool activity", () => {
 	it.each([
