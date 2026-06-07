@@ -1,6 +1,6 @@
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { asRecord, getFirstStringByKeys } from "./cursor-record-utils.js";
+import { asRecord } from "./cursor-record-utils.js";
 
 export { asRecord, getFirstStringByKeys } from "./cursor-record-utils.js";
 

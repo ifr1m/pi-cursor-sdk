@@ -1,9 +1,8 @@
 import {
 	classifyCursorWebToolKind as classifyCursorWebToolKindFromRegistry,
+	normalizeCursorToolName as normalizeToolName,
 	type CursorWebToolKind,
 } from "./cursor-tool-presentation-registry.js";
-import { normalizeCursorToolName as normalizeToolName } from "./cursor-tool-presentation-registry.js";
-import { extractWebFetchTarget, extractWebSearchQuery } from "./cursor-web-tool-args.js";
 
 export type { CursorWebToolKind } from "./cursor-tool-presentation-registry.js";
 export { extractWebFetchTarget, extractWebSearchQuery } from "./cursor-web-tool-args.js";

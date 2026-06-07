@@ -41,11 +41,17 @@ import type { Context } from "@earendil-works/pi-ai";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
+import { convertPiContentToMcpContent } from "../src/cursor-pi-tool-bridge-mcp.js";
 
 
 describe("streamCursor bridge MCP", () => {
 	beforeEach(resetCursorProviderTestState);
+
+	it("preserves unknown array content blocks as text fallbacks", () => {
+		expect(convertPiContentToMcpContent([["unexpected", "block"]])).toEqual([
+			{ type: "text", text: '["unexpected","block"]' },
+		]);
+	});
 
 	it("surfaces empty live-run error status with run metadata", async () => {
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {

@@ -6,7 +6,7 @@ import type {
 	CursorPiToolBridgeRunOptions,
 	CursorPiToolBridgeSnapshotApi,
 } from "./cursor-pi-tool-bridge-types.js";
-import { isRecord } from "./cursor-pi-tool-bridge-mcp.js";
+import { asRecord } from "./cursor-record-utils.js";
 import type { CursorPiToolBridgeRunImpl } from "./cursor-pi-tool-bridge-run.js";
 import {
 	buildCursorPiToolBridgeSnapshot,
@@ -84,8 +84,13 @@ export class CursorPiToolBridgeRegistry implements CursorPiToolBridge {
 	}
 
 	getHttpServerAddress(): AddressInfo | undefined {
-		const address = this.httpServer?.address();
-		return isRecord(address) && typeof address.port === "number" ? address as AddressInfo : undefined;
+		const address = asRecord(this.httpServer?.address());
+		if (typeof address?.port !== "number") return undefined;
+		return {
+			address: typeof address.address === "string" ? address.address : LOOPBACK_HOST,
+			family: typeof address.family === "string" ? address.family : "IPv4",
+			port: address.port,
+		};
 	}
 
 	getEndpointCount(): number {

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { BUNDLED_CONTEXT_WINDOWS } from "./bundled-context-windows.js";
+import { asRecord } from "./cursor-record-utils.js";
 
 const CONTEXT_WINDOW_CACHE_FILE = "cursor-sdk-context-windows.json";
 let userContextWindowOverrideLoadCount = 0;
@@ -18,18 +19,16 @@ function isPositiveInteger(value: unknown): value is number {
 	return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function parseContextWindowCacheFile(value: unknown): ContextWindowCacheFile | undefined {
-	if (!isRecord(value)) return undefined;
-	const { contextWindows } = value;
+	const record = asRecord(value);
+	if (!record) return undefined;
+	const { contextWindows } = record;
 	if (contextWindows === undefined) return {};
-	if (!isRecord(contextWindows)) return undefined;
+	const contextWindowRecord = asRecord(contextWindows);
+	if (!contextWindowRecord) return undefined;
 	return {
 		contextWindows: Object.fromEntries(
-			Object.entries(contextWindows).filter((entry): entry is [string, number] => isPositiveInteger(entry[1])),
+			Object.entries(contextWindowRecord).filter((entry): entry is [string, number] => isPositiveInteger(entry[1])),
 		),
 	};
 }
@@ -68,12 +67,9 @@ export function getCachedContextWindow(modelId: string): number | undefined {
 }
 
 export function getCheckpointContextWindow(checkpoint: unknown): number | undefined {
-	if (!isRecord(checkpoint)) return undefined;
-	const { tokenDetails } = checkpoint;
-	if (!isRecord(tokenDetails)) return undefined;
-	const { maxTokens } = tokenDetails;
-	if (!isPositiveInteger(maxTokens)) return undefined;
-	return maxTokens;
+	const tokenDetails = asRecord(checkpoint)?.tokenDetails;
+	const maxTokens = asRecord(tokenDetails)?.maxTokens;
+	return isPositiveInteger(maxTokens) ? maxTokens : undefined;
 }
 
 export function saveCachedContextWindow(modelId: string, contextWindow: number): void {

@@ -9,11 +9,11 @@ import {
 	isCursorSdkMcpToolTimeoutStack,
 	resolveCursorMcpConnectTimeoutMs,
 	resolveCursorMcpToolTimeoutMs,
-	restoreCursorMcpToolTimeoutOverrideForTests,
+	restoreCursorMcpToolTimeoutOverride,
 } from "../src/cursor-mcp-timeout-override.js";
 
 afterEach(() => {
-	restoreCursorMcpToolTimeoutOverrideForTests();
+	restoreCursorMcpToolTimeoutOverride();
 	vi.useRealTimers();
 });
 

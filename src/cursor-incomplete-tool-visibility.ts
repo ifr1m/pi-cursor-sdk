@@ -10,6 +10,7 @@ import {
 	parseCursorReplayToolDetails,
 	resolveIncompleteReplayActivitySourceToolName,
 } from "./cursor-replay-tool-details.js";
+import { asRecord } from "./cursor-record-utils.js";
 import { truncateArg, type CursorPiToolDisplay } from "./cursor-transcript-utils.js";
 import { classifyCursorToolVisibility } from "./cursor-tool-visibility.js";
 
@@ -124,8 +125,7 @@ export function formatIncompleteCursorToolTrace(display: CursorPiToolDisplay): s
 			formatIncompleteCursorToolReasonText(DISCARDED_INCOMPLETE_TOOL_CALL_REASON);
 		return `${truncateCursorDisplayLine(parsed.title)}: ${truncateCursorDisplayLine(summary)}\n`;
 	}
-	const details = display.result.details;
-	const detailRecord = details && typeof details === "object" ? (details as Record<string, unknown>) : undefined;
+	const detailRecord = asRecord(display.result.details);
 	const argsRecord = display.args;
 	const title =
 		(typeof detailRecord?.title === "string" && detailRecord.title.trim()) ||

@@ -1,9 +1,10 @@
 import { readFileSync, statSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { basename } from "node:path";
 import { getLanguageFromPath, highlightCode, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Image, Text, type Component } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
+import { inferImageMimeType } from "./cursor-tool-result-display-readers.js";
 import { LOCAL_READ_PREVIEW_NOTICE, isLocalReadPreviewContent } from "./cursor-transcript-utils.js";
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
@@ -17,7 +18,6 @@ import {
 	type CursorReplayActivityDetails,
 	type CursorReplayToolDetails,
 	type CursorReplayNativeWriteDetails,
-	isCursorReplayNativeEditDetails,
 	isCursorReplayGenerateImageDetails,
 	isCursorReplayActivityDetails,
 	parseCursorReplayToolDetails,
@@ -48,22 +48,6 @@ export const cursorReplayToolSchema = Type.Object({}, { additionalProperties: tr
 type CursorReplayRenderCall = NonNullable<ToolDefinition<typeof cursorReplayToolSchema, unknown>["renderCall"]>;
 type CursorReplayRenderResult = NonNullable<ToolDefinition<typeof cursorReplayToolSchema, unknown>["renderResult"]>;
 export type CursorReplayRenderTheme = Parameters<CursorReplayRenderCall>[1];
-
-function inferImageMimeTypeFromPath(path: string | undefined): string | undefined {
-	switch (extname(path ?? "").toLowerCase()) {
-		case ".png":
-			return "image/png";
-		case ".jpg":
-		case ".jpeg":
-			return "image/jpeg";
-		case ".gif":
-			return "image/gif";
-		case ".webp":
-			return "image/webp";
-		default:
-			return undefined;
-	}
-}
 
 function readImageFileForReplay(path: string | undefined): string | undefined {
 	if (!path) return undefined;
@@ -464,7 +448,7 @@ function renderExpandableCursorReplayResult(
 	}
 	if (details.imagePath && !isError && context.showImages) {
 		const imageData = readImageFileForReplay(details.imagePath);
-		const mimeType = details.imageMimeType ?? inferImageMimeTypeFromPath(details.imagePath);
+		const mimeType = details.imageMimeType ?? inferImageMimeType(details.imagePath);
 		if (imageData && mimeType) return buildImageReplayComponent(rendered, imageData, mimeType, basename(details.imagePath ?? "generated-image"), theme);
 	}
 	return new Text(rendered, 0, 0);
@@ -485,7 +469,6 @@ function renderCursorReplayEditResult(
 function renderCursorReplayWriteResult(
 	details: CursorReplayNativeWriteDetails,
 	result: Parameters<CursorReplayRenderResult>[0],
-	options: Parameters<CursorReplayRenderResult>[1],
 	theme: Parameters<CursorReplayRenderResult>[2],
 ): Component {
 	const text = firstContentText(result);
@@ -532,7 +515,7 @@ function renderCursorReplayDetails(
 		case "nativeEdit":
 			return renderCursorReplayEditResult(details, options, theme);
 		case "nativeWrite":
-			return renderCursorReplayWriteResult(details, result, options, theme);
+			return renderCursorReplayWriteResult(details, result, theme);
 		case "generateImage":
 			return renderCursorGenerateImageResult(details, result, options, theme, context, isError);
 		case "activity":

@@ -10,7 +10,6 @@ import { hasUsableText } from "./cursor-record-utils.js";
 import {
 	buildIncompleteCursorToolRunOutcome,
 	type IncompleteCursorToolRunOutcome,
-	type IncompleteCursorToolRunOutcomeInput,
 } from "./cursor-incomplete-tool-visibility.js";
 
 /** Unified SDK wait() facts consumed by live and direct emission strategies. */

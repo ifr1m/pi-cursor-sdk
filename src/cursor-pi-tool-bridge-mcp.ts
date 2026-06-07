@@ -3,19 +3,17 @@ import type { Context, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { buildCursorPiBridgeMcpToolDescription, CURSOR_PI_BRIDGE_MCP_TOOL_PREFIX } from "./cursor-bridge-contract.js";
 import type { CursorPiBridgeToolDefinition, CursorPiMcpInputSchema } from "./cursor-pi-tool-bridge-types.js";
-import { getFirstStringByKeys } from "./cursor-record-utils.js";
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
+import { asRecord } from "./cursor-record-utils.js";
 
 export function normalizeMcpInputSchema(schema: unknown): CursorPiMcpInputSchema {
-	if (isRecord(schema) && schema.type === "object") return schema as CursorPiMcpInputSchema;
+	const record = asRecord(schema);
+	if (record?.type === "object") return record as CursorPiMcpInputSchema;
 	return { type: "object", properties: {} };
 }
 
 export function normalizeMcpArgs(args: unknown): Record<string, unknown> {
-	return isRecord(args) ? { ...args } : {};
+	const record = asRecord(args);
+	return record ? { ...record } : {};
 }
 
 export function waitForProtocolFlush(): Promise<void> {
@@ -78,16 +76,16 @@ export function convertPiContentToMcpContent(content: unknown): CallToolResult["
 
 	const mcpContent: CallToolResult["content"] = [];
 	for (const block of content) {
-		if (!isRecord(block)) continue;
-		if (block.type === "text" && typeof block.text === "string") {
-			mcpContent.push({ type: "text", text: block.text });
+		const record = asRecord(block);
+		if (record?.type === "text" && typeof record.text === "string") {
+			mcpContent.push({ type: "text", text: record.text });
 			continue;
 		}
-		if (block.type === "image" && typeof block.data === "string" && typeof block.mimeType === "string") {
-			mcpContent.push({ type: "image", data: block.data, mimeType: block.mimeType });
+		if (record?.type === "image" && typeof record.data === "string" && typeof record.mimeType === "string") {
+			mcpContent.push({ type: "image", data: record.data, mimeType: record.mimeType });
 			continue;
 		}
-		mcpContent.push({ type: "text", text: JSON.stringify(block) });
+		mcpContent.push({ type: "text", text: JSON.stringify(block) ?? "" });
 	}
 
 	return mcpContent.length > 0 ? mcpContent : [{ type: "text", text: "" }];
@@ -97,22 +95,19 @@ export function asToolResultMessage(value: Context["messages"][number]): ToolRes
 	return value.role === "toolResult" ? value : undefined;
 }
 
-export function getStringField(record: Record<string, unknown>, fields: string[]): string | undefined {
-	return getFirstStringByKeys(record, fields, { nonEmpty: true });
-}
-
 export function containsKnownMcpToolName(value: unknown, knownMcpToolNames: ReadonlySet<string>, depth = 0): boolean {
 	if (depth > 4) return false;
 	if (Array.isArray(value)) return value.some((entry) => containsKnownMcpToolName(entry, knownMcpToolNames, depth + 1));
-	if (!isRecord(value)) return false;
+	const record = asRecord(value);
+	if (!record) return false;
 
 	for (const field of ["tool", "toolName", "name", "mcpToolName", "serverToolName"]) {
-		const fieldValue = value[field];
+		const fieldValue = record[field];
 		if (typeof fieldValue === "string" && knownMcpToolNames.has(fieldValue)) return true;
 	}
 
 	for (const nestedField of ["args", "arguments", "input"]) {
-		if (containsKnownMcpToolName(value[nestedField], knownMcpToolNames, depth + 1)) return true;
+		if (containsKnownMcpToolName(record[nestedField], knownMcpToolNames, depth + 1)) return true;
 	}
 
 	return false;

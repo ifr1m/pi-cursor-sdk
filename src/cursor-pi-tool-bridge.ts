@@ -8,10 +8,6 @@ import {
 import {
 	CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV,
 	CURSOR_PI_TOOL_BRIDGE_ENV,
-	buildCursorPiToolBridgeSnapshot,
-	buildCursorPiToolBridgeSurfaceSignature,
-	resolveCursorPiToolBridgeBuiltinsEnabled,
-	resolveCursorPiToolBridgeEnabled,
 } from "./cursor-pi-tool-bridge-snapshot.js";
 import { bridgeToolExecutionAbortTracker } from "./cursor-pi-tool-bridge-abort.js";
 import { MCP_SERVER_NAME } from "./cursor-pi-tool-bridge-constants.js";

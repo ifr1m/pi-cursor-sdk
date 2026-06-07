@@ -1,11 +1,20 @@
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
-import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import { extractWebFetchTarget, extractWebSearchQuery } from "./cursor-web-tool-activity.js";
 import { getFirstStringByKeys } from "./cursor-record-utils.js";
 import {
+	collectTaskText,
+	describeNonTextMcpContent,
+	getGenerateImageDisplayPath,
+	getMcpContentText,
+	getReadLintDiagnostics,
+	getReadLintPaths,
+	getTaskDescription,
+	getTodoItems,
+} from "./cursor-tool-result-display-readers.js";
+
+import {
 	asRecord,
 	formatDisplayPath,
-	formatDiffHeaderLine,
 	formatDiffString,
 	formatError,
 	formatPathArg,
@@ -23,7 +32,6 @@ import {
 	DEFAULT_NATIVE_READ_DISPLAY_LINES,
 	readFilePreview,
 	stringifyUnknown,
-	firstNonEmptyLine,
 	truncateArg,
 	type NormalizedResult,
 	type TranscriptOptions,
@@ -445,38 +453,6 @@ export function formatDelete(args: Record<string, unknown>, result: NormalizedRe
 	return joinSections(`delete ${path}`, fileSize !== undefined ? `Deleted ${fileSize} bytes` : stringifyUnknown(result.value));
 }
 
-export function getReadLintPaths(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string[] {
-	const explicitPaths = Array.isArray(args.paths)
-		? args.paths.filter((entry): entry is string => typeof entry === "string")
-		: typeof args.path === "string"
-			? [args.path]
-			: [];
-	const resultPaths = (getArray(asRecord(result.value), "fileDiagnostics") ?? [])
-		.map((file) => getString(asRecord(file), "path"))
-		.filter((entry): entry is string => Boolean(entry));
-	return [...new Set([...explicitPaths, ...resultPaths].map((entry) => formatDisplayPath(entry, options.cwd)))];
-}
-
-export function getReadLintDiagnostics(result: NormalizedResult, options: TranscriptOptions): string[] {
-	const value = asRecord(result.value);
-	const files = getArray(value, "fileDiagnostics") ?? [];
-	const lines: string[] = [];
-	for (const file of files) {
-		const fileRecord = asRecord(file);
-		const pathValue = getString(fileRecord, "path");
-		const path = pathValue ? formatDisplayPath(pathValue, options.cwd) : "unknown";
-		const diagnostics = getArray(fileRecord, "diagnostics") ?? [];
-		for (const diagnostic of diagnostics) {
-			const diagnosticRecord = asRecord(diagnostic);
-			const severity = getString(diagnosticRecord, "severity") ?? "diagnostic";
-			const message = getString(diagnosticRecord, "message") ?? "";
-			const source = getString(diagnosticRecord, "source");
-			lines.push(`${path}: ${severity}${source ? ` ${source}` : ""}: ${message}`);
-		}
-	}
-	return lines;
-}
-
 export function formatReadLints(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
 	const paths = getReadLintPaths(args, result, options);
 	const header = `readLints${paths.length > 0 ? ` ${paths.join(" ")}` : ""}`;
@@ -485,24 +461,6 @@ export function formatReadLints(args: Record<string, unknown>, result: Normalize
 	const lines = getReadLintDiagnostics(result, options);
 	if (lines.length === 0 && paths.length > 0) return joinSections(header, `No diagnostics in ${paths.join(", ")}`);
 	return joinSections(header, limitText(lines.join("\n") || stringifyUnknown(result.value), options));
-}
-
-export function getTodoItems(args: Record<string, unknown>, result: NormalizedResult): Array<{ content: string; status?: string }> {
-	const value = asRecord(result.value);
-	const rawTodos = getArray(value, "todos") ?? getArray(args, "todos") ?? [];
-	const todos: Array<{ content: string; status?: string }> = [];
-	for (const todo of rawTodos) {
-		const record = asRecord(todo);
-		const content = getString(record, "content");
-		if (!content) continue;
-		const status = getString(record, "status");
-		todos.push(status ? { content, status } : { content });
-	}
-	return todos;
-}
-
-export function getTodoTotalCount(args: Record<string, unknown>, result: NormalizedResult, todos: Array<{ content: string; status?: string }>): number {
-	return getNumber(asRecord(result.value), "totalCount") ?? getNumber(args, "totalCount") ?? todos.length;
 }
 
 function formatTodoStatus(status: string | undefined): string {
@@ -527,32 +485,6 @@ export function formatPlan(args: Record<string, unknown>, result: NormalizedResu
 	return formatTodos(args, result, options, "createPlan");
 }
 
-export function getTaskDescription(args: Record<string, unknown>, result: NormalizedResult): string {
-	return getString(args, "description") ?? getString(asRecord(result.value), "description") ?? "task";
-}
-
-function getNestedRecord(record: Record<string, unknown> | undefined, ...keys: string[]): Record<string, unknown> | undefined {
-	let current = record;
-	for (const key of keys) {
-		current = getRecord(current, key);
-		if (!current) return undefined;
-	}
-	return current;
-}
-
-export function collectTaskText(result: NormalizedResult): string {
-	const value = asRecord(result.value);
-	const success = getNestedRecord(value, "result", "success");
-	const command = getString(success, "command");
-	const stdout = getString(success, "stdout");
-	const interleavedOutput = getString(success, "interleavedOutput");
-	const assistantMessages = (getArray(value, "conversationSteps") ?? [])
-		.map((step) => getString(getRecord(asRecord(step), "assistantMessage"), "text"))
-		.filter((entry): entry is string => Boolean(entry));
-	const parts = [command ? `$ ${command}` : undefined, stdout || interleavedOutput, ...assistantMessages].filter((part): part is string => Boolean(part));
-	return parts.join("\n");
-}
-
 export function formatTask(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
 	const description = getTaskDescription(args, result);
 	if (result.status === "error") return joinSections(`task ${description}`, formatError(result.error));
@@ -560,34 +492,10 @@ export function formatTask(args: Record<string, unknown>, result: NormalizedResu
 	return joinSections(`task ${description}`, limitText(taskText || stringifyUnknown(result.value), options));
 }
 
-function getGenerateImageValue(result: NormalizedResult): Record<string, unknown> | undefined {
-	return asRecord(result.value);
-}
-
-export function getGenerateImagePath(args: Record<string, unknown>, result: NormalizedResult): string | undefined {
-	const value = getGenerateImageValue(result);
-	return getString(value, "filePath") ?? getString(args, "filePath") ?? getString(args, "path");
-}
-
-export function getGenerateImageDisplayPath(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string | undefined {
-	const path = getGenerateImagePath(args, result);
-	return path ? formatDisplayPath(path, options.cwd) : undefined;
-}
-
-export function inferImageMimeType(path: string | undefined): string | undefined {
-	const lower = path?.toLowerCase();
-	if (!lower) return undefined;
-	if (lower.endsWith(".png")) return "image/png";
-	if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-	if (lower.endsWith(".gif")) return "image/gif";
-	if (lower.endsWith(".webp")) return "image/webp";
-	return undefined;
-}
-
 export function formatGenerateImage(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
 	const prompt = getString(args, "prompt") ?? getString(args, "description") ?? "image";
 	if (result.status === "error") return joinSections(`generateImage ${prompt}`, formatError(result.error));
-	const value = getGenerateImageValue(result);
+	const value = asRecord(result.value);
 	const displayPath = getGenerateImageDisplayPath(args, result, options);
 	const hasImageData = typeof value?.imageData === "string" && value.imageData.length > 0;
 	const lines = [displayPath ? `Saved image: ${displayPath}` : undefined, hasImageData ? "Image data returned by Cursor SDK." : undefined].filter(
@@ -595,26 +503,6 @@ export function formatGenerateImage(args: Record<string, unknown>, result: Norma
 	);
 	if (lines.length > 0) return joinSections(`generateImage ${prompt}`, lines.join("\n"));
 	return joinSections(`generateImage ${prompt}`, limitText(stringifyUnknown(result.value), options));
-}
-
-function getMcpContentText(entry: unknown): string | undefined {
-	const record = asRecord(entry);
-	const directText = getString(record, "text");
-	if (directText) return directText;
-	const nestedText = getRecord(record, "text");
-	return getString(nestedText, "text");
-}
-
-function describeNonTextMcpContent(entry: unknown): string {
-	const record = asRecord(entry);
-	const type = getString(record, "type") ?? "content";
-	if (type === "image") {
-		const mimeType = getString(record, "mimeType") ?? getString(record, "mime") ?? getString(record, "mediaType");
-		return `[image${mimeType ? ` ${mimeType}` : ""} omitted]`;
-	}
-	if (type === "audio") return "[audio omitted]";
-	if (type === "resource") return "[resource omitted]";
-	return `[${type} omitted]`;
 }
 
 export function formatSemSearch(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
@@ -681,31 +569,12 @@ export function formatRecordScreen(args: Record<string, unknown>, result: Normal
 	return joinSections(header, lines.join("\n"));
 }
 
-export function getMcpResultPreview(result: NormalizedResult): string | undefined {
-	if (result.status === "error") return undefined;
-	const value = asRecord(result.value);
-	const content = getArray(value, "content") ?? [];
-	for (const entry of content) {
-		const text = getMcpContentText(entry);
-		if (text) {
-			const line = firstNonEmptyLine(text);
-			if (line) return truncateArg(scrubSensitiveText(line), 120);
-		}
-		const summary = describeNonTextMcpContent(entry);
-		if (summary) return summary;
-	}
-	return undefined;
-}
-
 function formatWebToolBody(
 	toolLabel: string,
-	args: Record<string, unknown>,
 	result: NormalizedResult,
 	options: TranscriptOptions,
-	summaryArg: string | undefined,
 ): string {
 	if (result.status === "error") return joinSections(toolLabel, formatError(result.error));
-	const summary = summaryArg ? `${summaryArg}\n\n` : "";
 	const value = asRecord(result.value);
 	const isError = getBoolean(value, "isError");
 	const content = getArray(value, "content") ?? [];
@@ -715,19 +584,19 @@ function formatWebToolBody(
 		.join("\n");
 	const contentSummary = content.length > 0 ? content.map(describeNonTextMcpContent).join("\n") : stringifyUnknown(result.value);
 	const body = `${isError ? "[tool error]\n" : ""}${text || contentSummary}`;
-	return joinSections(toolLabel, limitText(`${summary}${body}`.trim(), options));
+	return joinSections(toolLabel, limitText(body.trim(), options));
 }
 
 export function formatWebSearch(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
 	const query = extractWebSearchQuery(args);
 	const header = query ? `web search ${query}` : "web search";
-	return formatWebToolBody(header, args, result, options, undefined);
+	return formatWebToolBody(header, result, options);
 }
 
 export function formatWebFetch(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
 	const target = extractWebFetchTarget(args);
 	const header = target ? `web fetch ${target}` : "web fetch";
-	return formatWebToolBody(header, args, result, options, undefined);
+	return formatWebToolBody(header, result, options);
 }
 
 export function formatMcp(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {

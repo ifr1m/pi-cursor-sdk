@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type { ModelListItem } from "@cursor/sdk";
 import { parseEnvBoolean } from "./cursor-env-boolean.js";
+import { asRecord } from "./cursor-record-utils.js";
 
 const MODEL_LIST_CACHE_FILE = "cursor-sdk-model-list.json";
 const MODEL_LIST_CACHE_VERSION = 1;
@@ -46,52 +47,53 @@ export function fingerprintApiKey(apiKey: string): string {
 	return createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function isStringArray(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
 function isModelParameterValue(value: unknown): value is NonNullable<ModelListItem["variants"]>[number]["params"][number] {
-	return isRecord(value) && typeof value.id === "string" && typeof value.value === "string";
+	const record = asRecord(value);
+	return record !== undefined && typeof record.id === "string" && typeof record.value === "string";
 }
 
 function isModelParameterDefinitionValue(value: unknown): value is NonNullable<ModelListItem["parameters"]>[number]["values"][number] {
-	return isRecord(value) && typeof value.value === "string" && (value.displayName === undefined || typeof value.displayName === "string");
+	const record = asRecord(value);
+	return record !== undefined && typeof record.value === "string" && (record.displayName === undefined || typeof record.displayName === "string");
 }
 
 function isModelParameterDefinition(value: unknown): value is NonNullable<ModelListItem["parameters"]>[number] {
-	if (!isRecord(value)) return false;
+	const record = asRecord(value);
+	if (!record) return false;
 	return (
-		typeof value.id === "string" &&
-		(value.displayName === undefined || typeof value.displayName === "string") &&
-		Array.isArray(value.values) &&
-		value.values.every(isModelParameterDefinitionValue)
+		typeof record.id === "string" &&
+		(record.displayName === undefined || typeof record.displayName === "string") &&
+		Array.isArray(record.values) &&
+		record.values.every(isModelParameterDefinitionValue)
 	);
 }
 
 function isModelVariant(value: unknown): value is NonNullable<ModelListItem["variants"]>[number] {
-	if (!isRecord(value)) return false;
+	const record = asRecord(value);
+	if (!record) return false;
 	return (
-		Array.isArray(value.params) &&
-		value.params.every(isModelParameterValue) &&
-		typeof value.displayName === "string" &&
-		(value.description === undefined || typeof value.description === "string") &&
-		(value.isDefault === undefined || typeof value.isDefault === "boolean")
+		Array.isArray(record.params) &&
+		record.params.every(isModelParameterValue) &&
+		typeof record.displayName === "string" &&
+		(record.description === undefined || typeof record.description === "string") &&
+		(record.isDefault === undefined || typeof record.isDefault === "boolean")
 	);
 }
 
 function isModelListItem(value: unknown): value is ModelListItem {
-	if (!isRecord(value)) return false;
+	const record = asRecord(value);
+	if (!record) return false;
 	return (
-		typeof value.id === "string" &&
-		typeof value.displayName === "string" &&
-		(value.description === undefined || typeof value.description === "string") &&
-		(value.aliases === undefined || isStringArray(value.aliases)) &&
-		(value.parameters === undefined || (Array.isArray(value.parameters) && value.parameters.every(isModelParameterDefinition))) &&
-		(value.variants === undefined || (Array.isArray(value.variants) && value.variants.every(isModelVariant)))
+		typeof record.id === "string" &&
+		typeof record.displayName === "string" &&
+		(record.description === undefined || typeof record.description === "string") &&
+		(record.aliases === undefined || isStringArray(record.aliases)) &&
+		(record.parameters === undefined || (Array.isArray(record.parameters) && record.parameters.every(isModelParameterDefinition))) &&
+		(record.variants === undefined || (Array.isArray(record.variants) && record.variants.every(isModelVariant)))
 	);
 }
 
@@ -100,21 +102,22 @@ function isValidFetchedAt(value: unknown): value is number {
 }
 
 function parseModelListCacheFile(value: unknown): ModelListCacheFile | undefined {
-	if (!isRecord(value)) return undefined;
+	const record = asRecord(value);
+	if (!record) return undefined;
 	if (
-		value.version !== MODEL_LIST_CACHE_VERSION ||
-		!isValidFetchedAt(value.fetchedAt) ||
-		typeof value.keyFingerprint !== "string" ||
-		!Array.isArray(value.models) ||
-		!value.models.every(isModelListItem)
+		record.version !== MODEL_LIST_CACHE_VERSION ||
+		!isValidFetchedAt(record.fetchedAt) ||
+		typeof record.keyFingerprint !== "string" ||
+		!Array.isArray(record.models) ||
+		!record.models.every(isModelListItem)
 	) {
 		return undefined;
 	}
 	return {
-		version: value.version,
-		fetchedAt: value.fetchedAt,
-		keyFingerprint: value.keyFingerprint,
-		models: value.models,
+		version: record.version,
+		fetchedAt: record.fetchedAt,
+		keyFingerprint: record.keyFingerprint,
+		models: record.models,
 	};
 }
 
@@ -147,10 +150,6 @@ export function loadAnyCachedModelCatalog(keyFingerprint: string): CachedModelLi
 	const cache = readCacheFile();
 	if (!cache || cache.keyFingerprint !== keyFingerprint) return undefined;
 	return { fetchedAt: cache.fetchedAt, models: cache.models };
-}
-
-export function loadAnyCachedModels(keyFingerprint: string): ModelListItem[] | undefined {
-	return loadAnyCachedModelCatalog(keyFingerprint)?.models;
 }
 
 export function saveModelListCache(keyFingerprint: string, models: ModelListItem[]): boolean {

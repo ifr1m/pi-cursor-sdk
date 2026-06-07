@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { buildCursorPiToolDisplayFromSpec } from "../src/cursor-transcript-tool-specs.js";
 import {
 	CURSOR_REPLAY_GENERATE_IMAGE_RESULT_TITLE,
-	buildCursorReplayNativeEditDetails,
 	parseCursorReplayToolDetails,
 } from "../src/cursor-replay-tool-details.js";
 import { renderCursorReplayResult } from "../src/cursor-native-tool-display-replay.js";
@@ -136,13 +135,12 @@ describe("cursor replay tool details contract", () => {
 	});
 
 	it("renders nativeEdit replay through the typed edit renderer path", () => {
-		const rendered = renderReplayResult(
-			buildCursorReplayNativeEditDetails({
-				path: "src/example.ts",
-				diffString: "--- a/src/example.ts\n+++ b/src/example.ts\n@@ -1 +1 @@\n-old\n+new",
-				linesAdded: 1,
-			}),
-		);
+		const rendered = renderReplayResult({
+			variant: "nativeEdit",
+			path: "src/example.ts",
+			diffString: "--- a/src/example.ts\n+++ b/src/example.ts\n@@ -1 +1 @@\n-old\n+new",
+			linesAdded: 1,
+		});
 		expect(rendered).toContain("edit");
 		expect(rendered).toContain("src/example.ts");
 		expect(rendered).toContain("added 1 line");

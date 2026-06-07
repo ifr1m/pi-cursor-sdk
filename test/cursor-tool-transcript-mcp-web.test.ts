@@ -27,6 +27,24 @@ describe("formatCursorToolTranscript MCP and web", () => {
 		expect(getCursorDisplayDetailSummary(display)).not.toContain("bearer-token-value");
 	});
 
+	it("prefers text MCP summary over earlier non-text blocks", () => {
+		const display = buildCursorPiToolDisplay({
+			name: "mcp",
+			args: { toolName: "image_service" },
+			result: {
+				status: "success",
+				value: {
+					content: [
+						{ type: "image", mimeType: "image/png", data: "base64-image-data" },
+						{ text: { text: "useful text preview" } },
+					],
+				},
+			},
+		});
+
+		expect(display.args.activitySummary).toBe("image_service · useful text preview");
+	});
+
 	it("summarizes Cursor MCP non-text content without dumping raw payloads", () => {
 		const display = buildCursorPiToolDisplay({
 			name: "mcp",

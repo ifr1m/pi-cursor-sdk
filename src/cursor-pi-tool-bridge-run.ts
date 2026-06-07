@@ -27,12 +27,11 @@ import {
 	asToolResultMessage,
 	containsKnownMcpToolName,
 	convertPiContentToMcpContent,
-	getStringField,
-	isRecord,
 	normalizeMcpArgs,
 	snapshotToolToMcpTool,
 	waitForProtocolFlush,
 } from "./cursor-pi-tool-bridge-mcp.js";
+import { asRecord, getFirstStringByKeys } from "./cursor-record-utils.js";
 
 export interface CursorPiToolBridgeRunHost {
 	registerRun(pathname: string, run: CursorPiToolBridgeRunImpl): Promise<string>;
@@ -178,12 +177,13 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 	}
 
 	isBridgeMcpToolCall(toolCall: unknown): boolean {
-		if (!isRecord(toolCall)) return false;
-		const toolName = getStringField(toolCall, ["name", "toolName", "mcpToolName"]);
+		const record = asRecord(toolCall);
+		if (!record) return false;
+		const toolName = getFirstStringByKeys(record, ["name", "toolName", "mcpToolName"], { nonEmpty: true });
 		if (toolName && this.knownMcpToolNames.has(toolName)) return true;
 
 		const isMcpEnvelope = toolName === "mcp" || toolName === MCP_SERVER_NAME;
-		const cursorMcpCallId = getStringField(toolCall, ["call_id", "callId", "id", "toolCallId", "requestId"]);
+		const cursorMcpCallId = getFirstStringByKeys(record, ["call_id", "callId", "id", "toolCallId", "requestId"], { nonEmpty: true });
 		if (cursorMcpCallId && this.knownCursorMcpCallIds.has(cursorMcpCallId) && isMcpEnvelope) return true;
 
 		if (containsKnownMcpToolName(toolCall, this.knownMcpToolNames)) return true;

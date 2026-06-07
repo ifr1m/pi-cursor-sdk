@@ -7,6 +7,7 @@ import type { CursorPiToolBridgeDiagnosticEvent } from "./cursor-pi-tool-bridge-
 import { serializeCursorPiToolBridgeDiagnostic } from "./cursor-pi-tool-bridge-diagnostics.js";
 import type { CursorPiBridgeToolRequest } from "./cursor-pi-tool-bridge-types.js";
 import type { CursorLiveQueuedEvent } from "./cursor-live-run-coordinator.js";
+import { asRecord } from "./cursor-record-utils.js";
 import { getCursorSessionFile } from "./cursor-session-scope.js";
 import { parseEnvBoolean } from "./cursor-env-boolean.js";
 import {
@@ -93,11 +94,10 @@ interface CursorSdkRunLike {
 }
 
 function eventType(value: unknown): string {
-	if (value && typeof value === "object") {
-		if ("type" in value && typeof value.type === "string") return value.type;
-		if ("event" in value && typeof value.event === "string") return value.event;
-		if ("kind" in value && typeof value.kind === "string") return value.kind;
-	}
+	const record = asRecord(value);
+	if (typeof record?.type === "string") return record.type;
+	if (typeof record?.event === "string") return record.event;
+	if (typeof record?.kind === "string") return record.kind;
 	return "unknown";
 }
 
@@ -106,7 +106,7 @@ function resolveCursorSdkEventDebugStderrEnabled(env: Record<string, string | un
 }
 
 function isNodeErrorWithCode(error: unknown, code: string): boolean {
-	return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === code;
+	return asRecord(error)?.code === code;
 }
 
 function snapshotCursorSdkEventDebugRecord(record: unknown): unknown {

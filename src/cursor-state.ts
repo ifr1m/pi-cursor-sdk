@@ -18,6 +18,7 @@ import {
 	getEffectiveCursorSettingSources,
 } from "./cursor-setting-sources.js";
 import { isCursorModel } from "./cursor-model.js";
+import { asRecord } from "./cursor-record-utils.js";
 import { getCursorModelMetadata } from "./model-discovery.js";
 
 const FAST_ENTRY_TYPE = "cursor-fast-state";
@@ -69,13 +70,10 @@ export function parseCursorAgentMode(raw: unknown): AgentModeOption | undefined 
 	return isCursorAgentMode(mode) ? mode : undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function isCursorFastEntryData(value: unknown): value is CursorFastEntryData {
-	if (!isRecord(value)) return false;
-	return (typeof value.modelId === "string" || typeof value.baseModelId === "string") && typeof value.fast === "boolean";
+	const record = asRecord(value);
+	if (!record) return false;
+	return (typeof record.modelId === "string" || typeof record.baseModelId === "string") && typeof record.fast === "boolean";
 }
 
 function getCursorFastEntryModelId(data: CursorFastEntryData): string {
@@ -83,17 +81,19 @@ function getCursorFastEntryModelId(data: CursorFastEntryData): string {
 }
 
 function isCursorModeEntryData(value: unknown): value is CursorModeEntryData {
-	return isRecord(value) && isCursorAgentMode(value.mode);
+	return isCursorAgentMode(asRecord(value)?.mode);
 }
 
 function parseCursorGlobalConfig(value: unknown): CursorGlobalConfig | undefined {
-	if (!isRecord(value)) return undefined;
-	const { fastDefaults } = value;
+	const record = asRecord(value);
+	if (!record) return undefined;
+	const { fastDefaults } = record;
 	if (fastDefaults === undefined) return {};
-	if (!isRecord(fastDefaults)) return undefined;
+	const fastDefaultsRecord = asRecord(fastDefaults);
+	if (!fastDefaultsRecord) return undefined;
 	return {
 		fastDefaults: Object.fromEntries(
-			Object.entries(fastDefaults).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"),
+			Object.entries(fastDefaultsRecord).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"),
 		),
 	};
 }

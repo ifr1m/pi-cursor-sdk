@@ -12,8 +12,6 @@ import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
 import {
 	assembleCursorReplayActivityDetails,
 	assembleCursorReplayGenerateImageDetails,
-	buildCursorReplayNativeEditDetails,
-	buildCursorReplayNativeWriteDetails,
 	CURSOR_REPLAY_UNREGISTERED_ACTIVITY_TOOL_NAME,
 	type CursorReplayToolDetails,
 } from "./cursor-replay-tool-details.js";
@@ -26,7 +24,6 @@ import {
 	getNumber,
 	getString,
 	limitText,
-	stringifyUnknown,
 	truncateArg,
 	type CursorPiToolDisplay,
 	type NormalizedResult,
@@ -139,7 +136,7 @@ function buildActivityReplayDisplay(
 	sourceToolName: NeutralActivityReplayToolName,
 	context: ToolDisplayContext,
 ): CursorPiToolDisplay {
-	const spec = TOOL_DISPLAY_SPECS[sourceToolName];
+	const spec = TOOL_DISPLAY_IMPLEMENTATIONS[sourceToolName];
 	const activity = getCursorToolActivityReplaySpec(sourceToolName);
 	if (!activity) throw new Error(`Missing activity replay spec for ${sourceToolName}`);
 	const activityTitle = getCursorReplayActivityTitle(sourceToolName) ?? buildGenericUnknownToolActivityTitle(sourceToolName);
@@ -160,7 +157,7 @@ function buildActivityReplayDisplay(
 }
 
 function buildGenerateImageReplayDisplay(context: ToolDisplayContext): CursorPiToolDisplay {
-	const spec = TOOL_DISPLAY_SPECS.generateImage;
+	const spec = TOOL_DISPLAY_IMPLEMENTATIONS.generateImage;
 	const replay = getCursorToolGenerateImageReplaySpec("generateImage");
 	if (!replay) throw new Error("Missing generate image replay spec");
 	const activityTitle = getCursorReplayActivityTitle("generateImage") ?? "Cursor image generation";
@@ -237,14 +234,15 @@ function buildEditPiToolDisplay(context: ToolDisplayContext): CursorPiToolDispla
 	const activityTitle = getCursorToolActivityTitle("edit");
 	const activityArgs = buildCursorActivityDisplayArgs(baseActivityArgs, activityTitle, displayPath);
 	const contentText = formatEdit(activityArgs, result, options);
-	const details = buildCursorReplayNativeEditDetails({
+	const details: CursorReplayToolDetails = {
+		variant: "nativeEdit",
 		path: displayPath,
 		linesAdded: getNumber(value, "linesAdded"),
 		linesRemoved: getNumber(value, "linesRemoved"),
 		diffString: normalizedDiff,
 		diff: normalizedDiff,
 		firstChangedLine: getNumber(value, "firstChangedLine"),
-	});
+	};
 	if (nativeEditArgs) {
 		return {
 			toolName: "edit",
@@ -284,13 +282,14 @@ function buildWritePiToolDisplay(context: ToolDisplayContext): CursorPiToolDispl
 	const displayArgs = buildWriteDisplayArgs(args, options);
 	const displayPath = typeof args.path === "string" ? formatDisplayPath(args.path, options.cwd) : undefined;
 	const contentText = formatWrite(args, result, options).trimEnd();
-	const details = buildCursorReplayNativeWriteDetails({
+	const details: CursorReplayToolDetails = {
+		variant: "nativeWrite",
 		path: displayPath,
 		linesCreated: getNumber(value, "linesCreated"),
 		fileSize: getNumber(value, "fileSize"),
 		fileContentAfterWrite: getString(value, "fileContentAfterWrite"),
 		expandedText: contentText,
-	});
+	};
 	if (content === undefined) {
 		const activityTitle = getCursorToolActivityTitle("write");
 		return buildReplaySummaryDisplay(
@@ -440,12 +439,8 @@ const TOOL_DISPLAY_IMPLEMENTATIONS: Record<CursorNormalizedToolName, ToolDisplay
 
 export const CURSOR_TOOL_DISPLAY_SPEC_KEYS = CURSOR_KNOWN_NORMALIZED_TOOL_NAMES;
 
-const TOOL_DISPLAY_SPECS = Object.fromEntries(
-	CURSOR_KNOWN_NORMALIZED_TOOL_NAMES.map((name) => [name, TOOL_DISPLAY_IMPLEMENTATIONS[name]]),
-) as Record<CursorNormalizedToolName, ToolDisplaySpec>;
-
 function getToolDisplaySpec(name: string): ToolDisplaySpec | undefined {
-	if (Object.hasOwn(TOOL_DISPLAY_SPECS, name)) return TOOL_DISPLAY_SPECS[name as CursorNormalizedToolName];
+	if (Object.hasOwn(TOOL_DISPLAY_IMPLEMENTATIONS, name)) return TOOL_DISPLAY_IMPLEMENTATIONS[name as CursorNormalizedToolName];
 	return undefined;
 }
 

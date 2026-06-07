@@ -1,3 +1,4 @@
+import { asRecord } from "./cursor-record-utils.js";
 import { isCursorReplayActivitySourceName, type CursorReplayActivitySourceName } from "./cursor-replay-source-names.js";
 
 /** Replay detail variants keyed by replay card disposition, not SDK source tool alone. */
@@ -110,10 +111,6 @@ export type CursorReplayGenerateImageDetailFields = Pick<
 	CursorReplayGenerateImageDetails,
 	"summary" | "expandedText" | "imagePath" | "imageDisplayPath" | "imageMimeType"
 >;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 function readOptionalString(record: Record<string, unknown>, key: string): string | undefined {
 	const value = record[key];
@@ -237,8 +234,6 @@ export function resolveIncompleteReplayActivitySourceToolName(
 	return resolveParseActivitySourceToolName(sourceToolName);
 }
 
-type CursorReplayVariantParser = (record: Record<string, unknown>) => CursorReplayToolDetails | undefined;
-
 function parseActivityVariantDetails(record: Record<string, unknown>): CursorReplayActivityDetails | undefined {
 	const title = readOptionalString(record, "title")?.trim();
 	if (!title) return undefined;
@@ -249,31 +244,23 @@ function parseActivityVariantDetails(record: Record<string, unknown>): CursorRep
 	);
 }
 
-const CURRENT_REPLAY_VARIANT_PARSERS: Readonly<Record<CursorReplayToolDetailsVariant, CursorReplayVariantParser>> = {
-	nativeEdit: parseCursorReplayNativeEditDetails,
-	nativeWrite: parseCursorReplayNativeWriteDetails,
-	generateImage: parseCursorReplayGenerateImageDetails,
-	activity: parseActivityVariantDetails,
-	genericFallback: (record) => parseCursorReplayGenericFallbackDetails(record, readSourceToolName(record) ?? "tool"),
-};
-
 export function parseCursorReplayToolDetails(value: unknown): CursorReplayToolDetails | undefined {
-	if (!isRecord(value)) return undefined;
-	const variant = readVariant(value);
-	if (!variant) return undefined;
-	return CURRENT_REPLAY_VARIANT_PARSERS[variant as CursorReplayToolDetailsVariant]?.(value);
-}
-
-export function buildCursorReplayNativeEditDetails(
-	fields: Omit<CursorReplayNativeEditDetails, "variant">,
-): CursorReplayNativeEditDetails {
-	return { variant: "nativeEdit", ...fields };
-}
-
-export function buildCursorReplayNativeWriteDetails(
-	fields: Omit<CursorReplayNativeWriteDetails, "variant">,
-): CursorReplayNativeWriteDetails {
-	return { variant: "nativeWrite", ...fields };
+	const record = asRecord(value);
+	if (!record) return undefined;
+	switch (readVariant(record)) {
+		case "nativeEdit":
+			return parseCursorReplayNativeEditDetails(record);
+		case "nativeWrite":
+			return parseCursorReplayNativeWriteDetails(record);
+		case "generateImage":
+			return parseCursorReplayGenerateImageDetails(record);
+		case "activity":
+			return parseActivityVariantDetails(record);
+		case "genericFallback":
+			return parseCursorReplayGenericFallbackDetails(record, readSourceToolName(record) ?? "tool");
+		default:
+			return undefined;
+	}
 }
 
 export function assembleCursorReplayActivityDetails(

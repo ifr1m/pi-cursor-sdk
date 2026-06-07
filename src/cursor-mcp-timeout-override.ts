@@ -151,8 +151,6 @@ export function restoreCursorMcpToolTimeoutOverride(): void {
 	installedConnectTimeoutMs = DEFAULT_CURSOR_MCP_CONNECT_TIMEOUT_MS;
 }
 
-export const restoreCursorMcpToolTimeoutOverrideForTests = restoreCursorMcpToolTimeoutOverride;
-
 export const cursorMcpToolTimeoutOverrideDefaults = {
 	cursorSdkDefaultTimeoutMs: CURSOR_SDK_MCP_DEFAULT_TIMEOUT_MS,
 	defaultOverrideTimeoutMs: DEFAULT_CURSOR_MCP_TOOL_TIMEOUT_MS,

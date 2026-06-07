@@ -7,7 +7,7 @@ import {
 	fingerprintApiKey,
 	getModelCacheTtlMs,
 	isModelCacheDisabled,
-	loadAnyCachedModels,
+	loadAnyCachedModelCatalog,
 	loadFreshCachedModels,
 	saveModelListCache,
 	__testUtils,
@@ -71,13 +71,13 @@ describe("model-list-cache", () => {
 		saveModelListCache(fp, MODELS);
 		const future = Date.now() + __testUtils.DEFAULT_TTL_MS + 1000;
 		expect(loadFreshCachedModels(fp, future)).toBeUndefined();
-		expect(loadAnyCachedModels(fp)).toEqual(MODELS);
+		expect(loadAnyCachedModelCatalog(fp)?.models).toEqual(MODELS);
 	});
 
 	it("ignores a corrupt cache file", () => {
 		writeFileSync(__testUtils.getCachePath(), "{ not json");
 		expect(loadFreshCachedModels(fp)).toBeUndefined();
-		expect(loadAnyCachedModels(fp)).toBeUndefined();
+		expect(loadAnyCachedModelCatalog(fp)).toBeUndefined();
 	});
 
 	it.each([
@@ -92,7 +92,7 @@ describe("model-list-cache", () => {
 		);
 
 		expect(loadFreshCachedModels(fp)).toBeUndefined();
-		expect(loadAnyCachedModels(fp)).toBeUndefined();
+		expect(loadAnyCachedModelCatalog(fp)).toBeUndefined();
 	});
 
 	it.each([
@@ -118,14 +118,14 @@ describe("model-list-cache", () => {
 		);
 
 		expect(loadFreshCachedModels(fp)).toBeUndefined();
-		expect(loadAnyCachedModels(fp)).toBeUndefined();
+		expect(loadAnyCachedModelCatalog(fp)).toBeUndefined();
 	});
 
 	it("disables read and write when the disable env flag is set", () => {
 		process.env[__testUtils.DISABLE_ENV_VAR] = "1";
 		saveModelListCache(fp, MODELS);
 		expect(loadFreshCachedModels(fp)).toBeUndefined();
-		expect(loadAnyCachedModels(fp)).toBeUndefined();
+		expect(loadAnyCachedModelCatalog(fp)).toBeUndefined();
 	});
 
 	it("honors a custom TTL from the environment", () => {
