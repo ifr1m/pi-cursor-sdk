@@ -178,11 +178,11 @@ Lifecycle rules:
 
 As Cursor SDK tool completions arrive, the extension mirrors native Codex ordering by ending a tool-use turn, letting pi render the recorded tool results, then continuing with live post-tool Cursor thinking/text, later Cursor tool batches, or Cursor's final answer as the next assistant turn. For plan-mode runs, neutral Cursor plan/todo cards can therefore appear before the final Cursor plan text.
 
-Bridged pi tool calls follow the same visible pi `toolUse` turn shape, but they are real pi tool executions rather than replayed Cursor results. Split-run usage accounting keeps Cursor SDK internal counters out of pi usage: each live Cursor prompt is counted once, replay/bridge tool-call turns include visible assistant activity in output estimates, consumed tool results are counted once as input on the following assistant turn, and `usage.totalTokens` remains the replayable Cursor prompt/context estimate.
+Bridged pi tool calls follow the same visible pi `toolUse` turn shape, but they are real pi tool executions rather than replayed Cursor results. Usage accounting keeps Cursor SDK internal counters out of pi usage and reports an additive replayable-context estimate: `output` estimates visible assistant activity, `input` estimates the replayable Cursor context before that output, cache fields are zero, and `usage.totalTokens = input + output + cacheRead + cacheWrite`.
 
 For shell replay, completed `stdout` / `stderr` remain the primary source. While exactly one shell call is active, the provider also emits a bounded scrubbed preview of the first few `shell-output-delta` stdout/stderr chunks so long-running commands show visible progress before completion. If a successful completed shell result is empty, the replay card uses unambiguous buffered delta data as display-only fallback data. Overlapping shell calls make delta attribution ambiguous, so those fallback/progress deltas are dropped rather than guessed. `(no output)` is kept only when no completed output or safe delta fallback is available.
 
-Non-interactive and session consumers still receive bounded scrubbed transcript data so `pi -p` keeps printing normal assistant text.
+JSON and RPC consumers receive structured replay for completed Cursor host tools when replay wrappers are active: host activity is emitted as pi `toolcall_*` / `tool_execution_*` events backed by recorded Cursor results, not by re-running the host tool. Print mode stays text-first so `pi -p` keeps printing normal assistant text. When replay wrappers are inactive, such as with `--no-tools`, non-interactive consumers fall back to bounded scrubbed transcript data in thinking blocks.
 
 ## Replay-name policy
 

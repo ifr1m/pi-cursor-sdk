@@ -18,7 +18,7 @@ const CARD_PATTERNS = [
 	{ id: "write", pattern: /^\s*\+.*beta\s*$/i },
 	{ id: "edit-diff", pattern: /^\s*\+.*gamma\s*$/i },
 	{ id: "shell-failure", pattern: /^\s*(?:native shell failure|Command exited with code 7)\s*$/i },
-	{ id: "bridge-read-success", pattern: /^\s*read \.\/package\.json\s*$/i },
+	{ id: "bridge-read-success", pattern: /^\s*read (?:\.\/package\.json|.*[\\/]package\.json)\s*$/i },
 	{ id: "bridge-read-failure", pattern: /^\s*(?:read \.\/definitely-missing-platform-smoke-file\.txt|ENOENT: no such file)\s*/i },
 	{ id: "bridge-shell-success", pattern: /^\s*bridge visual smoke\s*$/i },
 	{ id: "footer-status", pattern: /\bcomposer-2-5\b|\bcomposer-2\.5\b/i },

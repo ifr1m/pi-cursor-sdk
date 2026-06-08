@@ -105,8 +105,8 @@ describe("smoke tooling package checks", () => {
 import { detectCards, assertRequiredCards } from "./scripts/platform-smoke/card-detect.mjs";
 import { isSafeBundlePath } from "./scripts/platform-smoke/targets.mjs";
 const promptOnly = detectCards("1. call pi__read on ./package.json\n2. grep ./README.md\n");
-const rendered = detectCards("read ./package.json\ngrep /pi-cursor-sdk/ in C:/workspace/README.md\nbridge visual smoke\nENOENT: no such file or directory\ncomposer-2-5\n");
-const checks = assertRequiredCards(".", rendered, ["read", "grep", "bridge-shell-success", "bridge-read-failure", "footer-status"]);
+const rendered = detectCards("read /workspace/pi-cursor-sdk/package.json\ngrep /pi-cursor-sdk/ in C:/workspace/README.md\nbridge visual smoke\nENOENT: no such file or directory\ncomposer-2-5\n");
+const checks = assertRequiredCards(".", rendered, ["bridge-read-success", "grep", "bridge-shell-success", "bridge-read-failure", "footer-status"]);
 const result = {
   promptCardCount: promptOnly.length,
   renderedOk: checks.every((check) => check.ok),

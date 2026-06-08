@@ -131,7 +131,7 @@ BRIDGE_MATRIX_OK bash_ok=<yes/no> read_ok=<yes/no> read_missing_error=<yes/no>`,
 			{ id: "bridge-shell-success", toolName: "bash", isError: false, contains: "bridge visual smoke" },
 		],
 		visualEvidence: [
-			{ id: "bridge-read-success", pattern: "^\\s*read \\./package\\.json", jsonlResultId: "bridge-read-success" },
+			{ id: "bridge-read-success", pattern: "^\\s*read (?:\\./package\\.json|.*[\\\\/]package\\.json)", jsonlResultId: "bridge-read-success" },
 			{ id: "bridge-read-failure", pattern: "^\\s*read \\./definitely-missing-platform-smoke-file\\.txt|ENOENT: no such file", jsonlResultId: "bridge-read-failure" },
 			{ id: "bridge-shell-success", pattern: "^\\s*bridge visual smoke\\s*$", jsonlResultId: "bridge-shell-success" },
 		],

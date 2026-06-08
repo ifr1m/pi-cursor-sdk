@@ -13,18 +13,25 @@ export const registeredNativeToolNames = new Set<string>();
 export const skippedNativeToolNames = new Set<string>();
 export const nativeToolResults = new Map<string, CursorNativeToolDisplayItem>();
 
+let nativeToolDisplayRuntimeRequested = false;
+
 export function readBooleanEnv(name: string, env: Record<string, string | undefined> = process.env): boolean | undefined {
 	return parseOptionalEnvBoolean(env[name]);
 }
 
-export function isCursorNativeToolDisplayRequested(): boolean {
+export function isCursorNativeToolDisplayRequested(mode?: string): boolean {
 	const override = readBooleanEnv(NATIVE_CURSOR_TOOL_DISPLAY_ENV);
 	if (override !== undefined) return override;
+	if (mode) return mode === "tui" || mode === "json" || mode === "rpc";
 	return process.stdout.isTTY === true;
 }
 
-export function isCursorNativeToolRegistrationRequested(): boolean {
-	return readBooleanEnv(NATIVE_CURSOR_TOOL_REGISTRATION_ENV) !== false && isCursorNativeToolDisplayRequested();
+export function isCursorNativeToolRegistrationRequested(mode?: string): boolean {
+	return mode !== "print" && readBooleanEnv(NATIVE_CURSOR_TOOL_REGISTRATION_ENV) !== false && isCursorNativeToolDisplayRequested(mode);
+}
+
+export function setCursorNativeToolDisplayRuntimeRequested(requested: boolean): void {
+	nativeToolDisplayRuntimeRequested = requested;
 }
 
 export function isCursorNativeToolDisplayEnabled(): boolean {
@@ -32,7 +39,7 @@ export function isCursorNativeToolDisplayEnabled(): boolean {
 }
 
 export function isCursorNativeToolDisplayRuntimeEnabled(): boolean {
-	return isCursorNativeToolDisplayRequested() && registeredNativeToolNames.size > 0;
+	return nativeToolDisplayRuntimeRequested && readBooleanEnv(NATIVE_CURSOR_TOOL_DISPLAY_ENV) !== false && registeredNativeToolNames.size > 0;
 }
 
 export function canRenderCursorToolNatively(toolName: string): boolean {
@@ -70,9 +77,11 @@ export function isCursorFileMutationToolName(toolName: string): toolName is "edi
 export const __testUtils = {
 	nativeToolResultCount: () => nativeToolResults.size,
 	registerNativeToolNameForTests(toolName: string): void {
+		nativeToolDisplayRuntimeRequested = true;
 		registeredNativeToolNames.add(toolName);
 	},
 	reset(): void {
+		nativeToolDisplayRuntimeRequested = false;
 		registeredNativeToolNames.clear();
 		skippedNativeToolNames.clear();
 		nativeToolResults.clear();

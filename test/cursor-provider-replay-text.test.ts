@@ -604,9 +604,8 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 
 		expect(finalDone.reason).toBe("stop");
 		expect(finalDone.message.content).toEqual([]);
-		expect(finalDone.message.usage.input).toBe(estimateCursorPromptMessageTokens(toolResultMessage));
-		expect(finalDone.message.usage.input).toBeLessThan(firstDone.message.usage.input);
+		expect(finalDone.message.usage.input).toBeGreaterThan(estimateCursorPromptMessageTokens(toolResultMessage));
 		expect(finalDone.message.usage.output).toBe(0);
-		expect(finalDone.message.usage.totalTokens).toBeGreaterThan(finalDone.message.usage.input);
+		expect(finalDone.message.usage.totalTokens).toBe(finalDone.message.usage.input);
 	});
 });

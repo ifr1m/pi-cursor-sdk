@@ -57,9 +57,11 @@ export function estimateCursorContextTotalTokens(partial: AssistantMessage, mode
 }
 
 export function applyCursorApproximateUsage(partial: AssistantMessage, model: Model<Api>, context: Context, sessionInputTokens: number): void {
-	partial.usage.input = sessionInputTokens;
-	partial.usage.output = estimateCursorAssistantSessionOutputTokens(partial);
+	const outputTokens = estimateCursorAssistantSessionOutputTokens(partial);
+	const contextTotalTokens = estimateCursorContextTotalTokens(partial, model, context);
+	partial.usage.input = contextTotalTokens > 0 ? Math.max(0, contextTotalTokens - outputTokens) : sessionInputTokens;
+	partial.usage.output = outputTokens;
 	partial.usage.cacheRead = 0;
 	partial.usage.cacheWrite = 0;
-	partial.usage.totalTokens = estimateCursorContextTotalTokens(partial, model, context);
+	partial.usage.totalTokens = partial.usage.input + partial.usage.output + partial.usage.cacheRead + partial.usage.cacheWrite;
 }

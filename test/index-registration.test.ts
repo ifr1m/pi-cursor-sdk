@@ -196,20 +196,58 @@ describe("extension registration and discovery", () => {
 		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
 	});
 
-	it("does not register TUI native replay tools in non-TUI modes", async () => {
-		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+	it.each(["json", "rpc"] as const)("registers native replay tools in %s mode for structured host-tool events", async (mode) => {
 		mockedDiscover.mockResolvedValueOnce([]);
 		const pi = createExtensionPi();
 		await extensionFactory(pi);
 
-		await pi.runSessionStart({ mode: "rpc", hasUI: true });
-		await pi.runBeforeAgentStart({ mode: "rpc", hasUI: true, model: makeModel("composer-2.5") });
-		await pi.runTurnStart({ mode: "rpc", hasUI: true, model: makeModel("composer-2.5") });
+		await pi.runSessionStart({ mode, hasUI: false });
+		await pi.runBeforeAgentStart({ mode, hasUI: false, model: makeModel("composer-2.5") });
+		await pi.runTurnStart({ mode, hasUI: false, model: makeModel("composer-2.5") });
+
+		expect(pi._tools.map((tool) => tool.name)).toContain("cursor");
+		expect(pi._tools.map((tool) => tool.name)).toContain("grep");
+		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
+		expect(pi._activeToolNames()).toContain("cursor");
+		expect(pi._activeToolNames()).toContain("grep");
+	});
+
+	it("keeps print mode native replay registration off by default", async () => {
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createExtensionPi();
+		await extensionFactory(pi);
+
+		await pi.runSessionStart({ mode: "print", hasUI: false });
+		await pi.runBeforeAgentStart({ mode: "print", hasUI: false, model: makeModel("composer-2.5") });
+		await pi.runTurnStart({ mode: "print", hasUI: false, model: makeModel("composer-2.5") });
 
 		expect(pi._tools.map((tool) => tool.name)).toEqual([CURSOR_ASK_QUESTION_TOOL_NAME, CURSOR_ACTIVATE_SKILL_TOOL_NAME]);
 		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
 		expect(pi._activeToolNames()).not.toContain("cursor");
 		expect(pi._activeToolNames()).not.toContain("grep");
+	});
+
+	it("deactivates non-core native replay tools when a later turn switches to print mode", async () => {
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createExtensionPi();
+		await extensionFactory(pi);
+
+		await pi.runSessionStart({ mode: "json", hasUI: false });
+		await pi.runTurnStart({ mode: "json", hasUI: false, model: makeModel("composer-2.5") });
+
+		expect(pi._activeToolNames()).toContain("cursor");
+		expect(pi._activeToolNames()).toContain("grep");
+
+		await pi.runTurnStart({ mode: "print", hasUI: false, model: makeModel("composer-2.5") });
+
+		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
+		expect(pi._activeToolNames()).not.toContain("cursor");
+		expect(pi._activeToolNames()).not.toContain("grep");
+
+		await pi.runTurnStart({ mode: "json", hasUI: false, model: makeModel("composer-2.5") });
+
+		expect(pi._activeToolNames()).toContain("cursor");
+		expect(pi._activeToolNames()).toContain("grep");
 	});
 
 	it("asks Cursor questions through pi UI selection", async () => {

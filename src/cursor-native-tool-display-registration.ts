@@ -13,6 +13,7 @@ import {
 	NATIVE_CURSOR_TOOL_DISPLAY_ENV,
 	readBooleanEnv,
 	registeredNativeToolNames,
+	setCursorNativeToolDisplayRuntimeRequested,
 	skippedNativeToolNames,
 } from "./cursor-native-tool-display-state.js";
 import { isCursorReplayToolName } from "./cursor-tool-presentation-registry.js";
@@ -70,37 +71,40 @@ function hasAttemptedNativeCursorToolRegistration(): boolean {
 	return registeredNativeToolNames.size > 0 || skippedNativeToolNames.size > 0;
 }
 
+function removeRegisteredNonCoreNativeCursorTools(pi: CursorNativeToolActivationApi): void {
+	if (registeredNativeToolNames.size === 0) return;
+	const activeToolNames = new Set(pi.getActiveTools());
+	let changed = false;
+	for (const toolName of registeredNativeToolNames) {
+		if (isCursorCorePiReplayToolName(toolName)) continue;
+		if (!activeToolNames.delete(toolName)) continue;
+		changed = true;
+	}
+	if (changed) pi.setActiveTools([...activeToolNames]);
+}
+
 export function syncRegisteredNativeCursorToolsForModel(
 	pi: CursorNativeToolActivationApi,
 	model: ExtensionContext["model"],
 ): void {
 	if (registeredNativeToolNames.size === 0) return;
+	if (!isCursorModel(model)) {
+		removeRegisteredNonCoreNativeCursorTools(pi);
+		return;
+	}
 	const activeToolNames = new Set(pi.getActiveTools());
 	let changed = false;
-	if (isCursorModel(model)) {
-		for (const toolName of registeredNativeToolNames) {
-			if (isCursorReplayToolName(toolName) && !CURSOR_MODEL_ACTIVE_REPLAY_TOOL_NAMES.some((activeReplayToolName) => activeReplayToolName === toolName)) continue;
-			if (activeToolNames.has(toolName)) continue;
-			activeToolNames.add(toolName);
-			changed = true;
-		}
-	} else {
-		for (const toolName of registeredNativeToolNames) {
-			if (isCursorCorePiReplayToolName(toolName)) continue;
-			if (!activeToolNames.delete(toolName)) continue;
-			changed = true;
-		}
+	for (const toolName of registeredNativeToolNames) {
+		if (isCursorReplayToolName(toolName) && !CURSOR_MODEL_ACTIVE_REPLAY_TOOL_NAMES.some((activeReplayToolName) => activeReplayToolName === toolName)) continue;
+		if (activeToolNames.has(toolName)) continue;
+		activeToolNames.add(toolName);
+		changed = true;
 	}
 	if (changed) pi.setActiveTools([...activeToolNames]);
 }
 
 async function ensureNativeCursorToolsRegisteredForModel(pi: CursorNativeToolRegistryApi, ctx: NativeRegistrationContext): Promise<void> {
-	if (!isCursorNativeToolRegistrationRequested()) {
-		registeredNativeToolNames.clear();
-		skippedNativeToolNames.clear();
-		return;
-	}
-	if (ctx.mode !== "tui" || !isCursorModel(ctx.model) || hasAttemptedNativeCursorToolRegistration()) return;
+	if (!isCursorModel(ctx.model) || hasAttemptedNativeCursorToolRegistration()) return;
 
 	const nonCoreToolNames = NATIVE_CURSOR_TOOL_NAMES.filter((toolName) => !isCursorCorePiReplayToolName(toolName));
 	const skippedToolNames = [
@@ -111,9 +115,13 @@ async function ensureNativeCursorToolsRegisteredForModel(pi: CursorNativeToolReg
 }
 
 async function ensureThenSyncNativeCursorToolsForModel(pi: CursorNativeToolRegistryApi, ctx: NativeRegistrationContext): Promise<void> {
-	if (isCursorModel(ctx.model) && !hasAttemptedNativeCursorToolRegistration()) {
-		await ensureNativeCursorToolsRegisteredForModel(pi, ctx);
+	const requested = isCursorNativeToolRegistrationRequested(ctx.mode);
+	setCursorNativeToolDisplayRuntimeRequested(requested);
+	if (!requested) {
+		removeRegisteredNonCoreNativeCursorTools(pi);
+		return;
 	}
+	await ensureNativeCursorToolsRegisteredForModel(pi, ctx);
 	syncRegisteredNativeCursorToolsForModel(pi, ctx.model);
 }
 
