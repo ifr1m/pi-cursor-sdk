@@ -36,6 +36,11 @@ function scrubLifecycleDetail(value: string | undefined, apiKey?: string): strin
 	return scrubbed;
 }
 
+function scrubShellLifecycleDetail(value: string | undefined, apiKey?: string): string | undefined {
+	if (!value?.trim()) return undefined;
+	return truncateCursorDisplayLine(scrubSensitiveText(value, apiKey));
+}
+
 function buildCursorToolLifecycleLabelFromVisibility(
 	visibility: CursorToolVisibility,
 	apiKey?: string,
@@ -47,7 +52,7 @@ function buildCursorToolLifecycleLabelFromVisibility(
 			return scrubLifecycleDetail(getString(args, "description"), apiKey) ?? "task";
 		}
 		case "shell": {
-			return scrubLifecycleDetail(getString(args, "command") ?? getString(args, "cmd"), apiKey);
+			return scrubShellLifecycleDetail(getString(args, "command") ?? getString(args, "cmd"), apiKey);
 		}
 		case "mcp": {
 			return scrubLifecycleDetail(getString(args, "toolName"), apiKey) ?? "mcp";

@@ -169,7 +169,7 @@ Most Cursor tool visibility is completion-based: the completed replay card (or b
 Lifecycle rules:
 
 - Eligible tools include `task`, `shell`, `mcp`, `generateImage`, `recordScreen`, `semSearch`, web search/fetch activity, and plan/todo activity. Fast local tools such as `read`, `grep`, and `glob` do not get lifecycle lines in normal cases.
-- Lifecycle text is emitted as a single bounded, scrubbed thinking line such as `Cursor MCP: external_search` or `Cursor shell: shell`. Shell pending labels intentionally omit command text; the completed replay card remains the source of truth for recorded shell activity. Lifecycle lines are not separate permanent replay cards and do not rerun tools.
+- Lifecycle text is emitted as a single bounded, scrubbed thinking line such as `Cursor MCP: external_search` or `Cursor shell: npm test`. Shell pending labels show a scrubbed/truncated command preview, matching pi's native bash UX; the completed replay card remains the source of truth for recorded shell results. Lifecycle lines are not separate permanent replay cards and do not rerun tools.
 - A short defer window coalesces fast start+complete pairs: if a tool completes before the defer elapses, only the completed replay card/trace is shown.
 - pi bridge MCP calls (`pi__*`) are excluded because pi already shows the real pi tool execution path.
 - Implementation: `src/cursor-tool-lifecycle.ts` (eligibility/labels) and `src/cursor-provider-turn-coordinator.ts` (defer, emit, bridge exclusion).
@@ -180,7 +180,7 @@ As Cursor SDK tool completions arrive, the extension mirrors native Codex orderi
 
 Bridged pi tool calls follow the same visible pi `toolUse` turn shape, but they are real pi tool executions rather than replayed Cursor results. Split-run usage accounting keeps Cursor SDK internal counters out of pi usage: each live Cursor prompt is counted once, replay/bridge tool-call turns include visible assistant activity in output estimates, consumed tool results are counted once as input on the following assistant turn, and `usage.totalTokens` remains the replayable Cursor prompt/context estimate.
 
-For shell replay, completed `stdout` / `stderr` remain the primary source. If a successful completed shell result is empty and Cursor emitted unambiguous `shell-output-delta` data while exactly one shell call was active, the replay card uses that delta as display-only fallback data. Overlapping shell calls make delta attribution ambiguous, so those fallback deltas are dropped rather than guessed. `(no output)` is kept only when no completed output or safe delta fallback is available.
+For shell replay, completed `stdout` / `stderr` remain the primary source. While exactly one shell call is active, the provider also emits a bounded scrubbed preview of the first few `shell-output-delta` stdout/stderr chunks so long-running commands show visible progress before completion. If a successful completed shell result is empty, the replay card uses unambiguous buffered delta data as display-only fallback data. Overlapping shell calls make delta attribution ambiguous, so those fallback/progress deltas are dropped rather than guessed. `(no output)` is kept only when no completed output or safe delta fallback is available.
 
 Non-interactive and session consumers still receive bounded scrubbed transcript data so `pi -p` keeps printing normal assistant text.
 

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.39 - 2026-06-08
+
+### Fixed
+
+- Surface Cursor shell command starts with scrubbed command previews, including path-bearing commands, and stream bounded `shell-output-delta` stdout/stderr progress before completion so users do not stare at only pi's generic `Working...` state.
+- Mark generic Cursor SDK run failures and Cursor SDK network failures with pi-native retry classifier phrases so pi's existing auto-retry/backoff flow can recover transient failures automatically instead of requiring a manual follow-up message.
+
 ## 0.1.38 - 2026-06-08
 
 ### Added

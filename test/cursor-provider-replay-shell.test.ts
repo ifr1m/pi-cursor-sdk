@@ -90,6 +90,7 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 
+		expect(collectThinkingDeltas(firstEvents)).toContain("Cursor shell stdout: background job done");
 		expect(firstDone.reason).toBe("toolUse");
 		expect(toolCall!.name).toBe("bash");
 		expect(toolCall!.arguments).toEqual({ command });
@@ -163,9 +164,9 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const trace = collectThinkingDeltas(events);
 
+		expect(trace).toContain("Cursor shell stdout: partial first output");
 		expect(trace).toContain("$ sleep 1");
 		expect(trace).toContain("$ sleep 2");
-		expect(trace).not.toContain("partial first output");
 		expect(trace).not.toContain("ambiguous output");
 		expect(trace.match(/\(no output\)/g)).toHaveLength(2);
 	});
@@ -203,7 +204,7 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const trace = collectThinkingDeltas(events);
 
+		expect(trace).toContain("Cursor shell stdout: delta output");
 		expect(trace).toContain("completed output");
-		expect(trace).not.toContain("delta output");
 	});
 });

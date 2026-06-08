@@ -361,11 +361,11 @@ Actual Cursor runs still need a key from `/login`, `CURSOR_API_KEY`, or `--api-k
 
 You may be seeing fallback startup models or a missing/invalid Cursor SDK API key. Cursor Agent CLI/Desktop login is not reused by this extension. In interactive pi, run `/login`, choose `Use an API key`, choose `Cursor`, paste the key, then run `/cursor-refresh-models`.
 
-When a Cursor run fails after auth is configured, pi now surfaces scrubbed provider detail instead of only `Cursor SDK run failed`. Generic SDK failures include safe run metadata such as model id, a short run id prefix, and duration when available. Check the red toast or assistant error message for that detail before retrying.
+When a Cursor run fails after auth is configured, pi now surfaces scrubbed provider detail instead of only `Cursor SDK run failed`. Generic SDK failures include safe run metadata such as model id, a short run id prefix, and duration when available, and are phrased as pi retryable provider errors so automatic retry/backoff can recover transient SDK failures.
 
 Aborted runs now include a likely cause when determinable, for example `Cancelled: prompt interrupted.` for user cancel or `Cancelled: Cursor SDK run was cancelled.` for SDK-side cancellation.
 
-Network failures from the Cursor SDK connect layer (for example `ConnectError: read ETIMEDOUT` or `ConnectError: [aborted] read ECONNRESET`) surface as a scrubbed retry hint instead of crashing pi. Check your connection and retry; persistent failures may indicate a transient Cursor service or network issue.
+Network failures from the Cursor SDK connect layer (for example `ConnectError: read ETIMEDOUT` or `ConnectError: [aborted] read ECONNRESET`) surface as scrubbed `Network error` messages instead of crashing pi, matching pi's native auto-retry classifier. Persistent failures may indicate a transient Cursor service or network issue.
 
 You can also restart pi with a key in the same shell or launcher that starts pi:
 

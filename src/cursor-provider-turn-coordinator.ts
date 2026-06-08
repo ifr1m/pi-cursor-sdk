@@ -24,6 +24,7 @@ import {
 import { resolveCursorToolCompletion } from "./cursor-provider-turn-sdk-normalizer.js";
 import {
 	CursorShellOutputTracker,
+	formatCursorShellOutputProgressText,
 	getCursorShellOutputDelta,
 	isCursorShellToolCall,
 } from "./cursor-provider-turn-shell-output.js";
@@ -210,7 +211,17 @@ export class CursorSdkTurnCoordinator {
 		}
 		if (update.type === "shell-output-delta") {
 			const delta = getCursorShellOutputDelta(update);
-			if (delta) this.shellOutput.appendShellOutputDelta(delta);
+			if (delta) {
+				const progress = this.shellOutput.appendShellOutputDelta(delta);
+				const progressText = progress ? formatCursorShellOutputProgressText(progress, this.resolvedApiKey) : undefined;
+				if (progressText) {
+					if (this.liveRun) {
+						cursorLiveRuns.queueEvent(this.liveRun, { type: "thinking-delta", text: progressText });
+					} else {
+						this.contentEmitter.appendThinkingDelta(progressText);
+					}
+				}
+			}
 			return;
 		}
 		if (update.type === "summary") {

@@ -35,7 +35,7 @@ describe("cursor tool lifecycle", () => {
 		expect(progress).toBe("Cursor MCP: external_search\n");
 	});
 
-	it("does not leak endpoint URLs or absolute private paths in lifecycle labels", () => {
+	it("does not leak endpoint URLs or absolute private paths in non-shell lifecycle labels", () => {
 		const secretPath = "/Users/test/Projects/secret-project/src/file.ts";
 		const secretUrl = "https://api.example.com/v1/secret-endpoint";
 		const unsafeDetailCases = [
@@ -50,8 +50,18 @@ describe("cursor tool lifecycle", () => {
 		] as const;
 
 		expect(buildCursorToolLifecycleLabel({ name: "shell", args: { command: "npm test" } })).toBe("npm test");
-		expect(buildCursorToolLifecycleLabel({ name: "shell", args: { command: `cd ${secretPath} && npm test` } })).toBeUndefined();
-		expect(formatCursorToolLifecycleProgressText({ name: "shell", args: { command: `cd ${secretPath} && npm test` } })).toBeUndefined();
+		expect(buildCursorToolLifecycleLabel({ name: "shell", args: { command: `cd ${secretPath} && npm test` } })).toBe(
+			`cd ${secretPath} && npm test`,
+		);
+		expect(formatCursorToolLifecycleProgressText({ name: "shell", args: { command: `cd ${secretPath} && npm test` } })).toBe(
+			`Cursor shell: cd ${secretPath} && npm test\n`,
+		);
+		expect(
+			buildCursorToolLifecycleLabel(
+				{ name: "shell", args: { command: "curl -H 'Authorization: Bearer secret-key' https://api.example.test" } },
+				"secret-key",
+			),
+		).toBe("curl -H 'Authorization: [redacted] [redacted]' https://api.example.test");
 		expect(buildCursorToolLifecycleLabel({ name: "webFetch", args: { url: secretUrl } })).toBe("web fetch");
 		expect(buildCursorToolLifecycleLabel({ name: "generateImage", args: { path: secretPath } })).toBe("image generation");
 		expect(buildCursorToolLifecycleLabel({ name: "recordScreen", args: { path: secretPath } })).toBe("screen recording");

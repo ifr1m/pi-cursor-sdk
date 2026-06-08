@@ -8,10 +8,12 @@ const GENERIC_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed. The Cursor SDK API key may be missing, invalid, or unauthorized. Cursor Agent CLI/Desktop login is not reused. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
 const AUTH_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed because the Cursor SDK API key may be invalid or unauthorized. Cursor Agent CLI/Desktop login is not reused. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
+// Keep "Network error" aligned with pi's agent-level retry classifier.
 const NETWORK_CURSOR_SDK_ERROR_MESSAGE =
-	"Cursor SDK request failed during network or service I/O. Check your connection and retry; if this keeps happening, try again later or verify Cursor service availability.";
+	"Network error: Cursor SDK request failed during network or service I/O. Check your connection; pi will retry automatically when auto-retry is enabled.";
 
-const GENERIC_CURSOR_RUN_FAILURE_TEXT = "cursor sdk run failed";
+// Keep this phrase aligned with pi's agent-level retry classifier (`provider.?returned.?error`).
+const RETRYABLE_CURSOR_RUN_FAILURE_PREFIX = "Provider returned error: Cursor SDK run failed";
 
 export type CursorSdkRunFailureSource = Pick<RunResult, "id" | "status" | "durationMs" | "model" | "result">;
 
@@ -20,9 +22,13 @@ function isGenericErrorMessage(message: string): boolean {
 	return normalized === "" || normalized === "error" || normalized === "unknown error";
 }
 
+function isGenericCursorRunFailureMessage(message: string): boolean {
+	return /^cursor sdk run failed\.?$/i.test(message.trim());
+}
+
 function isKnownGenericRunFailureText(message: string): boolean {
 	const normalized = message.trim().toLowerCase();
-	return normalized === "" || normalized === GENERIC_CURSOR_RUN_FAILURE_TEXT || isGenericErrorMessage(normalized);
+	return normalized === "" || isGenericCursorRunFailureMessage(message) || isGenericErrorMessage(normalized);
 }
 
 function isLikelyAuthError(message: string): boolean {
@@ -150,7 +156,7 @@ export function formatCursorSdkRunFailureDetail(result: CursorSdkRunFailureSourc
 		return fromRun;
 	}
 
-	const parts = ["Cursor SDK run failed"];
+	const parts = [RETRYABLE_CURSOR_RUN_FAILURE_PREFIX];
 	if (result.model?.id) parts.push(`model ${result.model.id}`);
 	parts.push(`run ${shortRunId(result.id)}`);
 	if (typeof result.durationMs === "number") parts.push(`${result.durationMs}ms`);
@@ -190,6 +196,7 @@ export function sanitizeCursorProviderError(error: unknown, apiKey?: string): st
 	const connectClassification = classifyCursorConnectError(error);
 	if (connectClassification?.kind === "unauthenticated" || isLikelyAuthError(scrubbed)) return AUTH_CURSOR_SDK_ERROR_MESSAGE;
 	if (connectClassification?.kind === "network" || isLikelyNetworkTimeout(scrubbed)) return NETWORK_CURSOR_SDK_ERROR_MESSAGE;
+	if (isGenericCursorRunFailureMessage(scrubbed)) return RETRYABLE_CURSOR_RUN_FAILURE_PREFIX;
 	if (isGenericErrorMessage(scrubbed)) return GENERIC_CURSOR_SDK_ERROR_MESSAGE;
 	return scrubbed || GENERIC_CURSOR_SDK_ERROR_MESSAGE;
 }

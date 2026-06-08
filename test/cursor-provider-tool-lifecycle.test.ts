@@ -219,7 +219,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 		expect(trace).toContain("$ git status");
 	});
 
-	it("does not emit generic shell lifecycle progress when command details are unsafe", async () => {
+	it("surfaces scrubbed shell lifecycle progress even when commands include paths", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
 		const shellCall = { name: "shell", args: { command: "cd /Users/test/project && gh pr view 114" } };
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
@@ -255,7 +255,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 		const trace = collectThinkingDeltas(events);
 
 		expect(trace).not.toContain("Cursor shell: shell");
-		expect(trace).not.toContain("Cursor shell: cd /Users/test/project");
+		expect(trace).toContain("Cursor shell: cd /Users/test/project && gh pr view 114");
 		expect(trace).toContain("$ cd /Users/test/project && gh pr view 114");
 	});
 

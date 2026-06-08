@@ -93,6 +93,7 @@ describe("cursor-provider-errors", () => {
 			durationMs: 1200,
 		});
 
+		expect(detail).toContain("Provider returned error");
 		expect(detail).toContain("model composer-2.5");
 		expect(detail).toContain("run run-abc1…");
 		expect(detail).toContain("1200ms");
@@ -130,6 +131,7 @@ describe("cursor-provider-errors", () => {
 		const detail = formatCursorSdkRunFailureDetail({ id: "run-3", status: "error" });
 		const message = sanitizeCursorProviderError(detail, "test-key");
 
+		expect(message).toContain("Provider returned error");
 		expect(message).toContain("run run-3");
 		expect(message).toContain("Cursor SDK run failed");
 	});
@@ -163,9 +165,12 @@ describe("cursor-provider-errors", () => {
 
 	it("maps connect-layer network failures to actionable retry guidance", () => {
 		expect(sanitizeCursorProviderError(new Error("ConnectError: [unavailable] read ETIMEDOUT"), "test-key")).toContain(
+			"Network error",
+		);
+		expect(sanitizeCursorProviderError(new Error("ConnectError: [unavailable] read ETIMEDOUT"), "test-key")).toContain(
 			"failed during network or service I/O",
 		);
-		expect(sanitizeCursorProviderError("ConnectError: read ETIMEDOUT", "test-key")).toContain("Check your connection and retry");
+		expect(sanitizeCursorProviderError("ConnectError: read ETIMEDOUT", "test-key")).toContain("pi will retry automatically");
 		expect(sanitizeCursorProviderError(new Error("ConnectError: [unavailable] read ETIMEDOUT"), "test-key")).not.toContain(
 			"ETIMEDOUT",
 		);
@@ -177,8 +182,9 @@ describe("cursor-provider-errors", () => {
 		const message = sanitizeCursorProviderError(error, "test-key");
 
 		expect(classification).toEqual({ kind: "network", source: "cursor-sdk-stack" });
+		expect(message).toContain("Network error");
 		expect(message).toContain("failed during network or service I/O");
-		expect(message).toContain("Check your connection and retry");
+		expect(message).toContain("pi will retry automatically");
 		expect(message).not.toContain("ECONNRESET");
 	});
 
@@ -188,8 +194,9 @@ describe("cursor-provider-errors", () => {
 		const message = sanitizeCursorProviderError(error, "test-key");
 
 		expect(classification).toEqual({ kind: "network", source: "cursor-backend-details" });
+		expect(message).toContain("Network error");
 		expect(message).toContain("failed during network or service I/O");
-		expect(message).toContain("Check your connection and retry");
+		expect(message).toContain("pi will retry automatically");
 		expect(message).not.toContain("[unavailable] Error");
 	});
 
