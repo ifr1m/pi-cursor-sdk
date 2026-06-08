@@ -547,10 +547,23 @@ describe("buildCursorPrompt", () => {
 		const tail = getCursorToolTailGuardText();
 		expect(tail).toContain("explicit `cd`");
 		expect(tail).toContain("session cwd may not match paths in tool args");
+		expect(tail).toContain("Exact-output requests");
 		const bootstrap = buildCursorPrompt({ messages: [{ role: "user", content: "test", timestamp: 1 }] });
 		const incremental = buildCursorIncrementalPrompt({ messages: [{ role: "user", content: "test", timestamp: 1 }] });
 		expect(bootstrap.text).toContain("explicit `cd`");
 		expect(incremental.text).toContain("explicit `cd`");
+	});
+
+	it("adds plan-mode guidance without disabling inspection tools", () => {
+		const context = { messages: [{ role: "user" as const, content: "test", timestamp: 1 }] };
+		const bootstrap = buildCursorPrompt(context, { agentMode: "plan" });
+		const incremental = buildCursorIncrementalPrompt(context, { agentMode: "plan" });
+
+		expect(bootstrap.text).toContain("Cursor SDK mode is plan for this run");
+		expect(bootstrap.text).toContain("Safe/read-only shell commands");
+		expect(bootstrap.text).toContain("Exposed pi__* bridge tools are also callable in plan mode");
+		expect(incremental.text).toContain("Cursor SDK mode is plan for this run");
+		expect(buildCursorPrompt(context).text).not.toContain("Cursor SDK mode is plan for this run");
 	});
 });
 

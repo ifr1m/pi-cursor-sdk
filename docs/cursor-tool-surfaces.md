@@ -10,6 +10,8 @@ pi-cursor-sdk runs Cursor models through the local `@cursor/sdk` agent runtime. 
 | **Configured Cursor MCP** | Cursor settings / `~/.cursor/mcp.json` | Yes (when loaded) | Neutral **Cursor MCP** activity cards on replay |
 | **Pi bridge (`pi__*`)** | pi-cursor-sdk loopback MCP | Yes, when exposed | Real pi tool names (`cursor_ask_question`, `cursor_activate_skill`, extension tools, …) |
 
+Pi CLI tool toggles apply at the pi tool-registry boundary. `--no-tools`, `--tools`, and `--exclude-tools` can remove pi bridge exposure, but they do **not** disable Cursor SDK host tools or configured Cursor MCP servers.
+
 **Not callable:** `cursor-replay-*` IDs in JSONL, pi history tool names used only for display, and transcript labels. Cursor must call exposed `pi__*` MCP names for bridged pi tools, not the pi card name.
 
 ## Discoverability
@@ -46,6 +48,8 @@ Disabling or removing an MCP server **only in pi** does not remove Cursor ambien
 
 | Control | Effect |
 | --- | --- |
+| `pi --no-tools` | Disables pi built-in/extension/custom tools and therefore removes pi bridge exposure; Cursor SDK host tools still remain callable. |
+| `pi --tools ...` / `pi --exclude-tools ...` | Narrows pi's active tool registry and therefore the pi bridge snapshot; Cursor SDK host tools and configured Cursor MCP are unchanged. |
 | `PI_CURSOR_SETTING_SOURCES=all` (default) | Loads user/project Cursor MCP, plugins, rules (`~/.cursor/mcp.json`, etc.) |
 | `PI_CURSOR_SETTING_SOURCES=none` | Disables ambient Cursor setting sources for local agents |
 | `PI_CURSOR_SETTING_SOURCES=project,plugins` | Narrows which layers load |

@@ -89,7 +89,7 @@ export async function prepareCursorProviderTurn(
 		throwIfAborted();
 
 		const buildPromptOptions = (plan: ReturnType<typeof planCursorSessionSend>) => {
-			const promptOptions = getCursorPromptOptions(model);
+			const promptOptions = { ...getCursorPromptOptions(model), agentMode };
 			if (plan.mode !== "bootstrap" || !resolveCursorToolManifestEnabled()) {
 				return promptOptions;
 			}

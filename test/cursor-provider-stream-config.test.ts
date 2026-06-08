@@ -199,6 +199,7 @@ it("budgets oversized prompt history before Cursor Agent.send", async () => {
 
 		expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ mode: "plan" }));
 		expect(mockSend.mock.calls[0]?.[1]).toMatchObject({ mode: "plan" });
+		expect((mockSend.mock.calls[0]?.[0] as { text: string }).text).toContain("Cursor SDK mode is plan for this run");
 	});
 
 	it("passes the effective Cursor SDK mode on every send while reusing the agent", async () => {

@@ -19,6 +19,7 @@ import {
 	isCursorToolStreamEvent,
 	getCreatedAgentOptions,
 	createMockAgentPlatform,
+	createPiHarness,
 	registerBridgeForProviderTest,
 	registerNativeToolDisplayForTest,
 	connectMcpClient,
@@ -34,6 +35,7 @@ import {
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { estimateCursorPromptMessageTokens } from "../src/context.js";
+import { registerCursorRuntimeControls } from "../src/cursor-state.js";
 import { __testUtils as sessionAgentTestUtils } from "../src/cursor-session-agent.js";
 import { __testUtils as cursorPiToolBridgeTestUtils } from "../src/cursor-pi-tool-bridge.js";
 import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display-state.js";
@@ -43,6 +45,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { convertPiContentToMcpContent } from "../src/cursor-pi-tool-bridge-mcp.js";
 
+
+async function setCursorModeForBridgeTest(mode: "agent" | "plan"): Promise<void> {
+	const pi = createPiHarness({ flagValues: { "cursor-mode": mode } });
+	registerCursorRuntimeControls(pi);
+	await pi.runSessionStart({ model: makeModel("composer-2") });
+}
 
 describe("streamCursor bridge MCP", () => {
 	beforeEach(resetCursorProviderTestState);
@@ -313,7 +321,8 @@ describe("streamCursor bridge MCP", () => {
 		expect(getCreatedAgentOptions().mcpServers).toBeUndefined();
 	});
 
-	it("emits bridge MCP requests as real pi tool calls and resumes the same Cursor run after tool results", async () => {
+	it("emits bridge MCP requests as real pi tool calls and resumes the same Cursor run after tool results in plan mode", async () => {
+		await setCursorModeForBridgeTest("plan");
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		process.env.PI_CURSOR_EXPOSE_BUILTIN_TOOLS = "1";
 		const registeredTools: RegisteredTool[] = [];
@@ -436,7 +445,9 @@ describe("streamCursor bridge MCP", () => {
 			const replayDone = getDoneEvent(replayEvents);
 
 			expect(mockedCreate).toHaveBeenCalledTimes(1);
+			expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ mode: "plan" }));
 			expect(mockSend).toHaveBeenCalledTimes(1);
+			expect(mockSend.mock.calls[0]?.[1]).toMatchObject({ mode: "plan" });
 			expect(runWait).toHaveBeenCalledTimes(1);
 			expect(replayText).toBe("Bridge complete.");
 			expect(replayDone.reason).toBe("stop");

@@ -17,7 +17,13 @@ Short maintainer checklist for **minimal-surface** validation after prompt, brid
 2. **Pi bridge** (if enabled) — one bridged call via exposed `pi__*` MCP name, e.g. `pi__cursor_ask_question` when active.
 3. **Configured MCP** (optional) — only when you intentionally load Cursor MCP via settings; skip for minimal baseline.
 
+`pi --no-tools` is a pi-registry toggle, not a Cursor SDK host-tool kill switch. In dogfood, expect it to remove pi bridge exposure while Cursor host tools can still run.
+
 In-session debug: `/cursor-tools` prints bridge enablement, bootstrap manifest enablement, effective `PI_CURSOR_SETTING_SOURCES`, and the callable-surface manifest snapshot for the current session.
+
+## CLI spot-check
+
+`pi --approve -e . --list-models cursor` should exit 0 and show a Cursor model table. On pi 0.79.x that table can land on stderr in automation, so capture both streams or redirect `2>&1` before treating empty stdout as a discovery failure.
 
 ## JSONL spot-check
 

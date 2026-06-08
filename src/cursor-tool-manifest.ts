@@ -26,6 +26,7 @@ export function buildCursorToolManifestText(options: {
 		"Callable tool surfaces this run:",
 		`- Cursor SDK host tools (callable; not listed in MCP listTools): ${CURSOR_HOST_TOOL_MANIFEST_SUMMARY}.`,
 		"- Configured Cursor MCP servers: discovered at runtime via MCP listTools (depends on Cursor settings and PI_CURSOR_SETTING_SOURCES).",
+		"- Pi CLI tool toggles such as --no-tools affect pi tools and bridge exposure only; they do not disable Cursor SDK host tools or configured Cursor MCP.",
 	];
 	const bridgeTools = options.bridgeSnapshot?.tools ?? [];
 	if (!piBridgeEnabled) {

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Context, Message, ToolCall } from "@earendil-works/pi-ai";
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
-import type { SDKImage } from "@cursor/sdk";
+import type { AgentModeOption, SDKImage } from "@cursor/sdk";
 import { getCursorReplayPromptLabel } from "./cursor-tool-presentation-registry.js";
 
 export interface CursorPrompt {
@@ -13,6 +13,7 @@ export interface CursorPromptOptions {
 	maxInputTokens?: number;
 	charsPerToken?: number;
 	imageTokenEstimate?: number;
+	agentMode?: AgentModeOption;
 	/** Compact callable-surface summary; included on bootstrap prompts when set. */
 	toolManifest?: string;
 }
@@ -21,35 +22,47 @@ export const CURSOR_APPROX_CHARS_PER_TOKEN = 4;
 export const CURSOR_IMAGE_TOKEN_ESTIMATE = 1200;
 const SECTION_SEPARATOR = "\n\n";
 
-export function getCursorToolTailGuardText(): string {
+export function getCursorPlanModeToolGuidanceText(agentMode: AgentModeOption | undefined): string | undefined {
+	if (agentMode !== "plan") return undefined;
 	return [
-		"Shell: use an explicit `cd` to the repo path when running project commands; session cwd may not match paths in tool args.",
-		"Tool boundary reminder: If a tool is needed, call an available Cursor SDK/MCP tool. Never print a tool card (for example Tool call/Shell/command) as assistant text.",
+		"Cursor SDK mode is plan for this run. In pi-cursor-sdk, plan mode may still use available Cursor SDK/MCP tools for inspection when needed.",
+		"Safe/read-only shell commands that inspect or print information are allowed when Cursor chooses to call Shell; do not say Shell is blocked by plan mode and then call it anyway.",
+		"Exposed pi__* bridge tools are also callable in plan mode when the user asks for them or they are needed to answer.",
 	].join("\n");
 }
 
-function getCursorToolBoundaryText(options: { hasToolManifest?: boolean } = {}): string {
+export function getCursorToolTailGuardText(options: Pick<CursorPromptOptions, "agentMode"> = {}): string {
+	return [
+		"Shell: use an explicit `cd` to the repo path when running project commands; session cwd may not match paths in tool args.",
+		getCursorPlanModeToolGuidanceText(options.agentMode),
+		"Exact-output requests: if the latest user asks to reply exactly, output exactly that text and do not add preambles, diagnostics, or repo checks unless explicitly requested.",
+		"Tool boundary reminder: If a tool is needed, call an available Cursor SDK/MCP tool. Never print a tool card (for example Tool call/Shell/command) as assistant text.",
+	].filter((line): line is string => line !== undefined).join("\n");
+}
+
+function getCursorToolBoundaryText(options: Pick<CursorPromptOptions, "agentMode"> & { hasToolManifest?: boolean } = {}): string {
 	const lines = [
 		"Cursor SDK tool boundary:",
 		"Call only tools exposed by Cursor SDK in this run. Pi tool names, replay labels, and transcript names are context only—not callable.",
 		"Bridged pi tools: call pi__* MCP names when exposed, not the pi card name in history. Replay activity is display-only.",
 		"Do not claim pi-side or WebSearch/WebFetch tools unless Cursor executes an equivalent tool.",
 		"Use pi__cursor_ask_question for material choices if exposed.",
+		getCursorPlanModeToolGuidanceText(options.agentMode),
 		"Images: only the latest user message's images are sent as bytes; ask to reattach or describe prior images.",
-	];
+	].filter((line): line is string => line !== undefined);
 	if (options.hasToolManifest) {
 		lines.push("See callable tool surfaces block below.");
 	}
 	return lines.join("\n");
 }
 
-function getCursorBootstrapTailSections(): string[] {
+function getCursorBootstrapTailSections(options: Pick<CursorPromptOptions, "agentMode"> = {}): string[] {
 	return [
 		[
 			"Answer the latest user request above using Cursor SDK capabilities only. Do not list, promise, or call pi-only tools from the system prompt as if they were available.",
 			"If web research is requested, do not claim it unless a Cursor web/search/browser/MCP tool ran.",
 		].join("\n"),
-		getCursorToolTailGuardText(),
+		getCursorToolTailGuardText(options),
 	];
 }
 
@@ -366,7 +379,7 @@ export function buildCursorIncrementalPrompt(context: Context, options: CursorPr
 	const parts = applyPromptBudget(
 		sectionsBeforeMessages,
 		latestUserMessageSections,
-		[getCursorToolTailGuardText()],
+		[getCursorToolTailGuardText(options)],
 		latestUserMessageIndex,
 		budgetOptions,
 	);
@@ -374,7 +387,7 @@ export function buildCursorIncrementalPrompt(context: Context, options: CursorPr
 }
 
 export function buildCursorPrompt(context: Context, options: CursorPromptOptions = {}): CursorPrompt {
-	const sectionsBeforeMessages: string[] = [getCursorToolBoundaryText({ hasToolManifest: Boolean(options.toolManifest) })];
+	const sectionsBeforeMessages: string[] = [getCursorToolBoundaryText({ agentMode: options.agentMode, hasToolManifest: Boolean(options.toolManifest) })];
 	if (options.toolManifest) {
 		sectionsBeforeMessages.push(options.toolManifest);
 	}
@@ -390,7 +403,7 @@ export function buildCursorPrompt(context: Context, options: CursorPromptOptions
 			return text ? { index, text } : undefined;
 		})
 		.filter((section): section is { index: number; text: string } => section !== undefined);
-	const sectionsAfterMessages = getCursorBootstrapTailSections();
+	const sectionsAfterMessages = getCursorBootstrapTailSections(options);
 	const images = extractLatestImages(messages);
 	const imageTokenReserve = images.length * (options.imageTokenEstimate ?? 0);
 	const budgetOptions =

@@ -27,6 +27,7 @@ describe("cursor-tool-manifest", () => {
 
 		expect(text).toContain("Callable tool surfaces this run:");
 		expect(text).toContain("not listed in MCP listTools");
+		expect(text).toContain("--no-tools affect pi tools and bridge exposure only");
 		expect(text).toContain("pi__cursor_ask_question");
 		expect(text).toContain("cursor-replay-*");
 	});
