@@ -2,18 +2,32 @@
 
 ## Unreleased
 
-## 0.1.38 - 2026-06-07
+## 0.1.38 - 2026-06-08
+
+### Added
+
+- Add shared Cursor replay result readers so transcript formatting, native replay cards, and activity builders consume the same MCP-like content/diff/file-preview extraction logic.
+- Add a canonical Cursor model lifecycle sync helper for session start, before-agent-start, model selection, and turn start registration paths.
+- Add lazy Cursor provider registration so extension startup can register models and commands without importing the Cursor SDK runtime until the provider is invoked.
+- Add shared Cursor native tool-name and pi-tool-bridge environment helpers for provider/runtime registration code.
 
 ### Changed
 
-- Simplify Cursor replay result readers, tool presentation ownership, session scope/display ownership, and lifecycle registration paths while preserving native replay and pi session behavior.
-- Defer Cursor runtime startup imports so extension registration stays side-effect-light until the provider is invoked.
+- Centralize Cursor tool presentation ownership in the typed presentation registry, including labels, aliases, lifecycle titles, replay metadata, side-effect policies, and web-tool classification.
+- Consolidate Cursor session cwd, session file/id, generation, and scope-key handling in `cursor-session-scope`; remove the older cwd/message-offset helper split.
+- Simplify Cursor session-agent lifecycle invalidation on model select, compaction preparation, tree navigation, shutdown, and scope changes.
+- Refine Cursor tool lifecycle/replay display routing so completed replay cards, inactive traces, native replay activation, and duplicate step/delta completions share one display path.
+- Keep Cursor agents-context dedup and fallback-catalog warning registration model-scoped through the shared lifecycle helper.
+- Keep edit/write replay previews on the shared structured diff/file preview renderers while retaining SDK expanded-text fallback behavior.
+- Update maintainer docs and repo map entries for the new ownership boundaries.
 
 ### Fixed
 
 - Clear started Cursor tool calls when a completed delta reports the same tool under a different SDK call id, preventing stale native replay edit starts from surfacing as `Cursor edit did not complete` after successful final text.
 - Keep Cursor agents-context dedup registration in a tracked module so clean package builds resolve `src/index.ts` imports.
 - Accept Windows-rendered absolute `README.md` paths in platform-smoke grep-card detection without weakening prompt false-positive checks.
+- Preserve Cursor skill activation and question-tool registration through lazy provider/runtime import boundaries.
+- Preserve fast local discovery incomplete-tool suppression while still surfacing aborts, SDK failures, and no-text incomplete runs.
 
 ## 0.1.37 - 2026-06-06
 
