@@ -12,9 +12,15 @@ import { Text } from "@earendil-works/pi-tui";
 import type { TSchema } from "typebox";
 import { getCursorSessionCwd } from "./cursor-session-scope.js";
 import {
-	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-	isCursorReplayToolName,
-} from "./cursor-tool-presentation-registry.js";
+	BUILTIN_NATIVE_CURSOR_TOOL_NAMES,
+	CURSOR_MODEL_ACTIVE_REPLAY_TOOL_NAMES,
+	CURSOR_REPLAY_TOOL_NAMES,
+	isNativeCursorToolName,
+	NATIVE_CURSOR_TOOL_NAMES,
+	type BuiltinNativeCursorToolName,
+	type NativeCursorToolName,
+} from "./cursor-native-tool-names.js";
+import { isCursorReplayToolName } from "./cursor-tool-presentation-registry.js";
 import {
 	createCursorReplayOnlyToolDefinition,
 	isCursorReplayNativeEditDetails,
@@ -29,8 +35,6 @@ import {
 	isCursorReplayToolCallId,
 } from "./cursor-native-tool-display-state.js";
 
-const CURSOR_MODEL_ACTIVE_REPLAY_TOOL_NAMES = [CURSOR_REPLAY_ACTIVITY_TOOL_NAME] as const;
-const CURSOR_REPLAY_TOOL_NAMES = [CURSOR_REPLAY_ACTIVITY_TOOL_NAME] as const;
 
 type AnyToolDefinition = ToolDefinition<TSchema, unknown, unknown>;
 type RenderCall = NonNullable<AnyToolDefinition["renderCall"]>;
@@ -117,8 +121,6 @@ function renderWriteReplayResult(
 		: renderBase();
 }
 
-type BuiltinNativeCursorToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls";
-
 const NATIVE_CURSOR_TOOL_STRATEGIES: Record<BuiltinNativeCursorToolName, NativeReplayStrategy> = {
 	read: {
 		createDefinition: (cwd) => createReadToolDefinition(cwd) as AnyToolDefinition,
@@ -145,12 +147,6 @@ const NATIVE_CURSOR_TOOL_STRATEGIES: Record<BuiltinNativeCursorToolName, NativeR
 	ls: { createDefinition: (cwd) => createLsToolDefinition(cwd) as AnyToolDefinition },
 };
 
-const BUILTIN_NATIVE_CURSOR_TOOL_NAMES = Object.keys(NATIVE_CURSOR_TOOL_STRATEGIES) as BuiltinNativeCursorToolName[];
-export const NATIVE_CURSOR_TOOL_NAMES = [
-	...BUILTIN_NATIVE_CURSOR_TOOL_NAMES,
-	...CURSOR_REPLAY_TOOL_NAMES,
-] as readonly NativeCursorToolName[];
-export type NativeCursorToolName = BuiltinNativeCursorToolName | typeof CURSOR_REPLAY_TOOL_NAMES[number];
 
 function getNativeReplayStrategy(toolName: string): NativeReplayStrategy | undefined {
 	return Object.hasOwn(NATIVE_CURSOR_TOOL_STRATEGIES, toolName)
@@ -158,9 +154,6 @@ function getNativeReplayStrategy(toolName: string): NativeReplayStrategy | undef
 		: undefined;
 }
 
-export function isNativeCursorToolName(toolName: string): toolName is NativeCursorToolName {
-	return NATIVE_CURSOR_TOOL_NAMES.some((nativeToolName) => nativeToolName === toolName);
-}
 
 export function wrapNativeCursorTool<TParams extends TSchema, TDetails, TState>(
 	definition: ToolDefinition<TParams, TDetails, TState>,

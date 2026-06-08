@@ -20,7 +20,7 @@ import {
 import { getCursorProviderAgentModeOrThrow, getEffectiveFastForModelId } from "./cursor-state.js";
 import { buildCursorModelSelection } from "./model-discovery.js";
 import { getEffectiveCursorSettingSources } from "./cursor-setting-sources.js";
-import { resolveCursorPiToolBridgeEnabled } from "./cursor-pi-tool-bridge-snapshot.js";
+import { resolveCursorPiToolBridgeEnabled } from "./cursor-pi-tool-bridge-env.js";
 import {
 	buildCursorToolManifestText,
 	resolveCursorToolManifestEnabled,

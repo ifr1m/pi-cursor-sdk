@@ -6,23 +6,20 @@ import { registerCursorPiToolBridge } from "./cursor-pi-tool-bridge.js";
 import { registerCursorQuestionTool } from "./cursor-question-tool.js";
 import { registerCursorSkillTool } from "./cursor-skill-tool.js";
 import { registerCursorSessionScope } from "./cursor-session-scope.js";
-import { registerCursorAgentsContextDedup } from "./cursor-agents-context.js";
-import { registerCursorSessionAgent } from "./cursor-session-agent.js";
-import { prepareCursorSessionForCompaction } from "./cursor-session-compaction-prep.js";
-import { streamCursor } from "./cursor-provider.js";
+import { registerCursorSessionAgentLifecycle } from "./cursor-session-agent-lifecycle.js";
+import { streamCursorLazy } from "./cursor-provider-lazy.js";
 import { CURSOR_API_KEY_CONFIG_VALUE } from "./cursor-api-key.js";
 import { registerCursorFallbackIssueWarning } from "./cursor-fallback-warning.js";
 
 type CursorExtensionApi =
 	& Pick<ExtensionAPI, "registerProvider" | "registerCommand" | "on">
 	& Parameters<typeof registerCursorSessionScope>[0]
-	& Parameters<typeof registerCursorSessionAgent>[0]
+	& Parameters<typeof registerCursorSessionAgentLifecycle>[0]
 	& Parameters<typeof registerCursorRuntimeControls>[0]
 	& Parameters<typeof registerCursorNativeToolDisplay>[0]
 	& Parameters<typeof registerCursorQuestionTool>[0]
 	& Parameters<typeof registerCursorSkillTool>[0]
 	& Parameters<typeof registerCursorPiToolBridge>[0]
-	& Parameters<typeof registerCursorAgentsContextDedup>[0]
 	& Parameters<typeof registerCursorFallbackIssueWarning>[0];
 
 function createCursorProviderConfig(models: ProviderModelConfig[]): ProviderConfig {
@@ -32,7 +29,7 @@ function createCursorProviderConfig(models: ProviderModelConfig[]): ProviderConf
 		apiKey: CURSOR_API_KEY_CONFIG_VALUE,
 		api: "cursor-sdk",
 		models,
-		streamSimple: streamCursor,
+		streamSimple: streamCursorLazy,
 	};
 }
 
@@ -43,8 +40,9 @@ function registerCursorProvider(pi: Pick<ExtensionAPI, "registerProvider">, mode
 export default async function (pi: CursorExtensionApi) {
 	// Session cwd must register before other session_start listeners that depend on it.
 	registerCursorSessionScope(pi);
-	registerCursorSessionAgent(pi);
+	registerCursorSessionAgentLifecycle(pi);
 	pi.on("session_before_compact", async () => {
+		const { prepareCursorSessionForCompaction } = await import("./cursor-session-compaction-prep.js");
 		await prepareCursorSessionForCompaction();
 	});
 	registerCursorRuntimeControls(pi);
@@ -52,7 +50,16 @@ export default async function (pi: CursorExtensionApi) {
 	registerCursorQuestionTool(pi);
 	registerCursorSkillTool(pi);
 	registerCursorPiToolBridge(pi);
-	registerCursorAgentsContextDedup(pi);
+	pi.on("before_agent_start", async (event, ctx) => {
+		const { resolveCursorFacingSystemPrompt } = await import("./cursor-agents-context.js");
+		const resolved = resolveCursorFacingSystemPrompt(
+			event.systemPrompt,
+			ctx.model,
+			event.systemPromptOptions,
+		);
+		if (resolved === event.systemPrompt) return undefined;
+		return { systemPrompt: resolved };
+	});
 	let fallbackIssue: CursorModelFallbackIssue | undefined;
 	const models = await discoverModels({
 		onFallback: (issue) => {

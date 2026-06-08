@@ -4,13 +4,15 @@ import type {
 	CursorPiToolBridgeSnapshotApi,
 	CursorPiToolBridgeSnapshotOptions,
 } from "./cursor-pi-tool-bridge-types.js";
-import { parseEnvBoolean } from "./cursor-env-boolean.js";
 import { createMcpToolName, normalizeMcpInputSchema, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
+export {
+	CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV,
+	CURSOR_PI_TOOL_BRIDGE_ENV,
+	resolveCursorPiToolBridgeBuiltinsEnabled,
+	resolveCursorPiToolBridgeEnabled,
+} from "./cursor-pi-tool-bridge-env.js";
 import { isRegisteredCursorNativeToolName } from "./cursor-native-tool-display-state.js";
 import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-presentation-registry.js";
-
-export const CURSOR_PI_TOOL_BRIDGE_ENV = "PI_CURSOR_PI_TOOL_BRIDGE";
-export const CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV = "PI_CURSOR_EXPOSE_BUILTIN_TOOLS";
 
 const OVERLAPPING_CURSOR_NATIVE_PI_BUILTIN_TOOL_NAMES = new Set(["read", "bash", "write", "edit", "grep", "find", "ls"]);
 
@@ -20,14 +22,6 @@ export function createEmptySnapshot(): CursorPiToolBridgeSnapshot {
 		mcpToolNameToPiToolName: new Map(),
 		piToolNameToMcpToolName: new Map(),
 	};
-}
-
-export function resolveCursorPiToolBridgeEnabled(env: Record<string, string | undefined> = process.env): boolean {
-	return parseEnvBoolean(env[CURSOR_PI_TOOL_BRIDGE_ENV], true);
-}
-
-export function resolveCursorPiToolBridgeBuiltinsEnabled(env: Record<string, string | undefined> = process.env): boolean {
-	return parseEnvBoolean(env[CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV], false);
 }
 
 function isOverlappingCursorNativePiToolName(toolName: string): boolean {

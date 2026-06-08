@@ -8,7 +8,7 @@ import {
 import {
 	CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV,
 	CURSOR_PI_TOOL_BRIDGE_ENV,
-} from "./cursor-pi-tool-bridge-snapshot.js";
+} from "./cursor-pi-tool-bridge-env.js";
 import { bridgeToolExecutionAbortTracker } from "./cursor-pi-tool-bridge-abort.js";
 import { MCP_SERVER_NAME } from "./cursor-pi-tool-bridge-constants.js";
 import { LOOPBACK_HOST, CursorPiToolBridgeRegistry } from "./cursor-pi-tool-bridge-server.js";
@@ -33,10 +33,14 @@ export type {
 export type { CursorPiToolBridgeDiagnosticEvent } from "./cursor-pi-tool-bridge-diagnostics.js";
 export { resolveCursorPiToolBridgeDebugEnabled } from "./cursor-pi-tool-bridge-diagnostics.js";
 export {
-	buildCursorPiToolBridgeSnapshot,
-	buildCursorPiToolBridgeSurfaceSignature,
+	CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV,
+	CURSOR_PI_TOOL_BRIDGE_ENV,
 	resolveCursorPiToolBridgeBuiltinsEnabled,
 	resolveCursorPiToolBridgeEnabled,
+} from "./cursor-pi-tool-bridge-env.js";
+export {
+	buildCursorPiToolBridgeSnapshot,
+	buildCursorPiToolBridgeSurfaceSignature,
 } from "./cursor-pi-tool-bridge-snapshot.js";
 
 let registeredCursorPiToolBridge: CursorPiToolBridgeRegistry | undefined;

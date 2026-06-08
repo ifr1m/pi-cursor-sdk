@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import {
 	createExtensionCommandContext,
 	createExtensionTestContext,
+	makeAssistantMessage,
+	makeContext,
 	makeHarnessModel,
 	makeModel,
 	makeProviderModelConfig,
@@ -24,6 +27,7 @@ vi.mock("../src/cursor-provider.js", () => ({
 import extensionFactory from "../src/index.js";
 import { discoverModels } from "../src/model-discovery.js";
 import { streamCursor } from "../src/cursor-provider.js";
+import { streamCursorLazy } from "../src/cursor-provider-lazy.js";
 import { buildCursorPiToolBridgeSnapshot } from "../src/cursor-pi-tool-bridge.js";
 import { CURSOR_ASK_QUESTION_TOOL_NAME } from "../src/cursor-question-tool.js";
 import { CURSOR_ACTIVATE_SKILL_TOOL_NAME } from "../src/cursor-skill-tool.js";
@@ -115,7 +119,26 @@ describe("extension registration and discovery", () => {
 		expect(call.config.apiKey).toBe("pi-cursor-sdk-cursor-api-key-placeholder");
 		expect(call.config.api).toBe("cursor-sdk");
 		expect(call.config.models).toBe(mockModels);
-		expect(call.config.streamSimple).toBe(mockedStreamCursor);
+		expect(call.config.streamSimple).toBe(streamCursorLazy);
+	});
+
+	it("registers a lazy Cursor stream wrapper that delegates only when invoked", async () => {
+		const mockModels = [makeProviderModelConfig("composer-2", { name: "Cursor Composer 2" })];
+		mockedDiscover.mockResolvedValueOnce(mockModels);
+		const inner = createAssistantMessageEventStream();
+		mockedStreamCursor.mockImplementationOnce(() => inner);
+		const pi = createExtensionPi();
+		await extensionFactory(pi);
+
+		expect(mockedStreamCursor).not.toHaveBeenCalled();
+		const stream = pi._registered[0].config.streamSimple!(makeModel("composer-2"), makeContext(), { apiKey: "test-key" });
+		const resultPromise = stream.result();
+		await Promise.resolve();
+		const message = makeAssistantMessage("done");
+		inner.push({ type: "done", reason: "stop", message });
+
+		await expect(resultPromise).resolves.toBe(message);
+		expect(mockedStreamCursor).toHaveBeenCalledOnce();
 	});
 
 	it("keeps only canonical Cursor replay tools active for Cursor models", async () => {
@@ -300,7 +323,7 @@ describe("extension registration and discovery", () => {
 		expect(pi.registerProvider).toHaveBeenCalledTimes(2);
 		expect(pi._registered[0].config.models).toBe(startupModels);
 		expect(pi._registered[1].config.models).toBe(refreshedModels);
-		expect(pi._registered[1].config.streamSimple).toBe(mockedStreamCursor);
+		expect(pi._registered[1].config.streamSimple).toBe(streamCursorLazy);
 		expect(notify).toHaveBeenCalledWith("Cursor model catalog refreshed with 1 model.", "info");
 	});
 

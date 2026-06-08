@@ -4,12 +4,11 @@ import type {
 	ModelParameterValue,
 	ModelSelection,
 } from "@cursor/sdk";
-import { AuthStorage, type ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import type { ModelThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai";
 import { loadContextWindowCache } from "./context-window-cache.js";
 import { loadCursorSdk } from "./cursor-sdk-runtime.js";
 import { resolveCursorApiKey } from "./cursor-api-key.js";
-import { FALLBACK_MODEL_ITEMS } from "./cursor-fallback-models.generated.js";
 import {
 	fingerprintApiKey,
 	loadAnyCachedModelCatalog,
@@ -62,6 +61,7 @@ function getCliApiKeyFromArgv(argv: string[] = process.argv): string | undefined
 
 async function getStoredCursorApiKey(): Promise<string | undefined> {
 	try {
+		const { AuthStorage } = await import("@earendil-works/pi-coding-agent");
 		return resolveCursorApiKey(await AuthStorage.create().getApiKey(CURSOR_PROVIDER_ID, { includeFallback: false }));
 	} catch {
 		return undefined;
@@ -462,8 +462,9 @@ function sanitizeDiscoveryError(error: unknown, apiKey: string): string | undefi
 	return scrubbed || undefined;
 }
 
-function useFallbackModels(options: DiscoverModelsOptions, issue: CursorModelFallbackIssue): ProviderModelConfig[] {
+async function useFallbackModels(options: DiscoverModelsOptions, issue: CursorModelFallbackIssue): Promise<ProviderModelConfig[]> {
 	options.onFallback?.(issue);
+	const { FALLBACK_MODEL_ITEMS } = await import("./cursor-fallback-models.generated.js");
 	return registerModelItems(FALLBACK_MODEL_ITEMS);
 }
 

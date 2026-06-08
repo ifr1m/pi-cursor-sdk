@@ -3,7 +3,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { isCursorModel } from "./cursor-model.js";
 import { registerCursorModelLifecycle, type CursorModelLifecycleExtensionApi } from "./cursor-model-lifecycle.js";
-import { resolveCursorPiToolBridgeEnabled } from "./cursor-pi-tool-bridge.js";
+import { resolveCursorPiToolBridgeEnabled } from "./cursor-pi-tool-bridge-env.js";
 
 export const CURSOR_ASK_QUESTION_TOOL_NAME = "cursor_ask_question";
 

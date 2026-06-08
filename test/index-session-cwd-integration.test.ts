@@ -49,7 +49,8 @@ vi.mock("@cursor/sdk", () => ({
 import { Agent, type SDKAgent } from "@cursor/sdk";
 import extensionFactory from "../src/index.js";
 import { discoverModels } from "../src/model-discovery.js";
-import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
+import { __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
+import { streamCursorLazy } from "../src/cursor-provider-lazy.js";
 import { __testUtils as cursorSessionScopeTestUtils } from "../src/cursor-session-scope.js";
 import { __testUtils as cursorPiToolBridgeTestUtils } from "../src/cursor-pi-tool-bridge.js";
 import {
@@ -92,7 +93,7 @@ describe("extension session cwd integration", () => {
 
 			expect(pi.registerProvider).toHaveBeenCalledOnce();
 			const streamSimple = pi._registered[0]?.config.streamSimple;
-			expect(streamSimple).toBe(streamCursor);
+			expect(streamSimple).toBe(streamCursorLazy);
 
 			await collectEvents(streamSimple!(makeModel("composer-2.5"), makeContext(), { apiKey: "test-key" }));
 

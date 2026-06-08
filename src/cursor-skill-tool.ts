@@ -10,7 +10,7 @@ import type {
 import { Type } from "typebox";
 import { isCursorModel } from "./cursor-model.js";
 import { registerCursorModelLifecycle, type CursorModelLifecycleExtensionApi } from "./cursor-model-lifecycle.js";
-import { resolveCursorPiToolBridgeEnabled } from "./cursor-pi-tool-bridge-snapshot.js";
+import { resolveCursorPiToolBridgeEnabled } from "./cursor-pi-tool-bridge-env.js";
 
 export const CURSOR_ACTIVATE_SKILL_TOOL_NAME = "cursor_activate_skill";
 export const CURSOR_ACTIVATE_SKILL_MCP_NAME = "pi__cursor_activate_skill";
