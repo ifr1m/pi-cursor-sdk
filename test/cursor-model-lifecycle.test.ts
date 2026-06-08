@@ -58,19 +58,32 @@ describe("registerCursorModelLifecycle", () => {
 		expect(result).toEqual({ systemPrompt: " updated" });
 	});
 
-	it("can keep before-agent prompt transforms separate from sync", async () => {
+	it("runs explicit model-select and turn-start handlers without raw event hooks", async () => {
 		const events = createHarnessEventApi();
-		const sync = vi.fn();
-		const beforeAgentStart = vi.fn(() => ({ systemPrompt: "prompt" }));
+		const calls: string[] = [];
 		registerCursorModelLifecycle(events, {
-			sync,
-			includeBeforeAgentStartInSync: false,
-			beforeAgentStart,
+			modelSelect: (_event, ctx) => {
+				calls.push(`select:${ctx.model?.id}`);
+			},
+			turnStart: (_event, ctx) => {
+				calls.push(`turn:${ctx.model?.id}`);
+			},
+			beforeAgentStart: (event, ctx) => {
+				calls.push(`before:${ctx.model?.id}`);
+				return { systemPrompt: event.systemPrompt };
+			},
 		});
 
-		await events.runBeforeAgentStart({ model: makeModel("cursor-model") });
+		const sessionModel = makeModel("session-model");
+		const selectedModel = makeModel("selected-model");
+		await events.invokeEvent(
+			"model_select",
+			{ type: "model_select", model: selectedModel, previousModel: sessionModel, source: "set" },
+			{ model: sessionModel },
+		);
+		await events.runTurnStart({ model: selectedModel });
+		await events.runBeforeAgentStart({ model: selectedModel });
 
-		expect(sync).not.toHaveBeenCalled();
-		expect(beforeAgentStart).toHaveBeenCalledTimes(1);
+		expect(calls).toEqual(["select:selected-model", "turn:selected-model", "before:selected-model"]);
 	});
 });

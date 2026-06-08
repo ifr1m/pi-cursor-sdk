@@ -1,10 +1,3 @@
-import type {
-	ExtensionHandler,
-	SessionBeforeTreeEvent,
-	SessionCompactEvent,
-	SessionShutdownEvent,
-	SessionTreeEvent,
-} from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import type { AgentModeOption, ModelSelection, SDKAgent, SettingSource } from "@cursor/sdk";
 import type { Context } from "@earendil-works/pi-ai";
@@ -14,7 +7,7 @@ import {
 	type CursorPiToolBridgeRun,
 } from "./cursor-pi-tool-bridge.js";
 import { computeCursorContextFingerprint } from "./context.js";
-import { getCursorSessionScopeKey, onCursorSessionScopeKeyChange } from "./cursor-session-scope.js";
+import { getCursorSessionScopeGeneration, getCursorSessionScopeKey } from "./cursor-session-scope.js";
 import type { CursorSdkEventDebugRecorder } from "./cursor-sdk-event-debug.js";
 import { loadCursorSdk, type CursorSdkModule } from "./cursor-sdk-runtime.js";
 
@@ -88,9 +81,12 @@ export class SessionCursorAgentScopeClosedError extends Error {
 }
 
 function assertScopeAcceptsAcquire(scopeKey: string): void {
-	if (terminalDisposedScopeKeys.has(scopeKey)) {
+	const terminalGeneration = terminalDisposedScopeGenerations.get(scopeKey);
+	if (terminalGeneration === undefined) return;
+	if (terminalGeneration >= getCursorSessionScopeGeneration(scopeKey)) {
 		throw new SessionCursorAgentScopeClosedError();
 	}
+	terminalDisposedScopeGenerations.delete(scopeKey);
 }
 
 function rethrowSupersededWhenReplacedByDifferentPoolKey(scopeKey: string, poolKey: string, error: unknown): void {
@@ -112,17 +108,9 @@ interface SessionCursorAgentCreateParams {
 	createAgent?: CursorSdkModule["Agent"]["create"];
 }
 
-interface CursorSessionAgentExtensionApi {
-	on(event: "session_shutdown", handler: ExtensionHandler<SessionShutdownEvent>): void;
-	on(event: "session_compact", handler: ExtensionHandler<SessionCompactEvent>): void;
-	on(event: "session_before_tree", handler: ExtensionHandler<SessionBeforeTreeEvent>): void;
-	on(event: "session_tree", handler: ExtensionHandler<SessionTreeEvent>): void;
-	on(event: "model_select", handler: ExtensionHandler<{ model: unknown }>): void;
-}
-
 const sessionAgentsByScope = new Map<string, SessionCursorAgentPoolEntry>();
 const invalidatedScopeKeys = new Set<string>();
-const terminalDisposedScopeKeys = new Set<string>();
+const terminalDisposedScopeGenerations = new Map<string, number>();
 const scopeCreationGenerations = new Map<string, number>();
 const EMPTY_POOL_STATE: SessionCursorAgentPoolState = { status: "empty" };
 let nextSessionAgentInstanceId = 1;
@@ -194,7 +182,7 @@ async function disposePoolEntry(entry: SessionCursorAgentPoolEntry): Promise<voi
 async function disposePoolEntryForScope(scopeKey: string, options?: { terminal?: boolean }): Promise<void> {
 	invalidateScopeCreations(scopeKey);
 	if (options?.terminal) {
-		terminalDisposedScopeKeys.add(scopeKey);
+		terminalDisposedScopeGenerations.set(scopeKey, getCursorSessionScopeGeneration(scopeKey));
 	}
 	const entry = sessionAgentsByScope.get(scopeKey);
 	invalidatedScopeKeys.delete(scopeKey);
@@ -525,35 +513,10 @@ export async function disposeSessionCursorAgent(scopeKey: string = getCursorSess
 }
 
 export async function disposeAllSessionCursorAgents(): Promise<void> {
-	const scopeKeys = [...new Set([...sessionAgentsByScope.keys(), ...terminalDisposedScopeKeys])];
+	const scopeKeys = [...new Set([...sessionAgentsByScope.keys(), ...terminalDisposedScopeGenerations.keys()])];
 	await Promise.all(scopeKeys.map((scopeKey) => disposePoolEntryForScope(scopeKey, { terminal: true })));
 	invalidatedScopeKeys.clear();
-	terminalDisposedScopeKeys.clear();
-}
-
-export function registerCursorSessionAgent(_pi: CursorSessionAgentExtensionApi): void {
-	onCursorSessionScopeKeyChange((previousScopeKey) => {
-		void disposePoolEntryForScope(previousScopeKey, { terminal: true });
-	});
-	_pi.on("session_shutdown", async (event) => {
-		if (event.reason === "reload") {
-			await resetSessionCursorAgent();
-			return;
-		}
-		await disposeSessionCursorAgent();
-	});
-	_pi.on("session_compact", () => {
-		invalidateSessionAgent();
-	});
-	_pi.on("session_before_tree", () => {
-		invalidateSessionAgent();
-	});
-	_pi.on("session_tree", async () => {
-		await resetSessionCursorAgent();
-	});
-	_pi.on("model_select", () => {
-		invalidateSessionAgent();
-	});
+	terminalDisposedScopeGenerations.clear();
 }
 
 export const __testUtils = {

@@ -13,6 +13,8 @@ type CursorModelSelectEvent = { model: ExtensionContext["model"] };
 
 type CursorModelLifecycleSyncHandler = (ctx: CursorModelLifecycleContext) => Promise<void> | void;
 type CursorModelSessionStartHandler = ExtensionHandler<SessionStartEvent>;
+type CursorModelSelectHandler = (event: CursorModelSelectEvent, ctx: CursorModelLifecycleContext) => Promise<void> | void;
+type CursorModelTurnStartHandler = ExtensionHandler<TurnStartEvent>;
 type CursorModelBeforeAgentStartHandler = ExtensionHandler<BeforeAgentStartEvent, BeforeAgentStartEventResult>;
 
 export interface CursorModelLifecycleExtensionApi {
@@ -24,9 +26,10 @@ export interface CursorModelLifecycleExtensionApi {
 
 export interface CursorModelLifecycleHandlers {
 	sessionStart?: CursorModelSessionStartHandler;
+	modelSelect?: CursorModelSelectHandler;
+	turnStart?: CursorModelTurnStartHandler;
 	sync?: CursorModelLifecycleSyncHandler;
 	beforeAgentStart?: CursorModelBeforeAgentStartHandler;
-	includeBeforeAgentStartInSync?: boolean;
 }
 
 function normalizeLifecycleHandlers(
@@ -47,23 +50,22 @@ export function registerCursorModelLifecycle(
 			await sync?.(ctx);
 		});
 	}
-	if (sync) {
+	if (handlers.modelSelect || sync) {
 		pi.on("model_select", async (event, ctx) => {
-			await sync({ ...ctx, model: event.model });
-		});
-		pi.on("turn_start", async (_event, ctx) => {
-			await sync(ctx);
+			const effectiveCtx = { ...ctx, model: event.model };
+			await handlers.modelSelect?.(event, effectiveCtx);
+			await sync?.(effectiveCtx);
 		});
 	}
-	if (sync && handlers.includeBeforeAgentStartInSync !== false && !handlers.beforeAgentStart) {
-		pi.on("before_agent_start", async (_event, ctx) => {
-			await sync(ctx);
+	if (handlers.turnStart || sync) {
+		pi.on("turn_start", async (event, ctx) => {
+			await handlers.turnStart?.(event, ctx);
+			await sync?.(ctx);
 		});
-		return;
 	}
-	if (handlers.beforeAgentStart) {
+	if (handlers.beforeAgentStart || sync) {
 		pi.on("before_agent_start", async (event, ctx) => {
-			if (sync && handlers.includeBeforeAgentStartInSync !== false) await sync(ctx);
+			await sync?.(ctx);
 			return await handlers.beforeAgentStart?.(event, ctx);
 		});
 	}

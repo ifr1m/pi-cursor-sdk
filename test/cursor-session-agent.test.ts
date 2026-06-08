@@ -4,9 +4,9 @@ import { createEventHarness, createExtensionTestContext, makeContext } from "./h
 import { __testUtils as cursorSessionScopeTestUtils, registerCursorSessionScope } from "../src/cursor-session-scope.js";
 import {
 	acquireSessionCursorAgent,
-	registerCursorSessionAgent,
 	__testUtils as sessionAgentTestUtils,
 } from "../src/cursor-session-agent.js";
+import { registerCursorSessionAgentLifecycle } from "../src/cursor-session-agent-lifecycle.js";
 
 describe("cursor-session-agent", () => {
 	beforeEach(async () => {
@@ -569,7 +569,7 @@ describe("cursor-session-agent", () => {
 		});
 		const pi = createEventHarness();
 
-		registerCursorSessionAgent(pi);
+		registerCursorSessionAgentLifecycle(pi);
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		await acquireSessionCursorAgent({
 			apiKey: "test-key",
@@ -593,7 +593,7 @@ describe("cursor-session-agent", () => {
 		}));
 		const pi = createEventHarness();
 
-		registerCursorSessionAgent(pi);
+		registerCursorSessionAgentLifecycle(pi);
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",
@@ -621,7 +621,7 @@ describe("cursor-session-agent", () => {
 		const pi = createEventHarness();
 
 		registerCursorSessionScope(pi);
-		registerCursorSessionAgent(pi);
+		registerCursorSessionAgentLifecycle(pi);
 		const params = {
 			apiKey: "test-key",
 			agentMode: "agent" as const,
@@ -656,6 +656,58 @@ describe("cursor-session-agent", () => {
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
 
+	it("allows reacquiring after terminal shutdown when a session file is resumed", async () => {
+		const mockDispose = vi.fn().mockResolvedValue(undefined);
+		const createAgent = vi.fn().mockImplementation(async () => ({
+			agentId: `agent-${createAgent.mock.calls.length + 1}`,
+			[Symbol.asyncDispose]: mockDispose,
+		}));
+		const pi = createEventHarness();
+
+		registerCursorSessionScope(pi);
+		registerCursorSessionAgentLifecycle(pi);
+		const params = {
+			apiKey: "test-key",
+			agentMode: "agent" as const,
+			cwd: "/tmp/project",
+			modelSelection: { id: "composer-2.5" },
+			createAgent,
+		};
+
+		await pi.runSessionStart({
+			cwd: "/tmp/project",
+			sessionManager: {
+				getSessionFile: () => "/tmp/sessions/session-a.jsonl",
+			},
+		});
+		const first = await acquireSessionCursorAgent(params);
+
+		await pi.runSessionShutdown({ reason: "resume" });
+		await pi.runSessionStart({
+			cwd: "/tmp/project",
+			sessionManager: {
+				getSessionFile: () => "/tmp/sessions/session-b.jsonl",
+			},
+		});
+		const second = await acquireSessionCursorAgent(params);
+
+		await pi.runSessionShutdown({ reason: "resume" });
+		await pi.runSessionStart({
+			cwd: "/tmp/project",
+			sessionManager: {
+				getSessionFile: () => "/tmp/sessions/session-a.jsonl",
+			},
+		});
+		const resumed = await acquireSessionCursorAgent(params);
+
+		expect(first.scopeKey).toBe("/tmp/sessions/session-a.jsonl");
+		expect(second.scopeKey).toBe("/tmp/sessions/session-b.jsonl");
+		expect(resumed.scopeKey).toBe("/tmp/sessions/session-a.jsonl");
+		expect(resumed.agent).not.toBe(first.agent);
+		expect(createAgent).toHaveBeenCalledTimes(3);
+		expect(mockDispose).toHaveBeenCalledTimes(2);
+	});
+
 	it("disposes the previous scope agent when the session file changes", async () => {
 		const mockDispose = vi.fn().mockResolvedValue(undefined);
 		const createAgent = vi.fn().mockResolvedValue({
@@ -665,7 +717,7 @@ describe("cursor-session-agent", () => {
 		const pi = createEventHarness();
 
 		registerCursorSessionScope(pi);
-		registerCursorSessionAgent(pi);
+		registerCursorSessionAgentLifecycle(pi);
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/session-a.jsonl");
 		await acquireSessionCursorAgent({
 			apiKey: "test-key",
@@ -723,7 +775,7 @@ describe("cursor-session-agent", () => {
 		});
 		const pi = createEventHarness();
 
-		registerCursorSessionAgent(pi);
+		registerCursorSessionAgentLifecycle(pi);
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		await acquireSessionCursorAgent({
 			apiKey: "test-key",
@@ -747,7 +799,7 @@ describe("cursor-session-agent", () => {
 		}));
 		const pi = createEventHarness();
 
-		registerCursorSessionAgent(pi);
+		registerCursorSessionAgentLifecycle(pi);
 		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
 		const params = {
 			apiKey: "test-key",

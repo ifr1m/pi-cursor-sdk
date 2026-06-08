@@ -7,14 +7,17 @@ interface CursorSessionScopeExtensionApi {
 const ANONYMOUS_SESSION_SCOPE_KEY = "__anonymous__";
 const EPHEMERAL_SESSION_SCOPE_PREFIX = "__ephemeral__:";
 
-type CursorSessionScopeChangeHandler = (previousScopeKey: string) => void;
+type CursorSessionScopeChangeHandler = (previousScopeKey: string) => Promise<void> | void;
 
 const state = {
 	sessionCwd: process.cwd(),
 	sessionFile: undefined as string | undefined,
 	sessionId: undefined as string | undefined,
+	sessionGeneration: 0,
 };
 
+const scopeGenerations = new Map<string, number>([[ANONYMOUS_SESSION_SCOPE_KEY, state.sessionGeneration]]);
+let nextSessionGeneration = 1;
 let scopeChangeHandler: CursorSessionScopeChangeHandler | undefined;
 
 /**
@@ -34,6 +37,10 @@ export function getCursorSessionScopeKey(): string {
 	return ANONYMOUS_SESSION_SCOPE_KEY;
 }
 
+export function getCursorSessionScopeGeneration(scopeKey: string = getCursorSessionScopeKey()): number {
+	return scopeGenerations.get(scopeKey) ?? 0;
+}
+
 /**
  * Pi session cwd when known; falls back to process.cwd() before session_start.
  * Updated on session_start only until pi threads cwd into streamSimple—mid-session cwd
@@ -47,12 +54,19 @@ function setCursorSessionScope(cwd: string, sessionFile: string | undefined, ses
 	state.sessionCwd = cwd;
 	state.sessionFile = sessionFile;
 	state.sessionId = sessionId;
+	state.sessionGeneration = nextSessionGeneration;
+	nextSessionGeneration += 1;
+	scopeGenerations.set(getCursorSessionScopeKey(), state.sessionGeneration);
 }
 
 function resetCursorSessionScope(): void {
 	state.sessionCwd = process.cwd();
 	state.sessionFile = undefined;
 	state.sessionId = undefined;
+	state.sessionGeneration = 0;
+	nextSessionGeneration = 1;
+	scopeGenerations.clear();
+	scopeGenerations.set(ANONYMOUS_SESSION_SCOPE_KEY, state.sessionGeneration);
 }
 
 export function onCursorSessionScopeKeyChange(handler: CursorSessionScopeChangeHandler): void {
@@ -60,7 +74,7 @@ export function onCursorSessionScopeKeyChange(handler: CursorSessionScopeChangeH
 }
 
 export function registerCursorSessionScope(pi: CursorSessionScopeExtensionApi): void {
-	pi.on("session_start", (_event, ctx) => {
+	pi.on("session_start", async (_event, ctx) => {
 		const previousScopeKey = getCursorSessionScopeKey();
 		setCursorSessionScope(
 			ctx.cwd,
@@ -68,7 +82,7 @@ export function registerCursorSessionScope(pi: CursorSessionScopeExtensionApi): 
 			ctx.sessionManager?.getSessionId?.() ?? undefined,
 		);
 		if (previousScopeKey !== getCursorSessionScopeKey()) {
-			scopeChangeHandler?.(previousScopeKey);
+			await scopeChangeHandler?.(previousScopeKey);
 		}
 	});
 }

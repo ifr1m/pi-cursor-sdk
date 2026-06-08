@@ -221,10 +221,16 @@ export function registerCursorSkillTool(pi: CursorSkillToolExtensionApi): void {
 	};
 
 	registerCursorModelLifecycle(pi, {
-		sync: (ctx) => {
+		sessionStart: (_event, ctx) => {
 			clearSkillsAndSync(ctx.model);
 		},
-		includeBeforeAgentStartInSync: false,
+		modelSelect: (event) => {
+			clearSkillsAndSync(event.model);
+		},
+		turnStart: (_event, ctx) => {
+			if (!isCursorModel(ctx.model)) setCurrentSkills([]);
+			syncCursorSkillToolForModel(pi, ctx.model);
+		},
 		beforeAgentStart: (event, ctx) => {
 			if (isCursorModel(ctx.model)) {
 				setCurrentSkills(event.systemPromptOptions?.skills);

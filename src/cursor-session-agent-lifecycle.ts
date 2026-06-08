@@ -16,8 +16,9 @@ export interface CursorSessionAgentLifecycleExtensionApi {
 }
 
 export function registerCursorSessionAgentLifecycle(pi: CursorSessionAgentLifecycleExtensionApi): void {
-	onCursorSessionScopeKeyChange((previousScopeKey) => {
-		void import("./cursor-session-agent.js").then(({ disposeSessionCursorAgent }) => disposeSessionCursorAgent(previousScopeKey));
+	onCursorSessionScopeKeyChange(async (previousScopeKey) => {
+		const { disposeSessionCursorAgent } = await import("./cursor-session-agent.js");
+		await disposeSessionCursorAgent(previousScopeKey);
 	});
 	pi.on("session_shutdown", async (event) => {
 		const { disposeSessionCursorAgent, resetSessionCursorAgent } = await import("./cursor-session-agent.js");

@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 
 const CARD_PATTERNS = [
 	{ id: "read", pattern: /^\s*read (?:\.\/)?package\.json\s*$/i },
-	{ id: "grep", pattern: /^\s*grep \/pi-cursor-sdk\/ in README\.md\s*$/i },
+	{ id: "grep", pattern: /^\s*grep \/pi-cursor-sdk\/ in\s+(?:(?:\S+[\\/])?README\.md)\s*$/i },
 	{ id: "find", pattern: /^\s*find README\.md in\s+\S+/i },
 	{ id: "list", pattern: /^\s*(?:find \* in src|find src\/\* in \.|Get-ChildItem -Name \.\/src)\s*/i },
 	{ id: "shell-success", pattern: /^\s*cursor visual smoke\s*$/i },

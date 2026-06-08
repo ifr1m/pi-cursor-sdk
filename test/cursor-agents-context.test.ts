@@ -19,7 +19,6 @@ import {
 	getAgentsContextFileBaseName,
 	isPiAgentDirAgentsMdPath,
 	PI_PROJECT_INSTRUCTIONS_OPEN_PREFIX,
-	registerCursorAgentsContextDedup,
 	removePiAgentsContextFromSystemPrompt,
 	resolveCursorFacingSystemPrompt,
 	serializePiProjectContextSection,
@@ -27,6 +26,7 @@ import {
 	shouldRemovePiAgentsContextFile,
 	shouldSuppressPiAgentsContext,
 } from "../src/cursor-agents-context.js";
+import { registerCursorAgentsContextDedup } from "../src/cursor-agents-context-registration.js";
 import { buildCursorPrompt } from "../src/context.js";
 import { CURSOR_SETTING_SOURCES_ENV } from "../src/cursor-setting-sources.js";
 import { createEventHarness, makeModel } from "./helpers/pi-harness.js";

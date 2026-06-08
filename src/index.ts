@@ -10,6 +10,7 @@ import { registerCursorSessionAgentLifecycle } from "./cursor-session-agent-life
 import { streamCursorLazy } from "./cursor-provider-lazy.js";
 import { CURSOR_API_KEY_CONFIG_VALUE } from "./cursor-api-key.js";
 import { registerCursorFallbackIssueWarning } from "./cursor-fallback-warning.js";
+import { registerCursorAgentsContextDedup } from "./cursor-agents-context-registration.js";
 
 type CursorExtensionApi =
 	& Pick<ExtensionAPI, "registerProvider" | "registerCommand" | "on">
@@ -20,7 +21,8 @@ type CursorExtensionApi =
 	& Parameters<typeof registerCursorQuestionTool>[0]
 	& Parameters<typeof registerCursorSkillTool>[0]
 	& Parameters<typeof registerCursorPiToolBridge>[0]
-	& Parameters<typeof registerCursorFallbackIssueWarning>[0];
+	& Parameters<typeof registerCursorFallbackIssueWarning>[0]
+	& Parameters<typeof registerCursorAgentsContextDedup>[0];
 
 function createCursorProviderConfig(models: ProviderModelConfig[]): ProviderConfig {
 	return {
@@ -50,16 +52,7 @@ export default async function (pi: CursorExtensionApi) {
 	registerCursorQuestionTool(pi);
 	registerCursorSkillTool(pi);
 	registerCursorPiToolBridge(pi);
-	pi.on("before_agent_start", async (event, ctx) => {
-		const { resolveCursorFacingSystemPrompt } = await import("./cursor-agents-context.js");
-		const resolved = resolveCursorFacingSystemPrompt(
-			event.systemPrompt,
-			ctx.model,
-			event.systemPromptOptions,
-		);
-		if (resolved === event.systemPrompt) return undefined;
-		return { systemPrompt: resolved };
-	});
+	registerCursorAgentsContextDedup(pi);
 	let fallbackIssue: CursorModelFallbackIssue | undefined;
 	const models = await discoverModels({
 		onFallback: (issue) => {

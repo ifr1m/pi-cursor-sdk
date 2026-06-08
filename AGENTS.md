@@ -19,8 +19,10 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-provider-run-finalizer.ts` owns live-run wait completion, outcome application, debug finalization, and SDK abort-suppression disposal.
 - `src/cursor-run-final-text.ts` owns final assistant text selection for run outcomes and live-run drain.
 - `src/cursor-provider-errors.ts` owns scrubbed Cursor SDK run failure detail, abort reason formatting, and provider error sanitization.
-- `src/cursor-session-scope.ts` owns pi session cwd, session file/id scope keys, and `session_start` registration for session-agent pooling and debug grouping.
-- `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, send-state commits, busy tracking for in-flight SDK `run.wait()` work, and lifecycle invalidation on compaction/tree/shutdown.
+- `src/cursor-provider-lazy.ts` owns the lazy `streamSimple` wrapper that defers Cursor provider runtime imports until the provider is invoked.
+- `src/cursor-session-scope.ts` owns pi session cwd, session file/id/generation scope keys, and `session_start` registration for session-agent pooling and debug grouping.
+- `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, send-state commits, busy tracking for in-flight SDK `run.wait()` work, and scoped acquire/dispose state.
+- `src/cursor-session-agent-lifecycle.ts` owns lazy session-agent lifecycle invalidation on model select, compaction, tree navigation, shutdown, and scope changes.
 - `src/cursor-session-compaction-prep.ts` owns `prepareCursorSessionForCompaction()` (release scoped live runs, reset pooled agent) wired from `session_before_compact` in `src/index.ts`.
 - `src/cursor-session-send-policy.ts` owns session send planning (`bootstrap` vs `incremental`), periodic agent rebootstrap threshold, and prompt mode selection.
 - `src/cursor-provider-live-run-drain.ts` owns live-run drain/replay mirroring, pre-send continuation, and native replay turn emission.
@@ -36,7 +38,7 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `src/cursor-sdk-event-debug.ts` owns opt-in provider event artifact capture for Cursor SDK callbacks, stream events, replay/drain/bridge decisions, final partials, and summaries under `.debug/cursor-sdk-events/`, including discarded incomplete started tool calls when `PI_CURSOR_SDK_EVENT_DEBUG=1`.
 - `shared/cursor-sdk-event-debug-env.mjs` owns canonical Cursor SDK event-debug env names; `src/cursor-sdk-event-debug-constants.ts` re-exports them and owns debug artifact base-dir resolution.
 - `src/cursor-sdk-event-debug-session.ts` owns debug session grouping, turn artifact directory allocation, and session manifest updates.
-- `src/cursor-agents-context.ts` owns Cursor-model suppression of pi `<project_context>` / `AGENTS.md` duplication and `PI_CURSOR_PRESERVE_PI_AGENTS_MD`.
+- `src/cursor-agents-context.ts` owns Cursor-model suppression of pi `<project_context>` / `AGENTS.md` duplication and `PI_CURSOR_PRESERVE_PI_AGENTS_MD`; `src/cursor-agents-context-registration.ts` owns the lazy lifecycle registration for that suppression.
 - `src/cursor-sdk-output-filter.ts` suppresses Cursor SDK integrator bootstrap noise from pi's TUI.
 - `src/cursor-edit-diff.ts` owns canonical edit diff fallback resolution for replay/display paths.
 - `src/cursor-record-utils.ts` owns shared record/string-key parsing and neutral unknown-value stringification helpers used across bridge and transcript layers.
@@ -45,7 +47,7 @@ This repository is a pi provider extension that registers Cursor SDK-backed mode
 - `shared/cursor-setting-sources.mjs` owns canonical `PI_CURSOR_SETTING_SOURCES` parsing/serialization; `src/cursor-setting-sources.ts` and `scripts/lib/cursor-setting-sources.mjs` consume it for provider runtime and maintainer scripts.
 - `scripts/lib/cursor-smoke-env.mjs`, `scripts/lib/cursor-smoke-shell.sh`, and `scripts/lib/cursor-visual-render.mjs` own maintainer smoke PATH/env isolation and browser-rendered visual artifacts; smoke runners should consume these helpers instead of duplicating debug env names, sealed Node PATH logic, or xterm/Playwright rendering.
 - `src/cursor-tool-presentation-registry.ts` is the canonical typed registry for Cursor tool names, labels, visibility, lifecycle, replay metadata (legacy wrapper names, wrapper labels, side-effect policy, call-summary policy), web remapping, alias normalization, and bridge exclusions for internal replay wrappers only (`cursor`, `cursor_*`); sibling modules derive from it.
-- `src/cursor-transcript-tool-specs.ts` owns per-tool transcript formatters and pi display builders keyed by normalized tool name; `TOOL_DISPLAY_SPECS` keys must match registry entries exactly (`CURSOR_TOOL_DISPLAY_SPEC_KEYS`).
+- `src/cursor-transcript-tool-specs.ts` owns per-tool transcript formatters and pi display builders keyed by normalized tool name; its display implementation keys must match registry entries exactly (`CURSOR_TOOL_DISPLAY_SPEC_KEYS`).
 - `src/cursor-pi-tool-bridge-types.ts` owns shared bridge/MCP type contracts.
 - `src/cursor-env-boolean.ts` owns canonical env boolean parsing (default and tri-state optional) for bridge diagnostics, flags, and native replay gating.
 - `src/cursor-live-run-coordinator.ts` owns live Cursor run registry/scope matching, queued events, drain leases, idle disposal timers, and release cleanup.
