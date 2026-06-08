@@ -17,8 +17,9 @@ docs/public-demo-script.md
 .cursor/debug-*.log
 prompt-exports/
 
-# Cursor native replay smoke-test artifacts (do not commit)
+# Cursor native replay and dogfood smoke-test artifacts (do not commit)
 .pi-tool-demo/
+dogfood-output/
 
 # CueLoop local/runtime state (do not commit)
 .cueloop/
