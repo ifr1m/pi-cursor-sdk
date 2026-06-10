@@ -71,7 +71,7 @@ describe("streamCursor Cursor task progress", () => {
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 
-		expect(trace).toContain("Cursor task: Explore AI/automation projects");
+		expect(trace).toContain("Cursor subagent: Explore AI/automation projects");
 		expect(trace).not.toContain("Cursor tool: task started");
 		expect(firstDone.reason).toBe("toolUse");
 		expect(toolCall?.name).toBe("cursor");
@@ -114,6 +114,49 @@ describe("streamCursor Cursor task progress", () => {
 		})).toBe("LIVE TEST PASS final report");
 	});
 
+	it("can preserve SDK task wording through the experiment opt-out", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
+		process.env.PI_CURSOR_TASK_PRESENTATION = "task";
+		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
+			opts.onDelta({
+				update: {
+					type: "tool-call-started",
+					toolCall: { name: "task", args: { description: "Review API auth flow" } },
+					callId: "task-1",
+				},
+			});
+			await delayBeforeToolCompletion();
+			opts.onDelta({
+				update: {
+					type: "tool-call-completed",
+					toolCall: {
+						name: "task",
+						args: { description: "Review API auth flow" },
+						result: { status: "success", value: { description: "Review API auth flow" } },
+					},
+					callId: "task-1",
+				},
+			});
+			opts.onDelta({ update: { type: "text-delta", text: "done" } });
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished" }),
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
+		});
+		mockCreatedAgent({ send: mockSend });
+
+		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
+		const trace = collectThinkingDeltas(events);
+
+		expect(trace).toContain("Cursor task: Review API auth flow");
+		expect(trace).not.toContain("Cursor subagent: Review API auth flow");
+	});
+
 	it("does not emit task progress for normal read or bash starts", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
@@ -150,6 +193,7 @@ describe("streamCursor Cursor task progress", () => {
 		const trace = collectThinkingDeltas(events);
 
 		expect(trace).not.toContain("Cursor task:");
+		expect(trace).not.toContain("Cursor subagent:");
 		expect(trace).not.toContain("Cursor tool: read started");
 		expect(trace).not.toContain("Cursor tool: bash started");
 		expect(trace).toContain("read README.md");
@@ -208,7 +252,7 @@ describe("streamCursor Cursor task progress", () => {
 
 		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const trace = collectThinkingDeltas(events);
-		const progressMatches = trace.match(/Cursor task: Explore AI\/automation projects/g) ?? [];
+		const progressMatches = trace.match(/Cursor subagent: Explore AI\/automation projects/g) ?? [];
 
 		expect(progressMatches).toHaveLength(1);
 	});
@@ -252,16 +296,16 @@ describe("streamCursor Cursor task progress", () => {
 
 		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: secretKey }));
 		const trace = collectThinkingDeltas(events);
-		const progressLine = trace.split("\n").find((line) => line.includes("Cursor task:")) ?? "";
+		const progressLine = trace.split("\n").find((line) => line.includes("Cursor subagent:")) ?? "";
 
-		expect(progressLine).toContain("Cursor task:");
+		expect(progressLine).toContain("Cursor subagent:");
 		expect(progressLine).not.toContain(secretKey);
 		expect(progressLine).toContain("Bearer [redacted]");
 		expect(progressLine).toContain("…");
 		expect(progressLine.length).toBeLessThan(280);
 	});
 
-	it("does not emit Cursor task progress for MCP envelope starts", async () => {
+	it("does not emit Cursor subagent progress for MCP envelope starts", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 			opts.onDelta({
@@ -302,6 +346,7 @@ describe("streamCursor Cursor task progress", () => {
 		const trace = collectThinkingDeltas(events);
 
 		expect(trace).not.toContain("Cursor task:");
+		expect(trace).not.toContain("Cursor subagent:");
 		expect(trace).not.toContain("Should not surface as Cursor task progress");
 	});
 });

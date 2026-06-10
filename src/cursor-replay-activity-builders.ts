@@ -27,6 +27,7 @@ import {
 	inferImageMimeType,
 } from "./cursor-tool-result-display-readers.js";
 import { extractWebFetchTarget, extractWebSearchQuery } from "./cursor-web-tool-args.js";
+import { formatCursorTaskAgentId, formatCursorTaskKind, getCursorTaskPresentationMode, readCursorTaskMetadata } from "./cursor-task-presentation.js";
 
 export interface CursorReplayActivityBuildContext {
 	args: Record<string, unknown>;
@@ -88,12 +89,20 @@ export function buildCreatePlanReplaySummaryArgs({ args, result }: CursorReplayA
 	};
 }
 
-export function buildTaskReplaySummaryArgs({ args, result }: CursorReplayActivityBuildContext): CursorReplayTaskSummaryArgs {
+export function buildTaskReplaySummaryArgs({ args, result, options }: CursorReplayActivityBuildContext): CursorReplayTaskSummaryArgs {
 	const description = getTaskDescription(args, result);
-	const preview = firstNonEmptyLine(collectTaskText(result));
+	const preview = firstNonEmptyLine(collectTaskText(result, options));
+	const metadata = readCursorTaskMetadata(args, result.value);
+	const displayAgentId = formatCursorTaskAgentId(metadata.agentId);
+	const includeMetadata = getCursorTaskPresentationMode() === "subagent-meta";
 	return {
 		description: truncateArg(description),
 		...(preview ? { preview: truncateArg(preview) } : {}),
+		...(includeMetadata && metadata.subagentName ? { subagentName: truncateArg(metadata.subagentName) } : {}),
+		...(includeMetadata && metadata.subagentKind ? { subagentKind: truncateArg(formatCursorTaskKind(metadata.subagentKind) ?? metadata.subagentKind) } : {}),
+		...(includeMetadata && metadata.model ? { model: truncateArg(metadata.model) } : {}),
+		...(includeMetadata && displayAgentId ? { agentId: truncateArg(displayAgentId) } : {}),
+		...(includeMetadata && metadata.isBackground === true ? { isBackground: true } : {}),
 	};
 }
 

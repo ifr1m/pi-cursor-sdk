@@ -9,6 +9,7 @@ import {
 	getRecord,
 	getString,
 } from "./cursor-record-utils.js";
+import { getCursorTaskTranscriptHeader } from "./cursor-task-presentation.js";
 import {
 	collectTaskText,
 	getGenerateImageDisplayPath,
@@ -487,10 +488,10 @@ export function formatPlan(args: Record<string, unknown>, result: NormalizedResu
 }
 
 export function formatTask(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {
-	const description = getTaskDescription(args, result);
-	if (result.status === "error") return joinSections(`task ${description}`, formatError(result.error));
-	const taskText = collectTaskText(result);
-	return joinSections(`task ${description}`, limitText(taskText || stringifyUnknown(result.value), options));
+	const header = getCursorTaskTranscriptHeader(args, result.value);
+	if (result.status === "error") return joinSections(header, formatError(result.error));
+	const taskText = collectTaskText(result, options);
+	return joinSections(header, limitText(taskText || stringifyUnknown(result.value), options));
 }
 
 export function formatGenerateImage(args: Record<string, unknown>, result: NormalizedResult, options: TranscriptOptions): string {

@@ -209,7 +209,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 	},
 	{
 		normalizedName: "task",
-		displayLabel: "Cursor task",
+		displayLabel: "Cursor subagent",
 		visibility: { lifecycleEligible: true },
 		lifecycleLabelKind: "task",
 		replayCallSummary: withActivitySummaryFallback(summarizeReplayTask),

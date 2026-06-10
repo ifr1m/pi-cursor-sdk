@@ -182,7 +182,7 @@ it("replays native Cursor tools as a toolUse turn before final text", async () =
 		const events = await collectEvents(streamCursor(makeModel(), context, { apiKey: "test-key" }));
 
 		expect(hasEventType(events, "toolcall_start")).toBe(false);
-		expect(collectThinkingDeltas(events)).toContain("Cursor task");
+		expect(collectThinkingDeltas(events)).toContain("Cursor subagent");
 		expect(getDoneEvent(events).reason).toBe("stop");
 	});
 
