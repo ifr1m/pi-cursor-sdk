@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
-import { getLanguageFromPath, highlightCode, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { getLanguageFromPath, highlightCode, keyHint, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Image, Text, type Component } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { resolveCursorEditDiff } from "./cursor-edit-diff.js";
@@ -423,6 +423,14 @@ function hasCursorReplayDisplayTitle(details: CursorReplayToolDetails | undefine
 	return isCursorReplayActivityDetails(details) || isCursorReplayGenerateImageDetails(details);
 }
 
+function formatCursorReplayExpandHint(): string {
+	try {
+		return keyHint("app.tools.expand", "to expand");
+	} catch {
+		return "Ctrl+O to expand";
+	}
+}
+
 function renderExpandableCursorReplayResult(
 	title: string,
 	details: CursorReplayExpandableResultDetails,
@@ -434,8 +442,10 @@ function renderExpandableCursorReplayResult(
 ): Component {
 	const text = firstContentText(result);
 	const summary = details.summary ?? text.split("\n").find((line) => line.trim()) ?? "completed";
-	let rendered = `${theme.fg("toolTitle", theme.bold(title))} ${theme.fg(isError ? "error" : "success", summary)}`;
 	const expandedText = details.expandedText ?? (text.includes("\n") ? text : undefined);
+	const showExpandHint = expandedText && !options.expanded && details.sourceToolName === "task";
+	const expandHint = showExpandHint ? theme.fg("dim", ` (${formatCursorReplayExpandHint()})`) : "";
+	let rendered = `${theme.fg("toolTitle", theme.bold(title))} ${theme.fg(isError ? "error" : "success", summary)}${expandHint}`;
 	if (expandedText && (options.expanded || !details.collapseDetailsByDefault)) {
 		const preview = formatCursorReplayActivityPreview(
 			details,

@@ -425,20 +425,20 @@ describe("extension native Cursor tool replay", () => {
 
 		const taskRendered = cursorTool.renderResult?.(
 			{
-				content: [{ type: "text", text: "task Quick repo file count\n\n20" }],
+				content: [{ type: "text", text: "subagent Quick repo file count\n\n20" }],
 				details: {
 					variant: "activity",
 					sourceToolName: "task",
-					title: "Cursor task",
+					title: "Cursor subagent",
 					summary: "Quick repo file count: 20",
-					expandedText: "task Quick repo file count\n\n20",
+					expandedText: "subagent Quick repo file count\n\n20",
 				},
 			},
 			options,
 			theme,
 			context,
 		)?.render(120).join("\n") ?? "";
-		expect(taskRendered).toContain("Cursor task Quick repo file count: 20");
+		expect(taskRendered).toContain("Cursor subagent Quick repo file count: 20");
 
 		const editTool = getHarnessRegisteredTool(pi._tools, "edit");
 		const editRendered = editTool.renderResult?.(

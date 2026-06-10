@@ -59,6 +59,19 @@ describe("cursor native replay rendering", () => {
 		expect(rendered).not.toContain("full diff");
 	});
 
+	it("shows the standard expand affordance on collapsed expandable replay cards", () => {
+		const rendered = renderReplayResultWithDetails({
+			variant: "activity",
+			sourceToolName: "task",
+			title: "Cursor subagent",
+			summary: "Inspect package.json · Explore · composer-2.5-fast · ID: agent-1",
+			expandedText: "subagent Inspect package.json\n\n1. Package name: pi-cursor-sdk\n2. Risk: peer ranges",
+		});
+
+		expect(rendered).toContain("to expand");
+		expect(rendered).toContain("Cursor subagent");
+	});
+
 	it("colors unified diff body lines in neutral Cursor edit activity cards", () => {
 		// Unstructured path (no diffString): still exercises extract + canonical renderer.
 		const rendered = renderReplayResultWithDetails({

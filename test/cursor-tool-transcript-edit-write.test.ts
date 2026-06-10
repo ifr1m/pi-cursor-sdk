@@ -233,8 +233,8 @@ describe("formatCursorToolTranscript edit and write", () => {
 		expect(todosDisplay.result.content[0].text).toContain("✓ Run Read/Grep/Glob (completed)");
 		expect(taskDisplay).toMatchObject({
 			toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
-			args: { description: "Quick ls demo subagent", activityTitle: "Cursor task", activitySummary: "Quick ls demo subagent: $ ls src | head -5" },
-			result: { details: { variant: "activity", sourceToolName: "task", title: "Cursor task", summary: "Quick ls demo subagent: $ ls src | head -5" } },
+			args: { description: "Quick ls demo subagent", activityTitle: "Cursor subagent", activitySummary: "Quick ls demo subagent: $ ls src | head -5" },
+			result: { details: { variant: "activity", sourceToolName: "task", title: "Cursor subagent", summary: "Quick ls demo subagent: $ ls src | head -5" } },
 			isError: false,
 		});
 		expect(taskDisplay.result.content[0].text).toContain("context.ts");
@@ -253,5 +253,134 @@ describe("formatCursorToolTranscript edit and write", () => {
 			isError: false,
 		});
 		expect(deleteDisplay.result.content[0].text).toContain("Deleted 9 bytes");
+	});
+
+	it("includes nested Cursor task conversation tool-call summaries when the SDK returns them", () => {
+		process.env.PI_CURSOR_TASK_PRESENTATION = "subagent-meta";
+		try {
+			const taskDisplay = buildCursorPiToolDisplay(
+				{
+					name: "task",
+					args: { description: "Inspect package.json", subagentType: { kind: "explore" }, model: "composer-2.5-fast" },
+					result: {
+						status: "success",
+						value: {
+							agentId: "agent-sub-1",
+							conversationSteps: [
+								{ type: "toolCall", message: { type: "read", args: { path: "/repo/package.json" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "/Users/mitchfultz/.ssh/id_rsa" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "../.ssh/id_rsa" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "..\\secret.txt" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "src/.." } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "~/.ssh/id_rsa" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "C:..\\secret.txt" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "C:\\Users\\mitchfultz\\secret.txt" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "/repo/src/../package.json" } } },
+								{
+									type: "toolCall",
+									message: {
+										type: "shell",
+										args: { command: "node -p require('./package.json').name" },
+										result: { status: "success", value: { stdout: "pi-cursor-sdk\n", stderr: "", exitCode: 0, signal: "", executionTime: 1 } },
+									},
+								},
+								{ type: "assistantMessage", message: { text: "Package name is pi-cursor-sdk." } },
+							],
+						},
+					},
+				},
+				{ cwd: "/repo" },
+			);
+
+			const text = taskDisplay.result.content[0].text;
+			expect(text).toContain("read package.json");
+			expect(text).not.toContain("/Users/mitchfultz/.ssh/id_rsa");
+			expect(text).not.toContain("../.ssh/id_rsa");
+			expect(text).not.toContain("..\\secret.txt");
+			expect(text).not.toContain("src/..");
+			expect(text).not.toContain("~/.ssh/id_rsa");
+			expect(text).not.toContain("C:..\\secret.txt");
+			expect(text).not.toContain("C:\\Users\\mitchfultz\\secret.txt");
+			expect(text).not.toContain("/repo/src/../package.json");
+			expect(text).toContain("$ node -p require('./package.json').name");
+			expect(text).toContain("pi-cursor-sdk");
+			expect(text).toContain("Package name is pi-cursor-sdk.");
+		} finally {
+			delete process.env.PI_CURSOR_TASK_PRESENTATION;
+		}
+	});
+
+	it("suppresses invalid Cursor subagent agent IDs", () => {
+		process.env.PI_CURSOR_TASK_PRESENTATION = "subagent-meta";
+		try {
+			const taskDisplay = buildCursorPiToolDisplay({
+				name: "task",
+				args: { description: "Inspect package.json", subagentType: { kind: "explore" }, model: "composer-2.5-fast" },
+				result: {
+					status: "success",
+					value: {
+						agentId: "../../agent/sub 123",
+						conversationSteps: [{ type: "assistantMessage", message: { text: "done" } }],
+					},
+				},
+			});
+
+			expect(taskDisplay.args).not.toHaveProperty("agentId");
+			expect(taskDisplay.args.activitySummary).toBe("Inspect package.json · Explore · composer-2.5-fast");
+		} finally {
+			delete process.env.PI_CURSOR_TASK_PRESENTATION;
+		}
+	});
+
+	it("can render SDK task activity as an explicit Cursor subagent card with metadata", () => {
+		process.env.PI_CURSOR_TASK_PRESENTATION = "subagent-meta";
+		try {
+			const taskDisplay = buildCursorPiToolDisplay({
+				name: "task",
+				args: {
+					description: "Review API auth flow",
+					subagentType: { kind: "builtin", name: "reviewer" },
+					model: "composer-2.5",
+					mode: "plan",
+				},
+				result: {
+					status: "success",
+					value: {
+						agentId: "agent-sub-1234567890",
+						isBackground: true,
+						backgroundReason: "agentRequest",
+						conversationSteps: [{ assistantMessage: { text: "Found two auth risks." } }],
+					},
+				},
+			});
+
+			expect(taskDisplay).toMatchObject({
+				toolName: CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
+				args: {
+					description: "Review API auth flow",
+					subagentName: "reviewer",
+					subagentKind: "Builtin",
+					model: "composer-2.5",
+					agentId: "agent-su",
+					isBackground: true,
+					activityTitle: "Cursor subagent",
+					activitySummary: "Review API auth flow · Builtin · composer-2.5 · ID: agent-su · backgrounded",
+				},
+				result: {
+					details: {
+						variant: "activity",
+						sourceToolName: "task",
+						title: "Cursor subagent",
+						summary: "Review API auth flow · Builtin · composer-2.5 · ID: agent-su · backgrounded",
+					},
+				},
+				isError: false,
+			});
+			expect(taskDisplay.result.content[0].text).toContain("subagent reviewer Review API auth flow");
+			expect(taskDisplay.result.content[0].text).not.toContain("type=builtin");
+			expect(taskDisplay.result.content[0].text).toContain("Found two auth risks.");
+		} finally {
+			delete process.env.PI_CURSOR_TASK_PRESENTATION;
+		}
 	});
 });

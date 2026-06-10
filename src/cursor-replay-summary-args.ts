@@ -31,6 +31,12 @@ export interface CursorReplayPlanSummaryArgs extends CursorReplayTodoSummaryArgs
 export interface CursorReplayTaskSummaryArgs extends CursorReplayActivitySummaryOverride {
 	description?: string;
 	preview?: string;
+	subagentName?: string;
+	subagentKind?: string;
+	model?: string;
+	mode?: string;
+	agentId?: string;
+	isBackground?: boolean;
 }
 
 export interface CursorReplayGenerateImageSummaryArgs extends CursorReplayActivitySummaryOverride {
@@ -150,8 +156,22 @@ export function summarizeReplayPlan(args: CursorReplayPlanSummaryArgs | undefine
 export function summarizeReplayTask(args: CursorReplayTaskSummaryArgs | undefined): string | undefined {
 	const description = readCursorReplaySummaryString(args, "description");
 	const preview = readCursorReplaySummaryString(args, "preview");
-	if (description && preview && preview !== description) return `${description}: ${preview}`;
-	return description ?? preview;
+	const subagentName = readCursorReplaySummaryString(args, "subagentName");
+	const subagentKind = readCursorReplaySummaryString(args, "subagentKind");
+	const model = readCursorReplaySummaryString(args, "model");
+	const agentId = readCursorReplaySummaryString(args, "agentId");
+	const metadataParts = [
+		subagentKind,
+		model,
+		agentId ? `ID: ${agentId}` : undefined,
+		args?.isBackground === true ? "backgrounded" : undefined,
+	].filter((part): part is string => Boolean(part));
+	const subjectParts = [description].filter((part): part is string => Boolean(part));
+	const subject = subjectParts.length > 0 ? subjectParts.join(" · ") : undefined;
+	const head = metadataParts.length > 0 ? [subject, ...metadataParts].filter(Boolean).join(" · ") : subject;
+	if (metadataParts.length > 0) return head;
+	if (head && preview && preview !== description && preview !== subagentName) return `${head}: ${preview}`;
+	return head ?? preview;
 }
 
 export function summarizeReplayMcp(args: CursorReplayMcpSummaryArgs | undefined): string | undefined {
