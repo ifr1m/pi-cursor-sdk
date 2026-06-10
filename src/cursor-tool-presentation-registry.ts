@@ -23,6 +23,7 @@ import {
 	type CursorReplayWebSearchSummaryArgs,
 } from "./cursor-replay-summary-args.js";
 import { truncateCursorDisplayLine } from "./cursor-display-text.js";
+import { getCursorTaskActivityTitle } from "./cursor-task-presentation.js";
 import {
 	buildCreatePlanReplaySummaryArgs,
 	buildDeleteReplayDetailFields,
@@ -75,6 +76,10 @@ export interface CursorToolVisibilityPolicy {
 	fastLocalDiscovery?: boolean;
 }
 
+export interface CursorToolReplayDisplayPolicy {
+	showCollapsedExpandHint?: boolean;
+}
+
 export interface CursorToolActivityReplaySpec<TArgs extends CursorReplaySummaryArgs = CursorReplaySummaryArgs> {
 	buildActivityArgs: (context: CursorReplayActivityBuildContext) => TArgs;
 	buildDetails: (context: CursorReplayActivityBuildContext, contentText: string) => CursorReplayActivityDetailFields;
@@ -90,7 +95,9 @@ export interface CursorToolPresentationSpec {
 	/** Raw SDK/host names that resolve to this tool via {@link normalizeCursorToolName}. */
 	nameAliases?: readonly string[];
 	displayLabel: string;
+	getActivityTitle?: () => string;
 	visibility: CursorToolVisibilityPolicy;
+	replayDisplay?: CursorToolReplayDisplayPolicy;
 	webKind?: CursorWebToolKind;
 	/** Regexes matched against lowercased trimmed tool names for {@link classifyCursorWebToolKind}. */
 	webNamePatterns?: readonly RegExp[];
@@ -210,7 +217,9 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 	{
 		normalizedName: "task",
 		displayLabel: "Cursor subagent",
+		getActivityTitle: getCursorTaskActivityTitle,
 		visibility: { lifecycleEligible: true },
+		replayDisplay: { showCollapsedExpandHint: true },
 		lifecycleLabelKind: "task",
 		replayCallSummary: withActivitySummaryFallback(summarizeReplayTask),
 		activityReplay: {
@@ -381,7 +390,7 @@ export function getCursorReplayPromptLabel(toolName: string): string {
 export function getCursorReplayActivityTitle(toolName: string): string | undefined {
 	const spec = getCursorToolPresentationSpec(toolName);
 	if (!spec || !hasNeutralActivityTitle(spec)) return undefined;
-	return spec.displayLabel;
+	return spec.getActivityTitle?.() ?? spec.displayLabel;
 }
 
 function buildCursorGenericActivityTitle(displayName: string): string {
@@ -416,6 +425,11 @@ export function getCursorToolActivityReplaySpec(normalizedKey: string): CursorTo
 
 export function getCursorToolGenerateImageReplaySpec(normalizedKey: string): CursorToolGenerateImageReplaySpec | undefined {
 	return getCursorToolPresentationSpecByNormalizedKey(normalizedKey)?.generateImageReplay;
+}
+
+export function shouldShowCursorReplayCollapsedExpandHint(normalizedKey: string | undefined): boolean {
+	if (!normalizedKey) return false;
+	return getCursorToolPresentationSpecByNormalizedKey(normalizedKey)?.replayDisplay?.showCollapsedExpandHint === true;
 }
 
 export function getCursorReplayCallSummary(

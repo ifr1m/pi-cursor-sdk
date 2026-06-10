@@ -16,7 +16,6 @@ import {
 	type CursorReplayToolDetails,
 } from "./cursor-replay-tool-details.js";
 import { asRecord, getNumber, getString } from "./cursor-record-utils.js";
-import { getCursorTaskActivityTitle } from "./cursor-task-presentation.js";
 import {
 	firstNonEmptyLine,
 	formatDisplayPath,
@@ -125,7 +124,7 @@ function buildActivityReplayDisplay(
 	const spec = TOOL_DISPLAY_IMPLEMENTATIONS[sourceToolName];
 	const activity = getCursorToolActivityReplaySpec(sourceToolName);
 	if (!activity) throw new Error(`Missing activity replay spec for ${sourceToolName}`);
-	const activityTitle = sourceToolName === "task" ? getCursorTaskActivityTitle(context.args) : getCursorToolActivityTitle(sourceToolName);
+	const activityTitle = getCursorToolActivityTitle(sourceToolName);
 	const replayArgs = activity.buildActivityArgs(context);
 	const activitySummary = getCursorReplayCallSummary(sourceToolName, replayArgs);
 	const activityArgs = buildCursorActivityDisplayArgs({ ...replayArgs }, activityTitle, activitySummary);

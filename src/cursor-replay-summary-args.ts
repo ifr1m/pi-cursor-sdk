@@ -34,7 +34,6 @@ export interface CursorReplayTaskSummaryArgs extends CursorReplayActivitySummary
 	subagentName?: string;
 	subagentKind?: string;
 	model?: string;
-	mode?: string;
 	agentId?: string;
 	isBackground?: boolean;
 }

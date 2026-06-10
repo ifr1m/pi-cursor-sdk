@@ -16,7 +16,6 @@ import {
 	readMcpDisplayResult,
 	getReadLintDiagnostics,
 	getReadLintPaths,
-	getTaskDescription,
 	getTodoItems,
 } from "./cursor-tool-result-display-readers.js";
 

@@ -22,26 +22,24 @@ export interface CursorTaskMetadata {
 	subagentKind?: string;
 	subagentName?: string;
 	model?: string;
-	mode?: string;
 	agentId?: string;
 	isBackground?: boolean;
-	backgroundReason?: string;
-	resultSuffix?: string;
+}
+
+export function getCursorTaskDescription(args: Record<string, unknown>, resultValue?: unknown): string {
+	return getString(args, "description") ?? getString(asRecord(resultValue), "description") ?? "task";
 }
 
 export function readCursorTaskMetadata(args: Record<string, unknown>, resultValue?: unknown): CursorTaskMetadata {
 	const subagentType = getRecord(args, "subagentType");
 	const result = asRecord(resultValue);
 	return {
-		description: getString(args, "description"),
+		description: getCursorTaskDescription(args, resultValue),
 		subagentKind: getString(subagentType, "kind"),
 		subagentName: getString(subagentType, "name"),
 		model: getString(args, "model"),
-		mode: getString(args, "mode"),
 		agentId: getString(args, "agentId") ?? getString(result, "agentId"),
 		isBackground: getBoolean(result, "isBackground"),
-		backgroundReason: getString(result, "backgroundReason"),
-		resultSuffix: getString(result, "resultSuffix"),
 	};
 }
 
@@ -50,7 +48,7 @@ function cleanMetadataValue(value: string | undefined): string | undefined {
 	return trimmed || undefined;
 }
 
-export function getCursorTaskActivityTitle(_args: Record<string, unknown>): string {
+export function getCursorTaskActivityTitle(): string {
 	return getCursorTaskPresentationMode() === "task" ? "Cursor task" : "Cursor subagent";
 }
 

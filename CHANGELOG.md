@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.1.42 - 2026-06-10
+
+### Added
+
+- Surface Cursor SDK `task` activity as `Cursor subagent` replay/lifecycle cards by default, including description, subagent kind, model, short safe agent ID metadata, task-only expand hints, and returned `conversationSteps` summaries when the SDK provides them.
+- Add `PI_CURSOR_TASK_PRESENTATION=task` as an escape hatch for the older explicit `Cursor task` wording.
+
+### Fixed
+
+- Suppress unsafe nested subagent path displays, including out-of-workspace absolute paths, traversal, home aliases, URI-shaped paths, and Windows drive forms, while preserving in-workspace relative summaries.
+
 ## 0.1.41 - 2026-06-09
 
 ### Changed

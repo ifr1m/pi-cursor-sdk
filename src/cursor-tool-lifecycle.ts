@@ -4,7 +4,6 @@ import { getCursorToolLifecycleLabelKind } from "./cursor-tool-presentation-regi
 import { extractWebSearchQuery } from "./cursor-web-tool-args.js";
 import { getArray, getString } from "./cursor-record-utils.js";
 import { firstNonEmptyLine, truncateArg } from "./cursor-transcript-utils.js";
-import { getCursorTaskActivityTitle } from "./cursor-task-presentation.js";
 import { classifyCursorToolVisibility, type CursorToolVisibility } from "./cursor-tool-visibility.js";
 
 /** Defer pending lifecycle lines so fast start+complete pairs coalesce into the completed replay card only. */
@@ -15,7 +14,6 @@ export function isCursorToolLifecycleEligible(toolCall: unknown): boolean {
 }
 
 function getCursorToolLifecycleTitle(visibility: CursorToolVisibility): string {
-	if (visibility.normalizedKey === "task") return getCursorTaskActivityTitle(visibility.args);
 	return visibility.lifecycleTitle ?? `Cursor ${visibility.normalizedName}`;
 }
 

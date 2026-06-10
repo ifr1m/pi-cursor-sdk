@@ -1,5 +1,5 @@
-import { isAbsolute, relative, win32 } from "node:path";
 import { asRecord, getArray, getNumber, getRecord, getString, stringifyUnknown } from "./cursor-record-utils.js";
+import { summarizeCursorCompactConversationToolCall } from "./cursor-compact-tool-summary.js";
 import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import { firstNonEmptyLine, formatDisplayPath, truncateArg } from "./cursor-transcript-utils.js";
 
@@ -71,10 +71,6 @@ export function getTodoTotalCount(args: Record<string, unknown>, result: CursorT
 	return getNumber(asRecord(result.value), "totalCount") ?? getNumber(args, "totalCount") ?? todos.length;
 }
 
-export function getTaskDescription(args: Record<string, unknown>, result: CursorToolResultLike): string {
-	return getString(args, "description") ?? getString(asRecord(result.value), "description") ?? "task";
-}
-
 function getNestedRecord(record: Record<string, unknown> | undefined, ...keys: string[]): Record<string, unknown> | undefined {
 	let current = record;
 	for (const key of keys) {
@@ -92,55 +88,6 @@ function readConversationStepAssistantText(step: unknown): string | undefined {
 	return getString(getRecord(record, "message"), "text");
 }
 
-function isWindowsAbsolutePath(path: string): boolean {
-	return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
-}
-
-function formatNestedTaskToolPath(path: string | undefined, options: CursorToolResultReaderOptions): string | undefined {
-	const trimmed = path?.trim();
-	if (!trimmed) return undefined;
-	const normalized = trimmed.replace(/\\/g, "/");
-	if (normalized.startsWith("~/")) return undefined;
-	if (normalized.split("/").includes("..")) return undefined;
-	if (/^[A-Za-z]:(?!\/)/.test(normalized)) return undefined;
-	if (isWindowsAbsolutePath(trimmed)) {
-		const cwd = options.cwd;
-		if (!cwd || !isWindowsAbsolutePath(cwd)) return undefined;
-		const relativePath = win32.relative(cwd, trimmed);
-		if (!relativePath || relativePath.startsWith("..") || isWindowsAbsolutePath(relativePath)) return undefined;
-		return relativePath.replace(/\\/g, "/");
-	}
-	if (isAbsolute(trimmed)) {
-		const cwd = options.cwd;
-		if (!cwd) return undefined;
-		const relativePath = relative(cwd, trimmed);
-		if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) return undefined;
-		return relativePath.replace(/\\/g, "/");
-	}
-	return formatDisplayPath(normalized, options.cwd);
-}
-
-function readNestedTaskToolCallSummary(step: unknown, options: CursorToolResultReaderOptions): string | undefined {
-	const record = asRecord(step);
-	if (getString(record, "type") !== "toolCall") return undefined;
-	const message = getRecord(record, "message");
-	const toolType = getString(message, "type");
-	const args = getRecord(message, "args");
-	if (!toolType) return undefined;
-	if (toolType === "shell") {
-		const command = getString(args, "command");
-		const resultValue = getNestedRecord(message, "result", "value");
-		const stdout = getString(resultValue, "stdout");
-		const stderr = getString(resultValue, "stderr");
-		return [command ? `$ ${command}` : "shell", stdout, stderr].filter((part): part is string => Boolean(part)).join("\n");
-	}
-	const path = formatNestedTaskToolPath(getString(args, "path"), options);
-	if (path) return `${toolType} ${path}`;
-	const query = getString(args, "query") ?? getString(args, "pattern");
-	if (query) return `${toolType} ${query}`;
-	return toolType;
-}
-
 export function collectTaskText(result: CursorToolResultLike, options: CursorToolResultReaderOptions = {}): string {
 	const value = asRecord(result.value);
 	const success = getNestedRecord(value, "result", "success");
@@ -148,7 +95,7 @@ export function collectTaskText(result: CursorToolResultLike, options: CursorToo
 	const stdout = getString(success, "stdout");
 	const interleavedOutput = getString(success, "interleavedOutput");
 	const conversationParts = (getArray(value, "conversationSteps") ?? [])
-		.map((step) => readNestedTaskToolCallSummary(step, options) ?? readConversationStepAssistantText(step))
+		.map((step) => summarizeCursorCompactConversationToolCall(step, options) ?? readConversationStepAssistantText(step))
 		.filter((entry): entry is string => Boolean(entry));
 	const parts = [command ? `$ ${command}` : undefined, stdout || interleavedOutput, ...conversationParts].filter((part): part is string => Boolean(part));
 	return parts.join("\n");

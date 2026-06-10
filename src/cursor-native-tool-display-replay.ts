@@ -9,6 +9,7 @@ import { LOCAL_READ_PREVIEW_NOTICE, isLocalReadPreviewContent } from "./cursor-t
 import {
 	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
 	getCursorReplayCallSummary,
+	shouldShowCursorReplayCollapsedExpandHint,
 	type CursorReplayToolName,
 } from "./cursor-tool-presentation-registry.js";
 import {
@@ -443,7 +444,7 @@ function renderExpandableCursorReplayResult(
 	const text = firstContentText(result);
 	const summary = details.summary ?? text.split("\n").find((line) => line.trim()) ?? "completed";
 	const expandedText = details.expandedText ?? (text.includes("\n") ? text : undefined);
-	const showExpandHint = expandedText && !options.expanded && details.sourceToolName === "task";
+	const showExpandHint = expandedText && !options.expanded && shouldShowCursorReplayCollapsedExpandHint(details.sourceToolName);
 	const expandHint = showExpandHint ? theme.fg("dim", ` (${formatCursorReplayExpandHint()})`) : "";
 	let rendered = `${theme.fg("toolTitle", theme.bold(title))} ${theme.fg(isError ? "error" : "success", summary)}${expandHint}`;
 	if (expandedText && (options.expanded || !details.collapseDetailsByDefault)) {

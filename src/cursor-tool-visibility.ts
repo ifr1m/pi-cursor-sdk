@@ -4,7 +4,6 @@ import {
 	normalizeCursorToolName as normalizeToolName,
 } from "./cursor-tool-presentation-registry.js";
 import { getToolArgs, getToolName } from "./cursor-transcript-utils.js";
-import { getCursorTaskActivityTitle } from "./cursor-task-presentation.js";
 import { resolveTranscriptToolName } from "./cursor-web-tool-activity.js";
 
 export interface CursorToolVisibility {
@@ -29,7 +28,7 @@ export function classifyCursorToolVisibility(toolCall: unknown): CursorToolVisib
 	const normalizedName = normalizeToolName(displayName);
 	const normalizedKey = normalizedName.toLowerCase();
 	const config = getCursorToolVisibilityPolicy(normalizedKey);
-	const replayActivityTitle = normalizedKey === "task" ? getCursorTaskActivityTitle(args) : getCursorReplayActivityTitle(normalizedName);
+	const replayActivityTitle = getCursorReplayActivityTitle(normalizedName);
 	return {
 		args,
 		displayName,

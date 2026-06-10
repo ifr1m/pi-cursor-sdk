@@ -268,13 +268,16 @@ describe("formatCursorToolTranscript edit and write", () => {
 							agentId: "agent-sub-1",
 							conversationSteps: [
 								{ type: "toolCall", message: { type: "read", args: { path: "/repo/package.json" } } },
-								{ type: "toolCall", message: { type: "read", args: { path: "/Users/mitchfultz/.ssh/id_rsa" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "/outside/.ssh/id_rsa" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "file:///outside/.ssh/id_rsa" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "vscode://file/outside/private.ts" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "~example/.ssh/id_rsa" } } },
 								{ type: "toolCall", message: { type: "read", args: { path: "../.ssh/id_rsa" } } },
 								{ type: "toolCall", message: { type: "read", args: { path: "..\\secret.txt" } } },
 								{ type: "toolCall", message: { type: "read", args: { path: "src/.." } } },
 								{ type: "toolCall", message: { type: "read", args: { path: "~/.ssh/id_rsa" } } },
 								{ type: "toolCall", message: { type: "read", args: { path: "C:..\\secret.txt" } } },
-								{ type: "toolCall", message: { type: "read", args: { path: "C:\\Users\\mitchfultz\\secret.txt" } } },
+								{ type: "toolCall", message: { type: "read", args: { path: "C:\\Users\\example\\secret.txt" } } },
 								{ type: "toolCall", message: { type: "read", args: { path: "/repo/src/../package.json" } } },
 								{
 									type: "toolCall",
@@ -294,17 +297,39 @@ describe("formatCursorToolTranscript edit and write", () => {
 
 			const text = taskDisplay.result.content[0].text;
 			expect(text).toContain("read package.json");
-			expect(text).not.toContain("/Users/mitchfultz/.ssh/id_rsa");
+			expect(text).not.toContain("/outside/.ssh/id_rsa");
+			expect(text).not.toContain("file:///outside/.ssh/id_rsa");
+			expect(text).not.toContain("vscode://file/outside/private.ts");
+			expect(text).not.toContain("~example/.ssh/id_rsa");
 			expect(text).not.toContain("../.ssh/id_rsa");
 			expect(text).not.toContain("..\\secret.txt");
 			expect(text).not.toContain("src/..");
 			expect(text).not.toContain("~/.ssh/id_rsa");
 			expect(text).not.toContain("C:..\\secret.txt");
-			expect(text).not.toContain("C:\\Users\\mitchfultz\\secret.txt");
+			expect(text).not.toContain("C:\\Users\\example\\secret.txt");
 			expect(text).not.toContain("/repo/src/../package.json");
 			expect(text).toContain("$ node -p require('./package.json').name");
 			expect(text).toContain("pi-cursor-sdk");
 			expect(text).toContain("Package name is pi-cursor-sdk.");
+		} finally {
+			delete process.env.PI_CURSOR_TASK_PRESENTATION;
+		}
+	});
+
+	it("uses Cursor task result descriptions for replay summaries and transcript headers", () => {
+		process.env.PI_CURSOR_TASK_PRESENTATION = "subagent-meta";
+		try {
+			const taskDisplay = buildCursorPiToolDisplay({
+				name: "task",
+				args: {},
+				result: {
+					status: "success",
+					value: { description: "Inspect fallback description", conversationSteps: [{ assistantMessage: { text: "done" } }] },
+				},
+			});
+
+			expect(taskDisplay.args.activitySummary).toBe("Inspect fallback description: done");
+			expect(taskDisplay.result.content[0].text).toContain("subagent Inspect fallback description");
 		} finally {
 			delete process.env.PI_CURSOR_TASK_PRESENTATION;
 		}
@@ -341,14 +366,12 @@ describe("formatCursorToolTranscript edit and write", () => {
 					description: "Review API auth flow",
 					subagentType: { kind: "builtin", name: "reviewer" },
 					model: "composer-2.5",
-					mode: "plan",
 				},
 				result: {
 					status: "success",
 					value: {
 						agentId: "agent-sub-1234567890",
 						isBackground: true,
-						backgroundReason: "agentRequest",
 						conversationSteps: [{ assistantMessage: { text: "Found two auth risks." } }],
 					},
 				},

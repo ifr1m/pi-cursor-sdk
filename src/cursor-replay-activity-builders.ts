@@ -21,13 +21,12 @@ import {
 	readMcpDisplayResult,
 	getReadLintDiagnostics,
 	getReadLintPaths,
-	getTaskDescription,
 	getTodoItems,
 	getTodoTotalCount,
 	inferImageMimeType,
 } from "./cursor-tool-result-display-readers.js";
 import { extractWebFetchTarget, extractWebSearchQuery } from "./cursor-web-tool-args.js";
-import { formatCursorTaskAgentId, formatCursorTaskKind, getCursorTaskPresentationMode, readCursorTaskMetadata } from "./cursor-task-presentation.js";
+import { formatCursorTaskAgentId, formatCursorTaskKind, getCursorTaskDescription, getCursorTaskPresentationMode, readCursorTaskMetadata } from "./cursor-task-presentation.js";
 
 export interface CursorReplayActivityBuildContext {
 	args: Record<string, unknown>;
@@ -90,7 +89,7 @@ export function buildCreatePlanReplaySummaryArgs({ args, result }: CursorReplayA
 }
 
 export function buildTaskReplaySummaryArgs({ args, result, options }: CursorReplayActivityBuildContext): CursorReplayTaskSummaryArgs {
-	const description = getTaskDescription(args, result);
+	const description = getCursorTaskDescription(args, result.value);
 	const preview = firstNonEmptyLine(collectTaskText(result, options));
 	const metadata = readCursorTaskMetadata(args, result.value);
 	const displayAgentId = formatCursorTaskAgentId(metadata.agentId);
