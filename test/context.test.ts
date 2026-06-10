@@ -559,10 +559,10 @@ describe("buildCursorPrompt", () => {
 		const bootstrap = buildCursorPrompt(context, { agentMode: "plan" });
 		const incremental = buildCursorIncrementalPrompt(context, { agentMode: "plan" });
 
-		expect(bootstrap.text).toContain("Cursor SDK mode is plan for this run");
+		expect(bootstrap.text.match(/Cursor SDK mode is plan for this run/g)).toHaveLength(1);
 		expect(bootstrap.text).toContain("Safe/read-only shell commands");
 		expect(bootstrap.text).toContain("Exposed pi__* bridge tools are also callable in plan mode");
-		expect(incremental.text).toContain("Cursor SDK mode is plan for this run");
+		expect(incremental.text.match(/Cursor SDK mode is plan for this run/g)).toHaveLength(1);
 		expect(buildCursorPrompt(context).text).not.toContain("Cursor SDK mode is plan for this run");
 	});
 });

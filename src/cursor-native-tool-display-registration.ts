@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { arePiToolsDisabled } from "./cursor-active-tools.js";
 import {
 	CURSOR_MODEL_ACTIVE_REPLAY_TOOL_NAMES,
 	isNativeCursorToolName,
@@ -92,6 +93,7 @@ export function syncRegisteredNativeCursorToolsForModel(
 		removeRegisteredNonCoreNativeCursorTools(pi);
 		return;
 	}
+	if (arePiToolsDisabled(pi)) return;
 	const activeToolNames = new Set(pi.getActiveTools());
 	let changed = false;
 	for (const toolName of registeredNativeToolNames) {

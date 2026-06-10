@@ -2,9 +2,19 @@
 
 ## Unreleased
 
+## 0.1.41 - 2026-06-09
+
 ### Changed
 
 - Upgrade the pinned Cursor SDK runtime dependency to `@cursor/sdk@1.0.18` after auditing the 1.0.17 → 1.0.18 SDK type/docs delta; preserve existing local-agent defaults while carrying the SDK `requestId` correlation field through debug metadata and generic run failure diagnostics.
+- Update the local pi validation baseline to `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` `0.79.1`, including platform-smoke artifact retention and visual smoke manifest evidence for Pi 0.79.1 release checks.
+
+### Fixed
+
+- Keep plan-mode Cursor tool guidance canonical so bootstrap prompts do not duplicate the same instructions while incremental prompts still carry the plan-mode reminder.
+- Preserve turn-local Cursor usage estimates for incremental/live sends instead of replacing them with replayable-context totals.
+- Honor pi's disabled tool registry state when syncing Cursor bridge/question/skill/replay tools so `--no-tools` removes pi bridge exposure while leaving Cursor SDK host tools under Cursor's own control.
+- Keep bridge MCP result flushing behind the bridge run abstraction rather than leaking protocol scheduling into provider pre-send drain.
 
 ## 0.1.40 - 2026-06-08
 

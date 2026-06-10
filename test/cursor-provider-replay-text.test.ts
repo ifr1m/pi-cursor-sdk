@@ -538,7 +538,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
 	});
 
-	it("gives empty final replay turns context total without recounting the original prompt", async () => {
+	it("gives empty final replay turns turn-local input without recounting the original prompt", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const registeredTools: RegisteredTool[] = [];
 		await registerNativeToolDisplayForTest(registeredTools);
@@ -604,7 +604,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 
 		expect(finalDone.reason).toBe("stop");
 		expect(finalDone.message.content).toEqual([]);
-		expect(finalDone.message.usage.input).toBeGreaterThan(estimateCursorPromptMessageTokens(toolResultMessage));
+		expect(finalDone.message.usage.input).toBeGreaterThanOrEqual(estimateCursorPromptMessageTokens(toolResultMessage));
 		expect(finalDone.message.usage.output).toBe(0);
 		expect(finalDone.message.usage.totalTokens).toBe(finalDone.message.usage.input);
 	});

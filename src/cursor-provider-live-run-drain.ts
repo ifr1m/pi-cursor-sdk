@@ -19,7 +19,6 @@ import {
 	type CursorNativeToolDisplayItem,
 } from "./cursor-native-tool-display-state.js";
 import { type CursorPiBridgeToolRequest } from "./cursor-pi-tool-bridge.js";
-import { waitForProtocolFlush } from "./cursor-pi-tool-bridge-mcp.js";
 import { resetSessionCursorAgent } from "./cursor-session-agent.js";
 import { applyCursorApproximateUsage } from "./cursor-usage-accounting.js";
 import { CursorPartialContentEmitter } from "./cursor-partial-content-emitter.js";
@@ -415,8 +414,7 @@ export async function drainExistingCursorLiveRunBeforeSend(
 			const outcome = await cursorLiveRuns.withRunLease(run, signal, async () => {
 				if (run.disposed) return "continue_send" as const;
 				const consumed = cursorLiveRuns.consumeToolResults(run, context, getCursorNativeReplayIdFromToolCallId);
-				run.bridgeRun?.resolveToolResults(consumed.toolResults);
-				if (consumed.toolResults.length > 0 && run.bridgeRun) await waitForProtocolFlush();
+				await run.bridgeRun?.resolveToolResults(consumed.toolResults);
 				const shouldChainUserInput = run.chainUserInputAfterCompletion || hasTrailingUserMessagesAfterToolResults(context);
 				if (shouldChainUserInput) run.chainUserInputAfterCompletion = true;
 				while (!cursorLiveRuns.isReady(run)) {

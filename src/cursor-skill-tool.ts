@@ -8,6 +8,7 @@ import type {
 	Skill,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { arePiToolsDisabled } from "./cursor-active-tools.js";
 import { isCursorModel } from "./cursor-model.js";
 import { registerCursorModelLifecycle, type CursorModelLifecycleExtensionApi } from "./cursor-model-lifecycle.js";
 import { resolveCursorPiToolBridgeEnabled } from "./cursor-pi-tool-bridge-env.js";
@@ -62,7 +63,7 @@ function shouldExposeSkillTool(model: ExtensionContext["model"]): boolean {
 
 function syncCursorSkillToolForModel(pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">, model: ExtensionContext["model"]): void {
 	const activeToolNames = new Set(pi.getActiveTools());
-	const shouldBeActive = shouldExposeSkillTool(model);
+	const shouldBeActive = !arePiToolsDisabled(pi) && shouldExposeSkillTool(model);
 	const alreadyActive = activeToolNames.has(CURSOR_ACTIVATE_SKILL_TOOL_NAME);
 	if (shouldBeActive === alreadyActive) return;
 	if (shouldBeActive) {

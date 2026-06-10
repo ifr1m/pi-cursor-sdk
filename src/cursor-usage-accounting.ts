@@ -56,10 +56,9 @@ export function estimateCursorContextTotalTokens(partial: AssistantMessage, mode
 	return estimateCursorContextTokens(withAssistantMessage(context, partial), getCursorPromptOptions(model));
 }
 
-export function applyCursorApproximateUsage(partial: AssistantMessage, model: Model<Api>, context: Context, sessionInputTokens: number): void {
+export function applyCursorApproximateUsage(partial: AssistantMessage, _model: Model<Api>, _context: Context, sessionInputTokens: number): void {
 	const outputTokens = estimateCursorAssistantSessionOutputTokens(partial);
-	const contextTotalTokens = estimateCursorContextTotalTokens(partial, model, context);
-	partial.usage.input = contextTotalTokens > 0 ? Math.max(0, contextTotalTokens - outputTokens) : sessionInputTokens;
+	partial.usage.input = Math.max(0, sessionInputTokens);
 	partial.usage.output = outputTokens;
 	partial.usage.cacheRead = 0;
 	partial.usage.cacheWrite = 0;

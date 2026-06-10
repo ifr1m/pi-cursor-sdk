@@ -44,7 +44,7 @@ describe("cursor usage accounting", () => {
 		expect(estimateCursorAssistantSessionOutputTokens(withToolCall)).toBeGreaterThan(estimateCursorAssistantSessionOutputTokens(textOnly));
 	});
 
-	it("applies additive replayable context usage estimates", () => {
+	it("applies turn-local usage estimates from the actual Cursor send", () => {
 		const model = makeModel();
 		const context: Context = {
 			systemPrompt: "Be helpful.",
@@ -61,8 +61,8 @@ describe("cursor usage accounting", () => {
 		expect(partial.usage.output).toBe(estimateCursorAssistantSessionOutputTokens(partial));
 		expect(partial.usage.cacheRead).toBe(0);
 		expect(partial.usage.cacheWrite).toBe(0);
-		expect(partial.usage.totalTokens).toBe(estimateCursorContextTotalTokens(partial, model, context));
-		expect(partial.usage.input).toBe(partial.usage.totalTokens - partial.usage.output);
+		expect(estimateCursorContextTotalTokens(partial, model, context)).toBeGreaterThan(partial.usage.totalTokens);
+		expect(partial.usage.input).toBe(sessionInputTokens);
 		expect(partial.usage.totalTokens).toBe(partial.usage.input + partial.usage.output + partial.usage.cacheRead + partial.usage.cacheWrite);
 	});
 });

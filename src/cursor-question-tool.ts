@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { arePiToolsDisabled } from "./cursor-active-tools.js";
 import { isCursorModel } from "./cursor-model.js";
 import { registerCursorModelLifecycle, type CursorModelLifecycleExtensionApi } from "./cursor-model-lifecycle.js";
 import { resolveCursorPiToolBridgeEnabled } from "./cursor-pi-tool-bridge-env.js";
@@ -175,7 +176,7 @@ async function askOneQuestion(question: CursorQuestion, ctx: { ui: ExtensionCont
 
 function syncCursorQuestionToolForModel(pi: Pick<ExtensionAPI, "getActiveTools" | "setActiveTools">, model: ExtensionContext["model"]): void {
 	const activeToolNames = new Set(pi.getActiveTools());
-	const shouldBeActive = isCursorModel(model) && resolveCursorPiToolBridgeEnabled();
+	const shouldBeActive = !arePiToolsDisabled(pi) && isCursorModel(model) && resolveCursorPiToolBridgeEnabled();
 	const alreadyActive = activeToolNames.has(CURSOR_ASK_QUESTION_TOOL_NAME);
 	if (shouldBeActive === alreadyActive) return;
 	if (shouldBeActive) {

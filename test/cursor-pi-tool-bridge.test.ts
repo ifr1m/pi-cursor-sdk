@@ -263,7 +263,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			expect(request.bridgeCallId).not.toContain(endpointToken);
 			expect(request.piToolCallId).not.toContain(endpointToken);
 
-			run.resolveToolResultsFromContext({
+			await run.resolveToolResultsFromContext({
 				systemPrompt: "",
 				messages: [
 					{
@@ -278,7 +278,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			});
 			expect(run.hasPendingPiToolCallId(request.piToolCallId)).toBe(true);
 
-			run.resolveToolResultsFromContext({
+			await run.resolveToolResultsFromContext({
 				systemPrompt: "",
 				messages: [
 					{
@@ -455,7 +455,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			expect(resolvedRequest.piToolCallId).toContain(run.id);
 			expect(resolvedRequest.bridgeCallId).not.toContain(endpointToken);
 			expect(resolvedRequest.piToolCallId).not.toContain(endpointToken);
-			run.resolveToolResultsFromContext({
+			await run.resolveToolResultsFromContext({
 				systemPrompt: "",
 				messages: [
 					{
@@ -622,7 +622,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 					},
 				],
 			};
-			run.resolveToolResultsFromContext(context);
+			await run.resolveToolResultsFromContext(context);
 
 			await expect(callPromise).resolves.toMatchObject({
 				content: [{ type: "text", text: "file contents" }],

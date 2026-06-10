@@ -61,8 +61,8 @@ export interface CursorPiToolBridgeRun {
 	mcpServers?: Record<string, McpServerConfig>;
 	snapshot: CursorPiToolBridgeSnapshot;
 	takeQueuedToolRequests(): CursorPiBridgeToolRequest[];
-	resolveToolResults(toolResults: readonly ToolResultMessage[]): void;
-	resolveToolResultsFromContext(context: Context): void;
+	resolveToolResults(toolResults: readonly ToolResultMessage[]): Promise<void>;
+	resolveToolResultsFromContext(context: Context): Promise<void>;
 	hasPendingPiToolCallId(piToolCallId: string): boolean;
 	isBridgeMcpToolCall(toolCall: unknown): boolean;
 	setOnToolRequest(handler?: (request: CursorPiBridgeToolRequest) => void): void;

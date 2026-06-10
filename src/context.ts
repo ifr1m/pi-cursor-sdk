@@ -31,10 +31,12 @@ export function getCursorPlanModeToolGuidanceText(agentMode: AgentModeOption | u
 	].join("\n");
 }
 
-export function getCursorToolTailGuardText(options: Pick<CursorPromptOptions, "agentMode"> = {}): string {
+export function getCursorToolTailGuardText(
+	options: Pick<CursorPromptOptions, "agentMode"> & { includePlanModeGuidance?: boolean } = {},
+): string {
 	return [
 		"Shell: use an explicit `cd` to the repo path when running project commands; session cwd may not match paths in tool args.",
-		getCursorPlanModeToolGuidanceText(options.agentMode),
+		options.includePlanModeGuidance === false ? undefined : getCursorPlanModeToolGuidanceText(options.agentMode),
 		"Exact-output requests: if the latest user asks to reply exactly, output exactly that text and do not add preambles, diagnostics, or repo checks unless explicitly requested.",
 		"Tool boundary reminder: If a tool is needed, call an available Cursor SDK/MCP tool. Never print a tool card (for example Tool call/Shell/command) as assistant text.",
 	].filter((line): line is string => line !== undefined).join("\n");
@@ -62,7 +64,7 @@ function getCursorBootstrapTailSections(options: Pick<CursorPromptOptions, "agen
 			"Answer the latest user request above using Cursor SDK capabilities only. Do not list, promise, or call pi-only tools from the system prompt as if they were available.",
 			"If web research is requested, do not claim it unless a Cursor web/search/browser/MCP tool ran.",
 		].join("\n"),
-		getCursorToolTailGuardText(options),
+		getCursorToolTailGuardText({ ...options, includePlanModeGuidance: false }),
 	];
 }
 

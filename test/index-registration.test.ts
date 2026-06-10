@@ -8,6 +8,7 @@ import {
 	makeHarnessModel,
 	makeModel,
 	makeProviderModelConfig,
+	createExtensionRegistrationPi,
 } from "./helpers/pi-harness.js";
 import {
 	createExtensionPi,
@@ -194,6 +195,20 @@ describe("extension registration and discovery", () => {
 		expect(pi._activeToolNames()).toContain("cursor");
 		expect(pi._activeToolNames()).toContain("grep");
 		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
+	});
+
+	it("does not reactivate Cursor-only tools when pi tools are disabled", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createExtensionRegistrationPi({ activeTools: [] });
+		await extensionFactory(pi);
+
+		await pi.runSessionStart({ model: makeModel("composer-2.5") });
+		await pi.runBeforeAgentStart({ model: makeModel("composer-2.5") });
+		await pi.runTurnStart({ model: makeModel("composer-2.5") });
+
+		expect(pi._activeToolNames()).toEqual([]);
+		expect(buildCursorPiToolBridgeSnapshot(pi).tools).toEqual([]);
 	});
 
 	it.each(["json", "rpc"] as const)("registers native replay tools in %s mode for structured host-tool events", async (mode) => {

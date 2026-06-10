@@ -15,6 +15,8 @@ describe("smoke tooling package checks", () => {
 		expect(run("bash", ["-n", "scripts/isolated-cursor-smoke.sh"]).status).toBe(0);
 		expect(run(process.execPath, ["--check", "scripts/steering-rpc-smoke.mjs"]).status).toBe(0);
 		expect(run(process.execPath, ["--check", "scripts/visual-tui-smoke.mjs"]).status).toBe(0);
+		expect(run(process.execPath, ["--check", "scripts/visual-tui-smoke-self-test.mjs"]).status).toBe(0);
+		expect(run(process.execPath, ["--check", "scripts/lib/cursor-visual-manifest.mjs"]).status).toBe(0);
 		expect(run(process.execPath, ["--check", "scripts/validate-smoke-jsonl.mjs"]).status).toBe(0);
 		expect(run(process.execPath, ["--check", "scripts/debug-sdk-events.mjs"]).status).toBe(0);
 		expect(run(process.execPath, ["--check", "scripts/debug-provider-events.mjs"]).status).toBe(0);

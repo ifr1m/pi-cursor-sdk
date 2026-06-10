@@ -150,7 +150,8 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 		this.debugRecorder = recorder;
 	}
 
-	resolveToolResults(toolResults: readonly ToolResultMessage[]): void {
+	async resolveToolResults(toolResults: readonly ToolResultMessage[]): Promise<void> {
+		let resolvedCount = 0;
 		for (const toolResult of toolResults) {
 			const pending = this.pendingByPiToolCallId.get(toolResult.toolCallId);
 			if (!pending || pending.settled) continue;
@@ -158,11 +159,13 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 				content: convertPiContentToMcpContent(toolResult.content),
 				isError: toolResult.isError || undefined,
 			});
+			resolvedCount += 1;
 		}
+		if (resolvedCount > 0) await waitForProtocolFlush();
 	}
 
-	resolveToolResultsFromContext(context: Context): void {
-		this.resolveToolResults(context.messages.map(asToolResultMessage).filter((message): message is ToolResultMessage => message !== undefined));
+	async resolveToolResultsFromContext(context: Context): Promise<void> {
+		await this.resolveToolResults(context.messages.map(asToolResultMessage).filter((message): message is ToolResultMessage => message !== undefined));
 	}
 
 	hasPendingPiToolCallId(piToolCallId: string): boolean {

@@ -451,7 +451,7 @@ describe("streamCursor bridge MCP", () => {
 			expect(runWait).toHaveBeenCalledTimes(1);
 			expect(replayText).toBe("Bridge complete.");
 			expect(replayDone.reason).toBe("stop");
-			expect(replayDone.message.usage.input).toBeGreaterThan(
+			expect(replayDone.message.usage.input).toBeGreaterThanOrEqual(
 				estimateCursorPromptMessageTokens(readToolResultMessage) + estimateCursorPromptMessageTokens(bashToolResultMessage),
 			);
 			expect(replayDone.message.usage.totalTokens).toBe(

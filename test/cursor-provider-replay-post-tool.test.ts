@@ -577,11 +577,11 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		expect(firstDone.message.usage.input).toBeGreaterThan(0);
 		expect(firstDone.message.usage.output).toBeGreaterThan(0);
 		expect(firstDone.message.usage.totalTokens).toBe(firstDone.message.usage.input + firstDone.message.usage.output);
-		expect(secondDone.message.usage.input).toBeGreaterThan(estimateCursorPromptMessageTokens(firstToolResultMessage));
+		expect(secondDone.message.usage.input).toBeGreaterThanOrEqual(estimateCursorPromptMessageTokens(firstToolResultMessage));
 		expect(secondDone.message.usage.input).toBeGreaterThan(0);
 		expect(secondDone.message.usage.output).toBeGreaterThan(0);
 		expect(secondDone.message.usage.totalTokens).toBe(secondDone.message.usage.input + secondDone.message.usage.output);
-		expect(finalDone.message.usage.input).toBeGreaterThan(estimateCursorPromptMessageTokens(secondToolResultMessage));
+		expect(finalDone.message.usage.input).toBeGreaterThanOrEqual(estimateCursorPromptMessageTokens(secondToolResultMessage));
 		expect(finalDone.message.usage.input).not.toBe(estimateCursorPromptMessageTokens(firstToolResultMessage) + estimateCursorPromptMessageTokens(secondToolResultMessage));
 		expect(finalDone.message.usage.input).toBeGreaterThan(0);
 		expect(finalDone.message.usage.output).toBeGreaterThan(0);
