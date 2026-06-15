@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.43 - 2026-06-15
+
+### Changed
+
+- Update the local pi validation baseline to `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` `0.79.4` after validating the extension under pi 0.79.4.
+
 ## 0.1.42 - 2026-06-10
 
 ### Added
