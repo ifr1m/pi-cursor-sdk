@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.44 - 2026-06-16
+
+### Changed
+
+- Upgrade the pinned Cursor SDK runtime dependency to `@cursor/sdk@1.0.19`, add the SDK's still-required Node ConnectRPC transport as a direct runtime dependency, and remove the stale `sqlite3` override now that the old SDK `sqlite3 -> node-gyp@8` deprecated install-warning chain is gone (#115).
+
 ## 0.1.43 - 2026-06-15
 
 ### Changed

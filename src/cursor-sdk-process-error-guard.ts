@@ -36,6 +36,7 @@ function shouldSuppressProcessError(event: string | symbol, args: readonly unkno
 	if (!classification) return false;
 	if (classification.kind === "abort") return hasActiveAbortSuppression();
 	if (activeProviderTurns.size === 0) return false;
+	// pi's supported Cursor SDK runtime is Node, where the SDK uses connect-node.
 	if (classification.kind === "network") return isCursorProvenance(classification.source) || classification.source === "connect-node-stack";
 	return isCursorProvenance(classification.source);
 }

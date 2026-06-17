@@ -100,4 +100,15 @@ describe("Cursor SDK lazy runtime imports", () => {
 
 		expect(models.map((entry) => entry.id)).toEqual(["composer-2"]);
 	});
+
+	it("loads the installed SDK checkpoint store without the old root sqlite dependency", async () => {
+		tmpAgentDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-checkpoint-contract-"));
+		const { loadCursorSdk } = await import("../src/cursor-sdk-runtime.js");
+		const { createAgentPlatform } = await loadCursorSdk();
+
+		const platform = await createAgentPlatform({ workspaceRef: tmpAgentDir, scopedWorkspaceRef: tmpAgentDir });
+		const checkpoint = await platform.checkpointStore.loadLatest("pi-cursor-sdk-checkpoint-contract-test");
+
+		expect(checkpoint).toBeNull();
+	});
 });

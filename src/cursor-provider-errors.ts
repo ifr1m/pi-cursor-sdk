@@ -58,6 +58,8 @@ function isUnavailableConnectCode(code: unknown): boolean {
 }
 
 function isCursorExtensionConnectStack(stack: string): boolean {
+	// pi runs Cursor SDK in Node, where the SDK dynamically imports connect-node.
+	// connect-web is the SDK's Bun/Deno path and is intentionally not classified for supported pi runs.
 	return stack.includes("@connectrpc/connect-node") && /(?:^|[\\/])pi-cursor-sdk(?:[\\/]|$)/.test(stack);
 }
 

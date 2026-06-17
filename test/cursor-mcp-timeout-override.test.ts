@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -149,17 +149,27 @@ return (() => {
 	return run(callback);
 }
 
+function readCursorSdkEsmBundleContaining(...markers: string[]): string {
+	const sdkEsmDir = join(process.cwd(), "node_modules/@cursor/sdk/dist/esm");
+	const hits = readdirSync(sdkEsmDir).flatMap((fileName) => {
+		if (!fileName.endsWith(".js")) return [];
+		const source = readFileSync(join(sdkEsmDir, fileName), "utf8");
+		return markers.every((marker) => source.includes(marker)) ? [{ fileName, source }] : [];
+	});
+
+	expect(hits.map((hit) => hit.fileName)).toHaveLength(1);
+	return hits[0]!.source;
+}
+
 describe("Cursor MCP timeout override", () => {
 	it("tracks the installed Cursor SDK MCP callTool timeout seam", () => {
-		const sdkMcpBundlePath = join(process.cwd(), "node_modules/@cursor/sdk/dist/esm/429.index.js");
-		const sdkProtocolBundlePath = join(process.cwd(), "node_modules/@cursor/sdk/dist/esm/745.index.js");
-		const sdkMcpBundle = readFileSync(
-			sdkMcpBundlePath,
-			"utf8",
+		const sdkMcpBundle = readCursorSdkEsmBundleContaining(
+			'withName("McpSdkClient.callTool")',
+			'this.client.callTool({name:t,arguments:r})',
 		);
-		const sdkProtocolBundle = readFileSync(
-			sdkProtocolBundlePath,
-			"utf8",
+		const sdkProtocolBundle = readCursorSdkEsmBundleContaining(
+			'this.request({method:"initialize"',
+			"timeoutId:setTimeout",
 		);
 
 		expect(sdkMcpBundle).toContain('withName("McpSdkClient.callTool")');
@@ -167,8 +177,8 @@ describe("Cursor MCP timeout override", () => {
 		expect(sdkMcpBundle).toContain('withName("McpSdkClient.getTools")');
 		expect(sdkMcpBundle).toContain('this.client.listTools({cursor:e})');
 		expect(sdkProtocolBundle).toContain('this.request({method:"initialize"');
-		expect(sdkProtocolBundle).toContain('_setupTimeout(e,t,n,s');
-		expect(sdkProtocolBundle).toContain('timeoutId:setTimeout(s,t)');
+		expect(sdkProtocolBundle).toContain('_setupTimeout(e,t,n,i,s');
+		expect(sdkProtocolBundle).toContain('timeoutId:setTimeout(i,t)');
 	});
 
 	it("recognizes the Cursor SDK MCP tool-call timeout stack shape", () => {
