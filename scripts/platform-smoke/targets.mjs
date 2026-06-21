@@ -576,6 +576,11 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 		id: `jsonl-result-${requirement.id}`,
 		fn: () => jsonlResults.some((result) => matchesJsonlResult(result, requirement)),
 	}));
+	const expectedJSONLResultToolOrder = scenario?.expectedJSONLResultToolOrder;
+	const jsonlResultOrderChecks = Array.isArray(expectedJSONLResultToolOrder) ? [{
+		id: "jsonl-result-tool-order",
+		fn: () => jsonlResults.map((result) => result.toolName).join("\n") === expectedJSONLResultToolOrder.join("\n"),
+	}] : [];
 	const bridgeDiagnostics = [
 		...collectBridgeDiagnostics(terminalText),
 		...collectBridgeDiagnosticFile(resolve(liveArtifactDir, "bridge-diagnostics.jsonl")),
@@ -641,6 +646,7 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 		...cardChecks.map((check) => ({ id: check.id, fn: () => check.ok })),
 		...jsonlToolChecks,
 		...jsonlResultChecks,
+		...jsonlResultOrderChecks,
 		...bridgeDiagnosticChecks,
 		...(visualEvidence.checks ?? []).map((check) => ({ id: check.id, fn: () => check.ok === true, error: check.error })),
 		...visualEvidenceResultChecks,

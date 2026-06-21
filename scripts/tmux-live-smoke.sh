@@ -338,7 +338,7 @@ EOF_SELFTEST_NODE
 	chmod +x "$fake_pi" "$fake_node"
 
 	ENV_BIN="$(smoke_resolve_cmd env)"
-	NODE_BIN="$(smoke_resolve_cmd node)"
+	NODE_BIN="$(smoke_resolve_node_cmd)"
 	smoke_load_cursor_sdk_event_debug_env_names "$NODE_BIN" "$ROOT/shared/cursor-sdk-event-debug-env.mjs"
 	hostile_path="$bin_dir:$PATH"
 	[[ "$(smoke_build_sealed_node_path "$NODE_BIN" "")" != *: ]] || fail "self-test failed: empty inherited PATH left a trailing PATH separator"
@@ -380,7 +380,7 @@ if [[ "${1:-}" == "--self-test" ]]; then
 fi
 
 PI_BIN="$(smoke_resolve_cmd pi)"
-NODE_BIN="$(smoke_resolve_cmd node)"
+NODE_BIN="$(smoke_resolve_node_cmd)"
 NPM_BIN="$(smoke_resolve_cmd npm)"
 RG_BIN="$(smoke_resolve_cmd rg)"
 TMUX_BIN="$(smoke_resolve_cmd tmux)"

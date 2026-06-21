@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.1.46 - 2026-06-21
+
+### Changed
+
+- Update the local pi validation baseline to `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` `0.79.9` after reviewing current installed Pi extension, provider, package, and security docs.
+- Bump the maintained `undici` override to `7.28.0` and refresh vulnerable transitive audit dependencies so `npm audit --audit-level=low` reports zero vulnerabilities.
+
+### Fixed
+
+- Resolve maintainer shell smoke self-test failures under mise by sealing smoke PATHs with the real `process.execPath` Node executable instead of the `node` shim path.
+- Harden the platform bridge visual matrix by asserting the exact JSONL tool-result order required by the documented prompt contract.
+
 ## 0.1.45 - 2026-06-18
 
 ### Fixed

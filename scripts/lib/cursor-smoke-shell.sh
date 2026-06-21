@@ -31,6 +31,18 @@ smoke_resolve_cmd() {
 	printf '%s\n' "$path"
 }
 
+smoke_resolve_node_cmd() {
+	local node_cmd node_path
+	node_cmd="$(smoke_resolve_cmd node)"
+	if ! node_path="$("$node_cmd" -p 'process.execPath' 2>/dev/null)" || [[ -z "$node_path" ]]; then
+		smoke_fail "failed to resolve real node executable from $node_cmd"
+	fi
+	if [[ "$node_path" != /* ]]; then
+		smoke_fail "real node executable did not resolve to an absolute path: $node_path"
+	fi
+	printf '%s\n' "$node_path"
+}
+
 smoke_build_sealed_node_path() {
 	local node_bin="$1"
 	local base_path

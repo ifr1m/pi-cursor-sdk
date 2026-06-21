@@ -1,6 +1,6 @@
 {
 	"name": "pi-cursor-sdk",
-	"version": "0.1.45",
+	"version": "0.1.46",
 	"description": "pi provider extension backed by @cursor/sdk local agents",
 	"author": "Mitch Fultz (https://github.com/fitchmultz)",
 	"license": "MIT",
@@ -120,9 +120,9 @@
 		"typebox": "*"
 	},
 	"devDependencies": {
-		"@earendil-works/pi-ai": "0.79.4",
-		"@earendil-works/pi-coding-agent": "0.79.4",
-		"@earendil-works/pi-tui": "0.79.4",
+		"@earendil-works/pi-ai": "0.79.9",
+		"@earendil-works/pi-coding-agent": "0.79.9",
+		"@earendil-works/pi-tui": "0.79.9",
 		"@xterm/xterm": "^6.0.0",
 		"node-pty": "^1.1.0",
 		"playwright": "^1.60.0",
@@ -136,9 +136,23 @@
 		]
 	},
 	"overrides": {
-		"undici": "7.25.0"
+		"undici": "7.28.0"
 	},
 	"allowScripts": {
 		"node-pty@1.1.0": true
+	},
+	"peerDependenciesMeta": {
+		"@earendil-works/pi-ai": {
+			"optional": true
+		},
+		"@earendil-works/pi-coding-agent": {
+			"optional": true
+		},
+		"@earendil-works/pi-tui": {
+			"optional": true
+		},
+		"typebox": {
+			"optional": true
+		}
 	}
 }

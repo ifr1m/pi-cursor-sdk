@@ -147,7 +147,7 @@ EOF_SELFTEST_NODE
 	chmod +x "$fake_pi" "$fake_node"
 
 	ENV_BIN="$(smoke_resolve_cmd env)"
-	NODE_BIN="$(smoke_resolve_cmd node)"
+	NODE_BIN="$(smoke_resolve_node_cmd)"
 	if [[ "$SHELL_BIN" != /* ]]; then
 		SHELL_BIN="$(smoke_resolve_cmd "$SHELL_BIN")"
 	fi
@@ -260,7 +260,7 @@ EOF_SELFTEST_NPM
 	no_pi_path="$no_pi_bin:/usr/bin:/bin"
 	no_pi_output_file="$temp_dir/no-pi-output.txt"
 	set +e
-	PATH="$no_pi_path" REAL_HOME="$temp_dir/no-auth" PI_BIN=pi-must-not-exist REPO="$no_pi_repo" ISOLATED="$no_pi_isolated" SKIP_LIVE=1 SKIP_UNIT=1 "$SHELL_BIN" "$ROOT/scripts/isolated-cursor-smoke.sh" >"$no_pi_output_file" 2>&1
+	env -i PATH="$no_pi_path" REAL_HOME="$temp_dir/no-auth" PI_BIN=pi-must-not-exist REPO="$no_pi_repo" ISOLATED="$no_pi_isolated" SKIP_LIVE=1 SKIP_UNIT=1 "$SHELL_BIN" "$ROOT/scripts/isolated-cursor-smoke.sh" >"$no_pi_output_file" 2>&1
 	no_pi_status=$?
 	set -e
 	if [[ "$no_pi_status" != "0" ]]; then
@@ -290,7 +290,7 @@ if [[ -f "${SECRETS_FILE:-$REAL_HOME/.secrets}" ]]; then
 	set -u
 fi
 
-NODE_BIN="$(smoke_resolve_cmd node)"
+NODE_BIN="$(smoke_resolve_node_cmd)"
 NPM_BIN="$(smoke_resolve_cmd npm)"
 ENV_BIN="$(smoke_resolve_cmd env)"
 if [[ "$SHELL_BIN" != /* ]]; then

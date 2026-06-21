@@ -43,6 +43,7 @@ export const SCENARIOS = {
 		promptTemplate: `Native visual matrix.
 
 Use Cursor-native tools only. Do not use pi__ tools.
+On Windows/PowerShell shell commands, do not use &&; if you add a cd command, separate commands with a semicolon (;).
 
 Steps:
 1. read ./package.json and remember the package name.
@@ -130,6 +131,7 @@ BRIDGE_MATRIX_OK bash_ok=<yes/no> read_ok=<yes/no> read_missing_error=<yes/no>`,
 			{ id: "bridge-read-failure", toolName: "read", isError: true, contains: "definitely-missing-platform-smoke-file.txt" },
 			{ id: "bridge-shell-success", toolName: "bash", isError: false, contains: "bridge visual smoke" },
 		],
+		expectedJSONLResultToolOrder: ["bash", "read", "read"],
 		visualEvidence: [
 			{ id: "bridge-read-success", pattern: "^\\s*read (?:\\./package\\.json|.*[\\\\/]package\\.json)", jsonlResultId: "bridge-read-success" },
 			{ id: "bridge-read-failure", pattern: "^\\s*read \\./definitely-missing-platform-smoke-file\\.txt|ENOENT: no such file", jsonlResultId: "bridge-read-failure" },
