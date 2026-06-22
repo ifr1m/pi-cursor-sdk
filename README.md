@@ -51,10 +51,10 @@ If pi started without a key, run `/cursor-refresh-models` after `/login` to refr
 ## Requirements
 
 - Node.js 22.19+
-- pi 0.79.9 or newer recommended; pi core peer metadata is intentionally unpinned so newer pi releases are not blocked
+- pi 0.79.10 or newer recommended; pi core peer metadata is intentionally unpinned so newer pi releases are not blocked
 - a Cursor SDK API key saved through `/login`, available as `CURSOR_API_KEY`, or passed with pi's `--api-key`
 
-No global `@cursor/sdk` install is required. This package depends on exact `@cursor/sdk@1.0.19`, so normal package installation brings in the SDK version this extension was built and tested against. It also declares `@connectrpc/connect-node@1.7.0` directly because Cursor SDK 1.0.19 still dynamically loads the Node ConnectRPC transport during local-agent runs. Cursor SDK 1.0.19 removes the older `sqlite3 -> node-gyp@8` dependency chain, so deprecated install warnings for `inflight`, `rimraf`, `glob@7`, `npmlog`, `gauge`, `are-we-there-yet`, and `tar@6` from that chain are no longer expected. This package follows pi package guidance by declaring pi core package peers with `"*"` ranges, so users who update pi before this extension is republished are not blocked by peer metadata. The current recommended and validated pi baseline is 0.79.9 plus Cursor SDK 1.0.19; older pi compatibility paths are best-effort and older Cursor SDK compatibility paths are not maintained.
+No global `@cursor/sdk` install is required. This package depends on exact `@cursor/sdk@1.0.19`, so normal package installation brings in the SDK version this extension was built and tested against. It also declares `@connectrpc/connect-node@1.7.0` directly because Cursor SDK 1.0.19 still dynamically loads the Node ConnectRPC transport during local-agent runs. Cursor SDK 1.0.19 removes the older `sqlite3 -> node-gyp@8` dependency chain, so deprecated install warnings for `inflight`, `rimraf`, `glob@7`, `npmlog`, `gauge`, `are-we-there-yet`, and `tar@6` from that chain are no longer expected. This package follows pi package guidance by declaring pi core package peers with `"*"` ranges, so users who update pi before this extension is republished are not blocked by peer metadata. The current recommended and validated pi baseline is 0.79.10 plus Cursor SDK 1.0.19; older pi compatibility paths are best-effort and older Cursor SDK compatibility paths are not maintained.
 
 ## Install
 

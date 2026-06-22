@@ -261,6 +261,8 @@ function createHarnessEventApi(): EventHarness {
 			"session_before_compact",
 			{
 				type: "session_before_compact",
+				reason: "manual",
+				willRetry: false,
 				preparation: {
 					firstKeptEntryId: "entry-1",
 					messagesToSummarize: [],
@@ -287,6 +289,8 @@ function createHarnessEventApi(): EventHarness {
 			"session_compact",
 			{
 				type: "session_compact",
+				reason: "manual",
+				willRetry: false,
 				compactionEntry: {
 					type: "compaction",
 					id: "compaction-1",

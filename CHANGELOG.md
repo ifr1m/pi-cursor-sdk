@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.47 - 2026-06-22
+
+### Changed
+
+- Update the local pi validation baseline to `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` `0.79.10` after reviewing the Pi 0.79.10 changelog, extension compaction events, provider/package docs, and release workflow.
+
+### Fixed
+
+- Refresh the test event harness for Pi 0.79.10's required `session_before_compact` and `session_compact` `reason` / `willRetry` metadata.
+
 ## 0.1.46 - 2026-06-21
 
 ### Changed
