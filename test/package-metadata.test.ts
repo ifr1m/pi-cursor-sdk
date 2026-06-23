@@ -60,8 +60,8 @@ describe("package metadata cutover baselines", () => {
 
 	it("pins pi validation baselines", () => {
 		for (const packageName of PI_PACKAGES) {
-			expect(packageJson.devDependencies[packageName]).toBe("0.79.10");
-			expect(lockPackageVersion(packageName)).toBe("0.79.10");
+			expect(packageJson.devDependencies[packageName]).toBe("0.80.1");
+			expect(lockPackageVersion(packageName)).toBe("0.80.1");
 		}
 	});
 

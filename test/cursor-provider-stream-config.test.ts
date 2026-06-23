@@ -15,7 +15,7 @@ import { streamCursor } from "../src/cursor-provider.js";
 import { registerCursorRuntimeControls } from "../src/cursor-state.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../src/model-discovery.js";
-import type { Context } from "@earendil-works/pi-ai";
+import type { Context } from "@earendil-works/pi-ai/compat";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

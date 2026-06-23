@@ -4,7 +4,7 @@ import {
 	type AssistantMessageEventStream,
 	type Context,
 	type Model,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 import { scheduler } from "node:timers/promises";
 import {
 	CursorLiveRunAbortError,

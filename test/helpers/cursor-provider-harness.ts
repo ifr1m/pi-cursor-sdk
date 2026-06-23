@@ -43,7 +43,7 @@ import { __testUtils as nativeToolDisplayTestUtils } from "../../src/cursor-nati
 import { registerCursorNativeToolDisplay } from "../../src/cursor-native-tool-display-registration.js";
 import type { CursorNativeToolDisplayExtensionApi } from "../../src/cursor-native-tool-display-registration.js";
 import type { ModelListItem, Run, SDKAgent, SendOptions } from "@cursor/sdk";
-import type { AssistantMessage, AssistantMessageEvent, TextContent, ImageContent, ToolCall } from "@earendil-works/pi-ai";
+import type { AssistantMessage, AssistantMessageEvent, TextContent, ImageContent, ToolCall } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
 import {
 	collectAssistantEvents,

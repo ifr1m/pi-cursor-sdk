@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.1.49 - 2026-06-23
+
+### Changed
+
+- Update the local pi validation baseline to `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent`, and `@earendil-works/pi-tui` `0.80.1` after reviewing the Pi 0.80.0 and 0.80.1 changelogs plus current package/provider docs.
+- Move source and test imports that typecheck against old root `@earendil-works/pi-ai` globals to `@earendil-works/pi-ai/compat`, matching the Pi 0.80 migration guidance.
+
+### Validation
+
+- Pending in this release train.
+
 ## 0.1.48 - 2026-06-22
 
 ### Fixed

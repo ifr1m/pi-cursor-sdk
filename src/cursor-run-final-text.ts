@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { asRecord, hasUsableText } from "./cursor-record-utils.js";
 
 function isCursorTextBoundary(text: string, index: number): boolean {

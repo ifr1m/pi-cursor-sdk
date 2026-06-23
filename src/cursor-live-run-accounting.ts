@@ -1,4 +1,4 @@
-import type { Context, Message, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { Context, Message, ToolResultMessage } from "@earendil-works/pi-ai/compat";
 import { CURSOR_APPROX_CHARS_PER_TOKEN, estimateCursorPromptMessageTokens } from "./context.js";
 
 export interface CursorLiveRunAccountingState {

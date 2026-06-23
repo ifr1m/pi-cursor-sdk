@@ -6,7 +6,7 @@ import {
 	type Context,
 	type Model,
 	type SimpleStreamOptions,
-} from "@earendil-works/pi-ai";
+} from "@earendil-works/pi-ai/compat";
 
 function makeProviderLoadErrorMessage(model: Model<Api>, error: unknown): AssistantMessage {
 	return {

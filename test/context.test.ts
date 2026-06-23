@@ -13,7 +13,7 @@ import {
 	buildCursorSessionSendPrompt,
 	planCursorSessionSend,
 } from "../src/cursor-session-send-policy.js";
-import type { Context, UserMessage, AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
+import type { Context, UserMessage, AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai/compat";
 
 describe("buildCursorPrompt", () => {
 	it("includes system prompt", () => {

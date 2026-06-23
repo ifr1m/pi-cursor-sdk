@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { AssistantMessage, AssistantMessageEvent, Context } from "@earendil-works/pi-ai";
+import type { AssistantMessage, AssistantMessageEvent, Context } from "@earendil-works/pi-ai/compat";
 import {
 	AuthStorage,
 	ModelRegistry,

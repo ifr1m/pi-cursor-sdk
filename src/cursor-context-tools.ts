@@ -1,4 +1,4 @@
-import type { Context } from "@earendil-works/pi-ai";
+import type { Context } from "@earendil-works/pi-ai/compat";
 
 /** Tool names from the provider context snapshot at stream start (not live pi.getActiveTools()). */
 export function getActiveContextToolNames(context: Context): ReadonlySet<string> | undefined {

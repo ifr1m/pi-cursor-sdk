@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Context, Message, ToolCall } from "@earendil-works/pi-ai";
+import type { Context, Message, ToolCall } from "@earendil-works/pi-ai/compat";
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type { AgentModeOption, SDKImage } from "@cursor/sdk";
 import { getCursorReplayPromptLabel } from "./cursor-tool-presentation-registry.js";

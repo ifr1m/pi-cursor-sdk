@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import {
 	applyCursorApproximateUsage,
 	estimateCursorAssistantSessionOutputTokens,
