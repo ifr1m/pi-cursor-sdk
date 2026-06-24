@@ -507,26 +507,10 @@ describe("streamCursor Cursor tool lifecycle", () => {
 
 		const events = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const done = getDoneEvent(events);
-		expect(done.reason).toBe("toolUse");
+		expect(done.reason).toBe("stop");
 		expect(collectThinkingDeltas(events)).not.toMatch(lifecycleShellProgressPattern);
-
-		const incompleteToolCall = done.message.content.find(isToolCallBlock);
-		const replayContext = makeContext();
-		replayContext.messages = [
-			...replayContext.messages,
-			done.message,
-			{
-				role: "toolResult" as const,
-				toolCallId: incompleteToolCall!.id,
-				toolName: "cursor",
-				content: [{ type: "text" as const, text: "Cursor shell did not complete" }],
-				isError: true,
-				timestamp: 2,
-			},
-		];
-		const finalEvents = await collectEvents(streamCursor(makeModel(), replayContext, { apiKey: "test-key" }));
-		expect(getDoneEvent(finalEvents).reason).toBe("stop");
-		expect(collectTextDeltas(finalEvents)).toBe("Done.");
+		expect(done.message.content.some(isToolCallBlock)).toBe(false);
+		expect(collectTextDeltas(events)).toBe("Done.");
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
 
 		await delayBeyondLifecycleDefer();
@@ -535,6 +519,7 @@ describe("streamCursor Cursor tool lifecycle", () => {
 		captureSpy.mockRestore();
 		delete process.env.PI_CURSOR_SDK_EVENT_DEBUG;
 		delete process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR;
+		delete process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY;
 	});
 
 	it("does not append deferred lifecycle progress after live background run.wait rejection", async () => {

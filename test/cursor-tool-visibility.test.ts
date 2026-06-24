@@ -4,18 +4,20 @@ import { buildCursorPiToolDisplay } from "../src/cursor-tool-transcript.js";
 
 describe("cursor tool visibility classification", () => {
 	it("classifies fast local discovery tools from the shared policy", () => {
-		for (const name of ["read", "grep", "glob", "ls"]) {
+		for (const name of ["read", "grep", "glob", "ls", "shell"]) {
 			expect(isFastLocalDiscoveryTool({ name })).toBe(true);
+		}
+		for (const name of ["read", "grep", "glob", "ls"]) {
 			expect(classifyCursorToolVisibility({ name }).lifecycleEligible).toBe(false);
 		}
 
-		expect(isFastLocalDiscoveryTool({ name: "shell" })).toBe(false);
 		expect(classifyCursorToolVisibility({ name: "shell" })).toMatchObject({
 			normalizedName: "shell",
 			activityTitle: "Cursor shell",
 			incompleteTitle: "Cursor shell",
 			lifecycleTitle: "Cursor shell",
 			lifecycleEligible: true,
+			fastLocalDiscovery: true,
 		});
 	});
 

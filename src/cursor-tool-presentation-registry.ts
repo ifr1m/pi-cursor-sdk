@@ -145,6 +145,7 @@ export const CURSOR_TOOL_PRESENTATION_SPECS = [
 			incompleteTitle: "Cursor shell",
 			lifecycleTitle: "Cursor shell",
 			lifecycleEligible: true,
+			fastLocalDiscovery: true,
 		},
 		lifecycleLabelKind: "shell",
 	},

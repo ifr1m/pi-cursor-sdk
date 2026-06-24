@@ -24,7 +24,7 @@ type CursorOnStepPayload = Parameters<NonNullable<SendOptions["onStep"]>>[0];
 describe("streamCursor incomplete tools", () => {
 	beforeEach(resetCursorProviderTestState);
 
-		it("surfaces incomplete started Cursor tool calls with neutral activity traces", async () => {
+		it("suppresses stale incomplete shell starts when final assistant text is already available", async () => {
 			const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
 				opts.onDelta({ update: { type: "tool-call-started", toolCall: { name: "shell", args: { command: "sleep 10" } }, callId: "c1" } });
 				return asMockCursorRun({
@@ -47,8 +47,7 @@ describe("streamCursor incomplete tools", () => {
 			const trace = collectThinkingDeltas(events);
 			const text = collectTextDeltas(events);
 
-			expect(trace).toContain("Cursor shell did not complete");
-			expect(trace).toContain("missing completion");
+			expect(trace).not.toContain("Cursor shell did not complete");
 			expect(text).toBe("done");
 			expect(hasEventType(events, "toolcall_start")).toBe(false);
 		});

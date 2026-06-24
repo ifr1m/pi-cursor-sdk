@@ -67,6 +67,15 @@ describe("cursor incomplete tool visibility", () => {
 		).toBe("debugOnly");
 		expect(
 			resolveIncompleteCursorToolVisibility(
+				{ name: "shell", args: { command: "npm test" } },
+				buildIncompleteCursorToolRunOutcome({
+					assistantTextProduced: true,
+					reason: DISCARDED_INCOMPLETE_TOOL_CALL_REASON,
+				}),
+			),
+		).toBe("debugOnly");
+		expect(
+			resolveIncompleteCursorToolVisibility(
 				{ name: "mcp", args: { toolName: "git" } },
 				buildIncompleteCursorToolRunOutcome({
 					assistantTextProduced: true,
