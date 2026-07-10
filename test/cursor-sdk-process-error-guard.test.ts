@@ -275,7 +275,7 @@ describe("Cursor SDK process error guard", () => {
 		}
 	});
 
-	it("suppresses matching uncaught exceptions only after abort suppression is enabled", () => {
+	it("suppresses abort ConnectErrors while a provider turn is active", () => {
 		const suppression = installCursorSdkProcessErrorGuard();
 		let listenerCalled = false;
 		const listener = () => {
@@ -283,18 +283,28 @@ describe("Cursor SDK process error guard", () => {
 		};
 		process.once("uncaughtException", listener);
 		try {
-			const unsuppressed = process.emit("uncaughtException", makeCursorSdkAbortConnectError(), "uncaughtException");
-			expect(unsuppressed).toBe(true);
-			expect(listenerCalled).toBe(true);
+			const emitted = process.emit("uncaughtException", makeCursorSdkAbortConnectError(), "uncaughtException");
+			expect(emitted).toBe(true);
+			expect(listenerCalled).toBe(false);
 		} finally {
 			process.removeListener("uncaughtException", listener);
+			suppression.dispose();
 		}
+	});
 
-		listenerCalled = false;
+	it("suppresses nested stall-abort ConnectErrors while a provider turn is active", () => {
+		const suppression = installCursorSdkProcessErrorGuard();
+		let listenerCalled = false;
+		const listener = () => {
+			listenerCalled = true;
+		};
 		process.once("uncaughtException", listener);
 		try {
-			suppression.suppressAbortErrors();
-			const emitted = process.emit("uncaughtException", makeCursorSdkAbortConnectError(), "uncaughtException");
+			const emitted = process.emit(
+				"uncaughtException",
+				makeCursorSdkNestedStallAbortConnectError(),
+				"uncaughtException",
+			);
 			expect(emitted).toBe(true);
 			expect(listenerCalled).toBe(false);
 		} finally {

@@ -9,7 +9,7 @@ const GENERIC_CURSOR_SDK_ERROR_MESSAGE =
 const AUTH_CURSOR_SDK_ERROR_MESSAGE =
 	"Cursor SDK request failed because the Cursor SDK API key may be invalid or unauthorized. Cursor Agent CLI/Desktop login is not reused. Run /login -> Use an API key -> Cursor, verify CURSOR_API_KEY, or pass --api-key, then retry.";
 // Keep "Network error" aligned with pi's agent-level retry classifier.
-const NETWORK_CURSOR_SDK_ERROR_MESSAGE =
+export const NETWORK_CURSOR_SDK_ERROR_MESSAGE =
 	"Network error: Cursor SDK request failed during network or service I/O. Check your connection; pi will retry automatically when auto-retry is enabled.";
 
 // Keep this phrase aligned with pi's agent-level retry classifier (`provider.?returned.?error`).
@@ -260,7 +260,15 @@ export function sanitizeCursorProviderError(error: unknown, apiKey?: string): st
 	const scrubbed = scrubSensitiveText(message, apiKey).trim();
 	const connectClassification = classifyCursorConnectError(error);
 	if (connectClassification?.kind === "unauthenticated" || isLikelyAuthError(scrubbed)) return AUTH_CURSOR_SDK_ERROR_MESSAGE;
-	if (connectClassification?.kind === "network" || isLikelyNetworkTimeout(scrubbed)) return NETWORK_CURSOR_SDK_ERROR_MESSAGE;
+	// Spontaneous SDK stall aborts and other abort ConnectErrors are retryable I/O failures
+	// from the pi turn's perspective (user Esc is handled via AbortSignal, not this path).
+	if (
+		connectClassification?.kind === "abort" ||
+		connectClassification?.kind === "network" ||
+		isLikelyNetworkTimeout(scrubbed)
+	) {
+		return NETWORK_CURSOR_SDK_ERROR_MESSAGE;
+	}
 	if (isGenericCursorRunFailureMessage(scrubbed)) return RETRYABLE_CURSOR_RUN_FAILURE_PREFIX;
 	if (isGenericErrorMessage(scrubbed)) return GENERIC_CURSOR_SDK_ERROR_MESSAGE;
 	return scrubbed || GENERIC_CURSOR_SDK_ERROR_MESSAGE;

@@ -58,7 +58,12 @@ describe("cursor-provider-run-outcome", () => {
 			textDeltas: [],
 			emittedText: "",
 		});
-		expect(classifyCursorRunEmission(cancelled)).toBe("cancelled");
+		expect(cancelled.kind).toBe("error");
+		expect(classifyCursorRunEmission(cancelled)).toBe("failed");
+		if (cancelled.kind === "error") {
+			expect(cancelled.errorMessage).toContain("Network error");
+			expect(cancelled.errorMessage).toContain("pi will retry automatically");
+		}
 
 		const failed = resolveCursorRunOutcome({
 			waitResult: makeWaitResult("error", "boom"),
@@ -66,6 +71,20 @@ describe("cursor-provider-run-outcome", () => {
 			emittedText: "",
 		});
 		expect(classifyCursorRunEmission(failed)).toBe("failed");
+	});
+
+	it("keeps caller AbortSignal cancels as cancelled outcomes", () => {
+		const outcome = resolveCursorRunOutcome({
+			waitResult: makeWaitResult("cancelled"),
+			signalAborted: true,
+			textDeltas: [],
+			emittedText: "",
+		});
+		expect(outcome.kind).toBe("cancelled");
+		expect(classifyCursorRunEmission(outcome)).toBe("cancelled");
+		if (outcome.kind === "cancelled") {
+			expect(outcome.abortMessage).toBe("Cancelled: prompt interrupted.");
+		}
 	});
 
 	it("marks successful finished runs and selects final text", () => {

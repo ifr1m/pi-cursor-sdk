@@ -3,6 +3,7 @@ import { selectCursorFinalText } from "./cursor-run-final-text.js";
 import {
 	formatCursorSdkAbortMessage,
 	formatCursorSdkRunFailureDetail,
+	NETWORK_CURSOR_SDK_ERROR_MESSAGE,
 	resolveCursorSdkAbortCause,
 	sanitizeCursorProviderError,
 } from "./cursor-provider-errors.js";
@@ -76,17 +77,31 @@ export function resolveCursorRunOutcome(params: ResolveCursorRunOutcomeParams): 
 	const sdkCancelled = waitResult.status === "cancelled";
 	const callerAborted = signalAborted === true;
 
-	if (callerAborted || sdkCancelled) {
+	// User Esc / caller AbortSignal → cancelled UX. Spontaneous SDK cancels (including stall
+	// watchdog aborts) surface as scrubbed retryable errors so pi can auto-retry.
+	if (callerAborted) {
 		const incompleteTools = buildIncompleteCursorToolRunOutcome({
 			status: "cancelled",
-			signalAborted: callerAborted,
+			signalAborted: true,
 			assistantTextProduced: false,
 		});
 		return {
 			kind: "cancelled",
 			waitResult,
 			incompleteTools,
-			abortMessage: buildCursorRunAbortMessage(callerAborted, sdkCancelled),
+			abortMessage: buildCursorRunAbortMessage(true, sdkCancelled),
+		};
+	}
+
+	if (sdkCancelled) {
+		return {
+			kind: "error",
+			waitResult,
+			incompleteTools: buildIncompleteCursorToolRunOutcome({
+				status: "error",
+				assistantTextProduced: false,
+			}),
+			errorMessage: NETWORK_CURSOR_SDK_ERROR_MESSAGE,
 		};
 	}
 

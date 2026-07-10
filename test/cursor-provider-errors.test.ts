@@ -335,6 +335,16 @@ describe("cursor-provider-errors", () => {
 		expect(classifyCursorConnectError(error)).toEqual({ kind: "abort", source: "cursor-sdk-stack" });
 	});
 
+	it("maps nested Cursor SDK stall-abort ConnectErrors to retryable network guidance", () => {
+		const error = makeCursorSdkNestedStallAbortConnectError();
+		const message = sanitizeCursorProviderError(error, "test-key");
+
+		expect(message).toContain("Network error");
+		expect(message).toContain("pi will retry automatically");
+		expect(message).not.toContain("operation was aborted");
+		expect(message).not.toContain("canceled");
+	});
+
 	it("classifies Cursor SDK HTTP/2 write ECANCELED ConnectErrors as retryable network failures", () => {
 		const error = makeCursorSdkWriteEcanceledConnectError();
 		const classification = classifyCursorConnectError(error);

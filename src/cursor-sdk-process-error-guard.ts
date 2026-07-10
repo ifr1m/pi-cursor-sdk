@@ -36,7 +36,11 @@ function shouldSuppressProcessError(event: string | symbol, args: readonly unkno
 	const error = args[0];
 	const classification = classifyCursorConnectError(error);
 	if (!classification) return false;
-	if (classification.kind === "abort") return hasActiveAbortSuppression();
+	// Abort ConnectErrors (user cancel, compaction teardown, and mid-turn SDK stall
+	// aborts) must not take down pi while a Cursor provider turn or compaction prep is active.
+	if (classification.kind === "abort") {
+		return activeProviderTurns.size > 0 || hasActiveAbortSuppression();
+	}
 	if (activeProviderTurns.size === 0) return false;
 	// pi's supported Cursor SDK runtime is Node, where the SDK uses connect-node.
 	if (classification.kind === "network") return isCursorProvenance(classification.source) || classification.source === "connect-node-stack";
