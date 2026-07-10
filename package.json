@@ -110,7 +110,7 @@
   },
   "dependencies": {
     "@connectrpc/connect-node": "1.7.0",
-    "@cursor/sdk": "1.0.19",
+    "@cursor/sdk": "1.0.20",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "undici": "7.28.0"
   },
@@ -159,5 +159,9 @@
     "typebox": {
       "optional": true
     }
-  }
+  },
+  "bundleDependencies": [
+    "@connectrpc/connect-node",
+    "undici"
+  ]
 }

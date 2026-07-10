@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai/compat";
 import { installCursorMcpToolTimeoutOverride } from "./cursor-mcp-timeout-override.js";
 import { installCursorSdkOutputFilter, suppressCursorSdkOutput } from "./cursor-sdk-output-filter.js";
@@ -124,6 +125,7 @@ export async function prepareCursorProviderTurn(
 		const useNativeToolReplay = isCursorNativeToolDisplayRuntimeEnabled();
 		const activeToolNames = getActiveContextToolNames(context);
 		sdkEventDebug?.recordProviderMeta({
+			auth: describeCursorAuth(options?.apiKey, resolvedApiKey),
 			model: {
 				id: model.id,
 				provider: model.provider,
@@ -218,4 +220,14 @@ export function requireCursorApiKey(options: SimpleStreamOptions | undefined): s
 	const apiKey = resolveCursorApiKey(options?.apiKey);
 	if (!apiKey) throw new Error(MISSING_CURSOR_API_KEY_MESSAGE);
 	return apiKey;
+}
+
+function describeCursorAuth(inputApiKey: string | undefined, resolvedApiKey: string): Record<string, unknown> {
+	return {
+		inputPresent: Boolean(inputApiKey?.trim()),
+		inputLooksPlaceholder: inputApiKey === "pi-cursor-sdk-cursor-api-key-placeholder" || inputApiKey === "$CURSOR_API_KEY",
+		resolvedPresent: Boolean(resolvedApiKey),
+		resolvedLength: resolvedApiKey.length,
+		resolvedSha256Prefix: createHash("sha256").update(resolvedApiKey).digest("hex").slice(0, 12),
+	};
 }

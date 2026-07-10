@@ -504,7 +504,36 @@ export async function acquireSessionCursorAgent(params: SessionCursorAgentCreate
 	}
 }
 
-export async function resetSessionCursorAgent(scopeKey: string = getCursorSessionScopeKey()): Promise<void> {
+export interface ResetSessionCursorAgentOptions {
+	/** Wait for in-flight run.wait() tracking to settle before disposing the pooled agent. */
+	awaitIdle?: boolean;
+}
+
+export async function awaitSessionCursorAgentIdle(scopeKey: string = getCursorSessionScopeKey()): Promise<void> {
+	while (true) {
+		const entry = sessionAgentsByScope.get(scopeKey);
+		if (!entry) return;
+		if (entry.status === "creating") {
+			await entry.creating.catch(() => {
+				// Creation may be superseded while compaction waits for the prior pool entry.
+			});
+			continue;
+		}
+		if (entry.status === "busy") {
+			await entry.completionSettled;
+			continue;
+		}
+		return;
+	}
+}
+
+export async function resetSessionCursorAgent(
+	scopeKey: string = getCursorSessionScopeKey(),
+	options?: ResetSessionCursorAgentOptions,
+): Promise<void> {
+	if (options?.awaitIdle) {
+		await awaitSessionCursorAgentIdle(scopeKey);
+	}
 	await disposePoolEntryForScope(scopeKey);
 }
 

@@ -3,6 +3,7 @@ import { isUnauthenticatedConnectError } from "../src/cursor-provider-errors.js"
 import {
 	installCursorSdkProcessErrorGuard,
 	isCursorSdkAbortConnectError,
+	runWithCursorSdkCompactionPrepGuard,
 } from "../src/cursor-sdk-process-error-guard.js";
 
 function makeCursorSdkAbortConnectError(): Error & { rawMessage: string; code: number; cause: DOMException } {
@@ -45,6 +46,81 @@ function makeCursorBackendUnauthenticatedConnectError(): Error & { rawMessage: s
 		"ConnectError: [unauthenticated] Error\n" +
 		"    at file:///repo/node_modules/@connectrpc/connect/dist/esm/protocol-connect/error-json.js:53:19";
 	error.details = [{ type: "aiserver.v1.ErrorDetails" }];
+	return error;
+}
+
+function makeCursorSdkNestedStallAbortConnectError(): Error & {
+	rawMessage: string;
+	code: number;
+	cause: Error & { rawMessage: string; code: number; cause: DOMException };
+} {
+	const innerCause = new DOMException("This operation was aborted", "AbortError");
+	const inner = new Error("[canceled] This operation was aborted") as Error & {
+		rawMessage: string;
+		code: number;
+		cause: DOMException;
+	};
+	inner.name = "ConnectError";
+	inner.rawMessage = "This operation was aborted";
+	inner.code = 1;
+	inner.cause = innerCause;
+	inner.stack =
+		"ConnectError: [canceled] This operation was aborted\n" +
+		"    at file:///repo/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:293:63";
+
+	const error = new Error("[unknown] [canceled] This operation was aborted") as Error & {
+		rawMessage: string;
+		code: number;
+		cause: Error & { rawMessage: string; code: number; cause: DOMException };
+	};
+	error.name = "ConnectError";
+	error.rawMessage = "[canceled] This operation was aborted";
+	error.code = 2;
+	error.cause = inner;
+	error.stack =
+		"ConnectError: [unknown] [canceled] This operation was aborted\n" +
+		"    at file:///repo/node_modules/@cursor/sdk/dist/esm/index.js:1:1126528\n" +
+		"    at file:///repo/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:293:63";
+	return error;
+}
+
+function makeCursorSdkWriteEcanceledConnectError(): Error & {
+	rawMessage: string;
+	code: number;
+	cause: Error & { rawMessage: string; code: number; cause: NodeJS.ErrnoException };
+} {
+	const innerCause = Object.assign(new Error("write ECANCELED"), {
+		errno: -89,
+		code: "ECANCELED",
+		syscall: "write",
+	}) as NodeJS.ErrnoException;
+
+	const inner = new Error("[internal] write ECANCELED") as Error & {
+		rawMessage: string;
+		code: number;
+		cause: NodeJS.ErrnoException;
+	};
+	inner.name = "ConnectError";
+	inner.rawMessage = "write ECANCELED";
+	inner.code = 13;
+	inner.cause = innerCause;
+	inner.stack =
+		"ConnectError: [internal] write ECANCELED\n" +
+		"    at file:///repo/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:263:30";
+
+	const error = new Error("[unknown] [internal] write ECANCELED") as Error & {
+		rawMessage: string;
+		code: number;
+		cause: Error & { rawMessage: string; code: number; cause: NodeJS.ErrnoException };
+	};
+	error.name = "ConnectError";
+	error.rawMessage = "[internal] write ECANCELED";
+	error.code = 2;
+	error.cause = inner;
+	error.stack =
+		"ConnectError: [unknown] [internal] write ECANCELED\n" +
+		"    at file:///repo/node_modules/@cursor/sdk/dist/esm/index.js:1:1126528\n" +
+		"    at file:///repo/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:263:30";
 	return error;
 }
 
@@ -174,6 +250,31 @@ describe("Cursor SDK process error guard", () => {
 		expect(isUnauthenticatedConnectError(new Error("boom"))).toBe(false);
 	});
 
+	it("matches nested Cursor SDK stall-abort ConnectError shape", () => {
+		expect(isCursorSdkAbortConnectError(makeCursorSdkNestedStallAbortConnectError())).toBe(true);
+	});
+
+	it("suppresses nested stall-abort ConnectErrors during compaction prep", async () => {
+		let listenerCalled = false;
+		const listener = () => {
+			listenerCalled = true;
+		};
+		process.once("uncaughtException", listener);
+		try {
+			await runWithCursorSdkCompactionPrepGuard(async () => {
+				const emitted = process.emit(
+					"uncaughtException",
+					makeCursorSdkNestedStallAbortConnectError(),
+					"uncaughtException",
+				);
+				expect(emitted).toBe(true);
+				expect(listenerCalled).toBe(false);
+			});
+		} finally {
+			process.removeListener("uncaughtException", listener);
+		}
+	});
+
 	it("suppresses matching uncaught exceptions only after abort suppression is enabled", () => {
 		const suppression = installCursorSdkProcessErrorGuard();
 		let listenerCalled = false;
@@ -272,6 +373,27 @@ describe("Cursor SDK process error guard", () => {
 			const emitted = process.emit(
 				"uncaughtException",
 				makeCursorSdkHttp2EnhanceYourCalmConnectError(),
+				"uncaughtException",
+			);
+			expect(emitted).toBe(true);
+			expect(listenerCalled).toBe(false);
+		} finally {
+			process.removeListener("uncaughtException", listener);
+			suppression.dispose();
+		}
+	});
+
+	it("suppresses Cursor SDK write ECANCELED process errors while a provider turn is active", () => {
+		const suppression = installCursorSdkProcessErrorGuard();
+		let listenerCalled = false;
+		const listener = () => {
+			listenerCalled = true;
+		};
+		process.once("uncaughtException", listener);
+		try {
+			const emitted = process.emit(
+				"uncaughtException",
+				makeCursorSdkWriteEcanceledConnectError(),
 				"uncaughtException",
 			);
 			expect(emitted).toBe(true);

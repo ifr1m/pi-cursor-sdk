@@ -68,4 +68,39 @@ describe("prepareCursorSessionForCompaction", () => {
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
 
+	it("waits for in-flight run.wait() tracking before disposing the pooled agent", async () => {
+		const mockDispose = vi.fn().mockResolvedValue(undefined);
+		const createAgent = vi.fn().mockResolvedValue({
+			agentId: "agent-1",
+			[Symbol.asyncDispose]: mockDispose,
+		});
+
+		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
+		const scopeKey = "/tmp/sessions/test.jsonl";
+		const lease = await acquireSessionCursorAgent({
+			apiKey: "test-key",
+			agentMode: "agent" as const,
+			cwd: "/tmp/project",
+			modelSelection: { id: "composer-2.5" },
+			createAgent,
+		});
+
+		let resolveCompletion: (() => void) | undefined;
+		const completion = new Promise<void>((resolve) => {
+			resolveCompletion = resolve;
+		});
+		lease.trackRunCompletion(completion);
+		expect(sessionAgentTestUtils.getSessionCursorAgentPoolState(scopeKey).status).toBe("busy");
+
+		const prepPromise = prepareCursorSessionForCompaction(scopeKey);
+		await Promise.resolve();
+		expect(mockDispose).not.toHaveBeenCalled();
+
+		resolveCompletion?.();
+		await prepPromise;
+
+		expect(sessionAgentTestUtils.sessionAgentsByScope.has(scopeKey)).toBe(false);
+		expect(mockDispose).toHaveBeenCalledTimes(1);
+	});
+
 });

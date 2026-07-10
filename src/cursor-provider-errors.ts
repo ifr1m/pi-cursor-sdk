@@ -117,6 +117,42 @@ export type CursorConnectErrorClassification =
 	| { kind: "unauthenticated"; source: CursorConnectErrorSource }
 	| { kind: "network"; source: CursorConnectErrorSource };
 
+function hasCursorSdkConnectProvenance(stack: string): boolean {
+	return stack.includes("@cursor/sdk") && stack.includes("@connectrpc/connect");
+}
+
+function isLikelyCursorSdkAbortEvidence(evidence: string, stack: string): boolean {
+	return (
+		/(?:operation was aborted|canceled)/i.test(evidence) &&
+		(/AbortError/i.test(evidence) || /AbortError/.test(stack))
+	);
+}
+
+function isCanceledConnectCode(code: unknown): boolean {
+	return code === 1 || code === "canceled";
+}
+
+function isCursorSdkAbortConnectErrorShape(
+	code: unknown,
+	cause: Record<string, unknown> | undefined,
+	causeName: string | undefined,
+	evidence: string,
+	stack: string,
+): boolean {
+	if (!hasCursorSdkConnectProvenance(stack) || !isLikelyCursorSdkAbortEvidence(evidence, stack)) {
+		return false;
+	}
+	if (isCanceledConnectCode(code) || causeName === "AbortError") {
+		return true;
+	}
+	const nestedCause = asRecord(cause?.cause);
+	const nestedCauseName = getErrorStringField(nestedCause, "name");
+	if (nestedCauseName === "ConnectError" && isCanceledConnectCode(nestedCause?.code)) {
+		return true;
+	}
+	return causeName === "ConnectError" && isCanceledConnectCode(cause?.code);
+}
+
 export function classifyCursorConnectError(error: unknown): CursorConnectErrorClassification | undefined {
 	const record = asRecord(error);
 	if (!isConnectError(error, record)) return undefined;
@@ -129,13 +165,7 @@ export function classifyCursorConnectError(error: unknown): CursorConnectErrorCl
 	const stack = getErrorStack(error, record);
 	const evidence = collectConnectErrorEvidence(error, record);
 
-	if (
-		(code === 1 || code === "canceled") &&
-		Boolean(rawMessage && /(?:operation was aborted|canceled)/i.test(rawMessage)) &&
-		(causeName === "AbortError" || /AbortError/.test(stack)) &&
-		stack.includes("@cursor/sdk") &&
-		stack.includes("@connectrpc/connect-node")
-	) {
+	if (isCursorSdkAbortConnectErrorShape(code, cause, causeName, evidence, stack)) {
 		return { kind: "abort", source: "cursor-sdk-stack" };
 	}
 
@@ -164,12 +194,13 @@ export function isUnauthenticatedConnectError(error: unknown): boolean {
 
 function isLikelyNetworkTimeout(message: string): boolean {
 	return (
-		/\b(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|NGHTTP2_ENHANCE_YOUR_CALM|ERR_HTTP2_STREAM_ERROR|ERR_HTTP2_SESSION_ERROR)\b/i.test(
+		/\b(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|ECANCELED|NGHTTP2_ENHANCE_YOUR_CALM|ERR_HTTP2_STREAM_ERROR|ERR_HTTP2_SESSION_ERROR)\b/i.test(
 			message,
 		) ||
 		/\bConnectError\b.*\b(unavailable|deadline|timeout|timed out)\b/i.test(message) ||
 		/\b(?:stream|session) closed with error code\b/i.test(message) ||
-		/\bread ETIMEDOUT\b/i.test(message)
+		/\b(?:read|write) ETIMEDOUT\b/i.test(message) ||
+		/\bwrite ECANCELED\b/i.test(message)
 	);
 }
 

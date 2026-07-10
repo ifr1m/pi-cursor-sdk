@@ -94,7 +94,21 @@ export interface AwaitFinalizeCursorRunOutcomeParams {
 
 /** Single wait/finalize path for SDK runs: wait, debug capture, transcript replay, incomplete tools, artifacts, context cache. */
 export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorRunOutcomeParams): Promise<CursorRunOutcome> {
-	const waitResult = params.waitResult ?? (await params.run.wait());
+	params.sdkEventDebug?.recordProviderEvent("run_wait_start", describeCursorRun(params.run));
+	let waitResult: AwaitFinalizeCursorRunOutcomeParams["waitResult"];
+	try {
+		waitResult = params.waitResult ?? (await params.run.wait());
+		params.sdkEventDebug?.recordProviderEvent("run_wait_returned", {
+			...describeCursorRun(params.run),
+			waitResult: describeCursorValue(waitResult),
+		});
+	} catch (error) {
+		params.sdkEventDebug?.recordProviderEvent("run_wait_threw", {
+			...describeCursorRun(params.run),
+			error: describeCursorError(error),
+		});
+		throw error;
+	}
 	params.sdkEventDebug?.recordWaitResult(waitResult);
 	const outcome = buildCursorRunOutcomeFromWait({
 		waitResult,
@@ -119,4 +133,43 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 		await cacheSdkContextWindow(params.contextWindowAgentId ?? params.run.agentId, params.modelId, params.prepared.cwd);
 	}
 	return outcome;
+}
+
+function describeCursorRun(run: unknown): Record<string, unknown> {
+	const record = run && typeof run === "object" ? (run as Record<string, unknown>) : undefined;
+	return {
+		type: typeof run,
+		keys: record ? Object.keys(record).sort() : undefined,
+		id: record?.id,
+		requestId: record?.requestId,
+		agentId: record?.agentId,
+		status: record?.status,
+		currentStatus: describeCursorValue(record?.currentStatus),
+		result: record?.result,
+		_result: describeCursorValue(record?._result),
+		_durationMs: record?._durationMs,
+		model: describeCursorValue(record?.model),
+		cancellationState: describeCursorValue(record?.cancellationState),
+		eventBuffer: describeCursorValue(record?.eventBuffer),
+		error: describeCursorValue(record?.error),
+	};
+}
+
+function describeCursorValue(value: unknown): unknown {
+	if (value instanceof Error) return describeCursorError(value);
+	if (!value || typeof value !== "object") return value;
+	try {
+		return JSON.parse(JSON.stringify(value));
+	} catch {
+		return { type: typeof value, string: String(value) };
+	}
+}
+
+function describeCursorError(error: unknown): Record<string, unknown> {
+	return {
+		name: error instanceof Error ? error.name : undefined,
+		message: error instanceof Error ? error.message : String(error),
+		stack: error instanceof Error ? error.stack : undefined,
+		value: error instanceof Error ? { ...error } : describeCursorValue(error),
+	};
 }

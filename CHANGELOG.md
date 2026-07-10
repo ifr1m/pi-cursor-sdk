@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- Prevent pi auto-compaction from crashing the process with uncaught `ConnectError: [canceled] This operation was aborted` when threshold compaction runs while a Cursor SDK `run.wait()` is still settling: compaction prep now waits for pooled-agent idle, wraps teardown in a compaction-scoped abort guard, and classifies nested SDK stall-abort wrappers (`code: 2` over canceled/`AbortError`).
+- Classify Cursor SDK HTTP/2 `write ECANCELED` ConnectErrors as retryable network failures so active provider turns suppress the process-level crash instead of exiting pi.
+
+### Changed
+
+- Upgrade the pinned Cursor SDK runtime dependency to `@cursor/sdk@1.0.20`.
+
 ## 0.1.49 - 2026-06-23
 
 ### Changed

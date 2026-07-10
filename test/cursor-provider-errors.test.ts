@@ -79,6 +79,81 @@ function makeGenericConnectNodeNetworkConnectError(): Error & { rawMessage: stri
 	return error;
 }
 
+function makeCursorSdkNestedStallAbortConnectError(): Error & {
+	rawMessage: string;
+	code: number;
+	cause: Error & { rawMessage: string; code: number; cause: DOMException };
+} {
+	const innerCause = new DOMException("This operation was aborted", "AbortError");
+	const inner = new Error("[canceled] This operation was aborted") as Error & {
+		rawMessage: string;
+		code: number;
+		cause: DOMException;
+	};
+	inner.name = "ConnectError";
+	inner.rawMessage = "This operation was aborted";
+	inner.code = 1;
+	inner.cause = innerCause;
+	inner.stack =
+		"ConnectError: [canceled] This operation was aborted\n" +
+		"    at file:///repo/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:293:63";
+
+	const error = new Error("[unknown] [canceled] This operation was aborted") as Error & {
+		rawMessage: string;
+		code: number;
+		cause: Error & { rawMessage: string; code: number; cause: DOMException };
+	};
+	error.name = "ConnectError";
+	error.rawMessage = "[canceled] This operation was aborted";
+	error.code = 2;
+	error.cause = inner;
+	error.stack =
+		"ConnectError: [unknown] [canceled] This operation was aborted\n" +
+		"    at file:///repo/node_modules/@cursor/sdk/dist/esm/index.js:1:1126528\n" +
+		"    at file:///repo/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:293:63";
+	return error;
+}
+
+function makeCursorSdkWriteEcanceledConnectError(): Error & {
+	rawMessage: string;
+	code: number;
+	cause: Error & { rawMessage: string; code: number; cause: NodeJS.ErrnoException };
+} {
+	const innerCause = Object.assign(new Error("write ECANCELED"), {
+		errno: -89,
+		code: "ECANCELED",
+		syscall: "write",
+	}) as NodeJS.ErrnoException;
+
+	const inner = new Error("[internal] write ECANCELED") as Error & {
+		rawMessage: string;
+		code: number;
+		cause: NodeJS.ErrnoException;
+	};
+	inner.name = "ConnectError";
+	inner.rawMessage = "write ECANCELED";
+	inner.code = 13;
+	inner.cause = innerCause;
+	inner.stack =
+		"ConnectError: [internal] write ECANCELED\n" +
+		"    at file:///repo/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:263:30";
+
+	const error = new Error("[unknown] [internal] write ECANCELED") as Error & {
+		rawMessage: string;
+		code: number;
+		cause: Error & { rawMessage: string; code: number; cause: NodeJS.ErrnoException };
+	};
+	error.name = "ConnectError";
+	error.rawMessage = "[internal] write ECANCELED";
+	error.code = 2;
+	error.cause = inner;
+	error.stack =
+		"ConnectError: [unknown] [internal] write ECANCELED\n" +
+		"    at file:///repo/node_modules/@cursor/sdk/dist/esm/index.js:1:1126528\n" +
+		"    at file:///repo/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:263:30";
+	return error;
+}
+
 function makeProvenanceFreeNetworkConnectError(): Error & { rawMessage: string; code: number; cause: NodeJS.ErrnoException } {
 	const error = makeCursorSdkNetworkConnectError();
 	error.stack =
@@ -253,6 +328,22 @@ describe("cursor-provider-errors", () => {
 			kind: "network",
 			source: "generic-connect",
 		});
+	});
+
+	it("classifies nested Cursor SDK stall-abort ConnectErrors wrapped as unknown", () => {
+		const error = makeCursorSdkNestedStallAbortConnectError();
+		expect(classifyCursorConnectError(error)).toEqual({ kind: "abort", source: "cursor-sdk-stack" });
+	});
+
+	it("classifies Cursor SDK HTTP/2 write ECANCELED ConnectErrors as retryable network failures", () => {
+		const error = makeCursorSdkWriteEcanceledConnectError();
+		const classification = classifyCursorConnectError(error);
+		const message = sanitizeCursorProviderError(error, "test-key");
+
+		expect(classification).toEqual({ kind: "network", source: "cursor-sdk-stack" });
+		expect(message).toContain("Network error");
+		expect(message).toContain("pi will retry automatically");
+		expect(message).not.toContain("ECANCELED");
 	});
 
 	it("formats abort causes deterministically", () => {

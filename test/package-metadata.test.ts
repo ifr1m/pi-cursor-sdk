@@ -27,8 +27,8 @@ function lockPackageVersion(packageName: string): string | undefined {
 
 describe("package metadata cutover baselines", () => {
 	it("pins Cursor SDK exactly", () => {
-		expect(packageJson.dependencies["@cursor/sdk"]).toBe("1.0.19");
-		expect(lockPackageVersion("@cursor/sdk")).toBe("1.0.19");
+		expect(packageJson.dependencies["@cursor/sdk"]).toBe("1.0.20");
+		expect(lockPackageVersion("@cursor/sdk")).toBe("1.0.20");
 	});
 
 	it("pins the Node ConnectRPC transport required by Cursor SDK's Node seam", () => {

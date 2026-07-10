@@ -15,10 +15,12 @@ type GenericProcessEmit = (event: string | symbol, ...args: unknown[]) => boolea
 // uncaught exceptions/unhandled rejections even when run.wait()/run.cancel() is awaited.
 // Keep suppression scoped to active Cursor provider turns and tightly matched ConnectRPC shapes.
 const activeProviderTurns = new Set<CursorSdkProcessErrorGuardToken>();
+let activeCompactionPrep = 0;
 let originalProcessEmit: GenericProcessEmit | undefined;
 let captureCallbackInstalled = false;
 
 function hasActiveAbortSuppression(): boolean {
+	if (activeCompactionPrep > 0) return true;
 	for (const turn of activeProviderTurns) {
 		if (turn.suppressAbortErrors) return true;
 	}
@@ -63,13 +65,13 @@ function installCaptureCallbackIfAvailable(): void {
 
 function uninstallCaptureCallbackIfIdle(force = false): void {
 	if (!captureCallbackInstalled) return;
-	if (!force && activeProviderTurns.size > 0) return;
+	if (!force && (activeProviderTurns.size > 0 || activeCompactionPrep > 0)) return;
 	process.setUncaughtExceptionCaptureCallback(null);
 	captureCallbackInstalled = false;
 }
 
 function uninstallProcessEmitPatchIfIdle(): void {
-	if (activeProviderTurns.size > 0 || !originalProcessEmit) return;
+	if (activeProviderTurns.size > 0 || activeCompactionPrep > 0 || !originalProcessEmit) return;
 	uninstallCaptureCallbackIfIdle();
 	process.emit = originalProcessEmit as typeof process.emit;
 	originalProcessEmit = undefined;
@@ -80,6 +82,22 @@ export const __testUtils = {
 };
 
 export { isCursorSdkAbortConnectError };
+
+export async function runWithCursorSdkCompactionPrepGuard<T>(operation: () => Promise<T>): Promise<T> {
+	activeCompactionPrep += 1;
+	const guard = installCursorSdkProcessErrorGuard();
+	guard.suppressAbortErrors();
+	try {
+		return await operation();
+	} finally {
+		guard.dispose();
+		await new Promise<void>((resolve) => {
+			setImmediate(resolve);
+		});
+		activeCompactionPrep -= 1;
+		uninstallProcessEmitPatchIfIdle();
+	}
+}
 
 export function installCursorSdkProcessErrorGuard(): CursorSdkProcessErrorGuard {
 	installProcessEmitPatch();
